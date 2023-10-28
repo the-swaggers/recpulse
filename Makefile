@@ -3,5 +3,9 @@ help:
 	@echo "format - formats all .py files and makes sure they are styled well"
 
 
+test:
+	@pytest src/*.py
+
+
 format:
 	@black src/*.py

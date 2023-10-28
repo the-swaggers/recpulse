@@ -9,5 +9,6 @@ RUN conda env create -f /tmp/environment.yml
 # add command to activate conda environment
 RUN echo "conda activate myenv" >> ~/.bashrc
 
-# add files to the venv
-ADD . .
+# create a volume to work with
+VOLUME /recpulse
+WORKDIR /recpulse
