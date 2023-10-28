@@ -1,0 +1,9 @@
+name: myenv
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - make>=4.3
+  - pytest=7.4.3
+  - black=23.10.1
+  - numpy=1.26.0
