@@ -9,3 +9,4 @@ test:
 
 format:
 	@black src/*.py
+	@black classes/*.py
