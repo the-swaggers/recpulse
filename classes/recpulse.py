@@ -1,7 +1,8 @@
-from dtypes import Layer
+from classes.dtypes import Layer
 from src.functions import extended_matmul
 import numpy as np
-
+import networkx as nx
+import matplotlib.pyplot as plt
 
 class Recpulse:
     def __init__(
@@ -11,6 +12,7 @@ class Recpulse:
         precision: np.dtype = np.float32,
     ):
         self.layers = layers
+        self.connections = connection_map
         self.precision = precision
         self.weights = np.zeros(shape=(self.size, self.size), dtype=object)
 
@@ -68,3 +70,21 @@ class Recpulse:
 
     def get_output(self, layer_index):
         return self.impulse[layer_index]
+
+    def draw(self, save_to: str = "", name: str = "model"):
+        G = nx.DiGraph()
+        edges = []
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.connections[i][j]:
+                    edges.append((str(i), str(j)))
+
+        G.add_edges_from(edges)
+
+        pos = nx.spring_layout(G)
+        nx.draw_networkx_nodes(G, pos)
+        nx.draw_networkx_edges(G, pos)
+        nx.draw_networkx_labels(G, pos)
+        if save_to:
+            save_to += "/"
+        plt.savefig(f"{save_to}{name}.png")
