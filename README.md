@@ -1,27 +1,35 @@
 # What is this library about?
 
-Probably everyone who reads this is already familiar with how CNNs (Convolutional Neural Networks) work. If not, it's highly recommended to learn them first.
+This library will operate the following term: **impulse**. It will represent all impulses in the model. In fact, impulse I(x<sub>i</sub>, θ) might be recursive. It makes INN (Impulse Neural Network) be similar to RNN. However, there are key differences:
 
-In this library we want to generalize this approach by looking at layers as nodes of some graph. Connections of this graph will represent what layers are connected and in what way.
+* INN allows to operate multiple inputs/outputs more flexible.
+* INN has more variants to crate the recursion.
+* INN will support external functions that will make will bring more opportunities to structure a model.
 
-It allows us to build way more complicated structures, but as we are on the early stage of development, good results can't be guaranteed.
+The whole motto of INN: `Generalize and chill`
 
-As graphs can be cyclic, the first input might affect next outputs, so we will introduce new term: **impulse**.
+At this moment, library is just making a generalization on neural networks. Roughly speaking, we can say
 
-### What is impulse?
+    CNN ⊆ RNN ⊆ INN
 
-As we look at our model as at graph, we'll can an impulse a set of values in each neuron at the particular moment. 
+At least it's how I see it.
 
-### Why this approach?
+## The beauty of math
 
-It allows us to store all the results of the previous runs elegantly.
+As there is a beautiful algorythm for step from one layer to another: matrix multiplication, there is a willing to generalize this.
 
-### How to train this model?
+There is almost nothing "good" that can't be stated for more complex tasks. In this case, we can represent layers as vertexes and transformations between them as edges. It allows us to create a matrix that will have the following structure:
 
-Well, as we are now only working on this, we can't know how to train this model. Probably, The algorythm will be similar to what CNNs use, but as we don't have any proofs of its efficiency in this particular case, we can't state that it'll be used. So, we have a yet to solve it.
+* If there are n layers the matrix will be of size n×n.
+* All layers are iterated and named l<sub>i</sub> 
+* The element of matrix in i<sup>th</sup> column and j<sup>th</sup> will be either
+  * None is there is no connection from l<sub>i</sub> to l<sub>j</sub>
+  * Matrix of transformation from l<sub>i</sub> to l<sub>j</sub> otherwise
 
-### Reason why the library's naming
+This will allow us to make a step to the next impulse by adding input to the previous one and then multiplying it by this matrix.
 
-As we get a new **impulse** from an old one, we can call it recurrent.
+## Current purpose
 
-Note: We intend to call this type of NNs - INN (Impulse Neural Network).
+At the moment the main goal of the library is to build a convenient tool to build various complex NNs.
+
+Inspiration went from thoughts that if we want to develop something really thinking, we have to make ot work without any inputs. Right now, we consider it as a possible future application of this library, but there are many challenges to overcome before ths can be implemented.
