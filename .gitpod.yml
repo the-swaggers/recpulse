@@ -5,3 +5,4 @@ tasks:
   - name: Setup Conda environment
     command: |
       conda env create -f environment.yml
+      conda activate recpulse
