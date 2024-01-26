@@ -1,5 +1,5 @@
 image:
-  file: .Dockerfile
+  file: Dockerfile
 
 tasks:
   - name: Setup Conda environment
