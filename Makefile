@@ -4,7 +4,7 @@ help:
 
 
 test:
-	@pytest src/*.py
+	@pytest tests/*.py
 
 
 format:

@@ -1,0 +1,76 @@
+repos:
+
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.4.0
+  hooks:
+
+    - id: no-commit-to-branch
+      name: "[01/13] Forbid committing to `master` branch"
+      args: [--branch=master]
+      always_run: true
+
+    - id: check-merge-conflict
+      name: "[02/13] Check for merge conflict strings"
+      always_run: true
+
+    - id: check-case-conflict
+      name: "[03/13] Guard against case-insensitive filesystems"
+      always_run: true
+
+    - id: trailing-whitespace
+      name: "[04/13] Check for trailing whitespaces"
+      args: [--markdown-linebreak-ext=md]
+      always_run: true
+
+    - id: end-of-file-fixer
+      name: "[05/13] Ensure 1 newline at the end of each file"
+      always_run: true
+
+    - id: mixed-line-ending
+      name: "[06/13] Correct mixed line endings"
+      always_run: true
+
+    - id: check-yaml
+      name: "[07/13] Check YAML files syntax"
+      files: \.ya?ml$
+      always_run: true
+
+    - id: check-toml
+      name: "[08/13] Check TOML files syntax"
+      files: \.toml$
+      always_run: true
+
+    - id: check-ast
+      name: "[09/13] Check Python files syntax"
+      files: \.py$
+      always_run: true
+
+    - id: check-builtin-literals
+      name: "[10/13] Replace built-in literals with constants or functions"
+      always_run: true
+
+- repo: local
+  hooks:
+
+    - id: black
+      name: "[11/13] Run black"
+      entry: |
+        bash -c 'black --check classes/*.py src/*.py tests/*.py'
+      language: system
+      pass_filenames: false
+      always_run: true
+
+    - id: isort
+      name: "[12/13] Run isort"
+      entry: |
+        bash -c 'isort --check classes/*.py src/*.py tests/*.py'
+      language: system
+      pass_filenames: false
+      always_run: true
+
+    - id: Pytest
+      name: "[13/13] Run pytest"
+      entry: bash -c 'pytest tests/*.py'
+      language: system
+      pass_filenames: false
+      always_run: true
