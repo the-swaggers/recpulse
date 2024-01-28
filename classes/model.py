@@ -5,7 +5,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 
-class Recpulse:
+class Model:
     def __init__(
         self,
         layers: [Layer],
