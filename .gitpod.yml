@@ -4,36 +4,11 @@ tasks:
 
   - name: main
 
-    # build with mamba in cwd (backed-up)
     init: |
       echo "Building development environment..."
-      mamba env create -f dev/environment.yml --prefix ./.recpulse-dev
+      mamba env create -f environment.yml
       echo "Development environment ready!"
 
-    # adjust PS1 + activate dev. env. + install pre-commit hooks
     command: |
-      conda config --set changeps1 False
-      conda config --append envs_dirs /workspace/recpulse/
-      parse_git_branch() { git branch --show-current ; }
-      export PS1="\e[1;37m(\$(parse_git_branch)) \e[0;33m\w \e[1;37m$\e[0m "
       echo "Activating the environment..."
-      conda activate ./.recpulse-dev
-      echo "Ready to work!"
-      echo "Remember to switch to a feature branch before starting the development :)"
-
-github:
-  prebuilds:
-    # enable for the default branch
-    master: true
-    # enable for all branches in this repo
-    branches: false
-    # enable for pull requests coming from this repo
-    pullRequests: true
-    # enable for pull requests coming from forks
-    pullRequestsFromForks: false
-    # add a check to pull requests
-    addCheck: prevent-merge-on-error
-    # add a "Review in Gitpod" button as a comment to pull requests
-    addComment: false
-    # add a "Review in Gitpod" button to the pull request's description
-    addBadge: true
+      conda activate recpulse
