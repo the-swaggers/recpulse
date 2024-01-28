@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 
 
 class Model:
+    """Basic model class."""
+
     def __init__(
         self,
         layers: [Layer],

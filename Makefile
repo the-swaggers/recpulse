@@ -8,5 +8,4 @@ test:
 
 
 format:
-	@black src/*.py
-	@black classes/*.py
+	@black src/*.py classes/*.py tests/*.py

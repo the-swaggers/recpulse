@@ -60,14 +60,6 @@ repos:
       pass_filenames: false
       always_run: true
 
-    - id: isort
-      name: "[12/13] Run isort"
-      entry: |
-        bash -c 'isort --check classes/*.py src/*.py tests/*.py'
-      language: system
-      pass_filenames: false
-      always_run: true
-
     - id: Pytest
       name: "[13/13] Run pytest"
       entry: bash -c 'pytest tests/*.py'
