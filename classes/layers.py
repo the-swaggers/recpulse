@@ -1,4 +1,11 @@
-from pydantic import BaseModel, model_validator, StrictInt, StrictStr, ValidationError
+from pydantic import (
+    BaseModel,
+    model_validator,
+    StrictInt,
+    StrictStr,
+    ValidationError,
+)
+from typing import Literal
 import numpy as np
 
 
@@ -33,7 +40,7 @@ class Dense(BaseModel):
     def validator(self) -> None:
         """Validate parameters of the layer."""
 
-        if size <= 0:
+        if self.output_size <= 0:
             raise ValidationError("Output size must be greater than 0.")
 
     def initialize_weights(

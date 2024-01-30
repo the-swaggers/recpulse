@@ -8,11 +8,10 @@ class Sequential:
     def __init__(
         self,
         input_shape: tuple,
-        layers: [Layer],
+        layers: [Dense],
         precision: np.dtype = np.float32,
     ):
         self.layers = layers
-        self.connections = connection_map
         self.precision = precision
         self.weights = np.zeros(shape=(self.size, self.size), dtype=object)
 

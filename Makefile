@@ -12,7 +12,7 @@ format:
 
 
 lint:
-    @flake8 classes/*.py tests/*.py
+	@flake8 classes/*.py tests/*.py
 	@mypy classes/*.py tests/*.py
 	@isort --check --diff classes/*.py tests/*.py
 	@pydocstyle classes/*.py tests/*.py

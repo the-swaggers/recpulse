@@ -55,7 +55,7 @@ repos:
     - id: black
       name: "[11/13] Run black"
       entry: |
-        bash -c 'black --check classes/*.py src/*.py tests/*.py'
+        bash -c 'black --check classes/*.py tests/*.py'
       language: system
       pass_filenames: false
       always_run: true

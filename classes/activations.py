@@ -1,3 +1,6 @@
+import numpy as np
+
+
 def linear(x: np.array) -> np.array:
     """Linear activation function."""
     return x
