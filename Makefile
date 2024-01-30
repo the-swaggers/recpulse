@@ -12,7 +12,11 @@ format:
 
 
 lint:
+	@echo "run flake8"
 	@flake8 classes/*.py tests/*.py
+	@echo "run mypy"
 	@mypy classes/*.py tests/*.py
+	@echo "run isort"
 	@isort --check --diff classes/*.py tests/*.py
+	@echo "run pydocstyle"
 	@pydocstyle classes/*.py tests/*.py

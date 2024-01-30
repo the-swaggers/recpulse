@@ -28,9 +28,9 @@ class Dense(BaseModel):
     input_size: StrictInt | None = None
     activation: ACTIVATION_FUNCTIONS = "linear"
     name: StrictStr | None = None
-    _weights: list[float] | None = None
+    _weights: np.ndarray | None = None
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore
     def validator(self) -> None:
         """Validate parameters of the layer."""
 
@@ -73,5 +73,5 @@ class Dense(BaseModel):
             mean = 0
 
         self._weights = np.random.normal(
-            mean, standard_deviation, size=(input_size + 1, self.output_size)
+            mean, standard_deviation, size=(input_size + 1, self.output_size)  # type: ignore
         )

@@ -9,8 +9,8 @@ class Sequential:
     def __init__(
         self,
         input_shape: tuple,
-        layers: [Dense],
-        precision: np.dtype = np.float32,
+        layers: list[Dense],
+        precision: int = 16,
     ):
         self.layers = layers
         self.precision = precision
