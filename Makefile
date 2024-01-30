@@ -8,4 +8,11 @@ test:
 
 
 format:
-	@black src/*.py classes/*.py tests/*.py
+	@black classes/*.py tests/*.py
+
+
+lint:
+    @flake8 classes/*.py tests/*.py
+	@mypy classes/*.py tests/*.py
+	@isort --check --diff classes/*.py tests/*.py
+	@pydocstyle classes/*.py tests/*.py

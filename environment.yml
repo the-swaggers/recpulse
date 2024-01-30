@@ -11,3 +11,7 @@ dependencies:
   - matplotlib=3.8.0
   - networkx=3.2.1
   - pre-commit=3.6.0
+  - flake8=7.0.0
+  - isort=5.13.2
+  - mypy=1.8.0
+  - pydocstyle=6.3.0
