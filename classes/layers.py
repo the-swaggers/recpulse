@@ -2,7 +2,19 @@ from pydantic import BaseModel, model_validator, StrictInt, StrictStr, Validatio
 import numpy as np
 
 
-ACTIVATION_FUNCTIONS = Literal["linear", "relu", "sigmoid", "softmax"]
+ACTIVATION_FUNCTIONS = Literal[
+    "linear",
+    "sigmoid",
+    "softmax",
+    "relu",
+    "leaky_relu",
+    "parametric_relu",
+    "binary_step",
+    "tanh",
+    "arctan",
+    "elu",
+    "swish",
+]
 
 
 class Dense(BaseModel):
