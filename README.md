@@ -13,3 +13,5 @@ Here are the features that will be implemented (not all at once and not necessar
   * example models built with this API
 
 This list is yet incomplete, but contains all the main ideas.
+
+[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/maksym-petrenko/recpulse)
