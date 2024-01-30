@@ -1,13 +1,7 @@
-from pydantic import (
-    BaseModel,
-    model_validator,
-    StrictInt,
-    StrictStr,
-    ValidationError,
-)
 from typing import Literal
-import numpy as np
 
+import numpy as np
+from pydantic import BaseModel, StrictInt, StrictStr, ValidationError, model_validator
 
 ACTIVATION_FUNCTIONS = Literal[
     "linear",
@@ -59,13 +53,15 @@ class Dense(BaseModel):
         Inputs:
             input_size (int): size of the previous neuron layer.
             mean (float): mean of normal distribution for weights initialization
-            standard_deviation (float): standard deviation of normal distribution for weights initialization
+            standard_deviation (float): standard deviation of normal distribution
+                 for weights initialization
         """
 
         if self.input_size is None:
-            assert (
-                input_size is not None
-            ), "input_size is not specified neither in the function execution, nor in the class's instance"
+            assert input_size is not None, (
+                "input_size is not specified neither in the function execution, "
+                "nor in the class's instance"
+            )
             self.input_size = input_size
 
         if standard_deviation is None:

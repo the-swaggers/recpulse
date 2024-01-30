@@ -1,5 +1,6 @@
-from classes.layers import Dense
 import numpy as np
+
+from classes.layers import Dense
 
 
 class Sequential:
