@@ -75,3 +75,20 @@ class Dense(BaseModel):
         self._weights = np.random.normal(
             mean, standard_deviation, size=(input_size + 1, self.output_size)  # type: ignore
         )
+
+    def propagate(self, inputs: np.ndarray) -> np.ndarray:
+        """Propagates input tensor.
+
+        Inputs:
+            inputs (np.array): an array of shape (self.input_size, )
+
+        Returns:
+            np.array: an array of shape (self.output_size, )
+        """
+
+        assert self._weights is not None, "Weights aren't initialized!"
+
+        # add 1 so that the bias doesn't need any additional code apart from matmul
+        modified_input = np.append(inputs, 1, axis=0)
+
+        return np.matmul(modified_input, self._weights)
