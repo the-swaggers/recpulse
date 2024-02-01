@@ -1,7 +1,9 @@
-from typing import Literal
+from typing import Callable, Literal
 
 import numpy as np
 from pydantic import BaseModel, StrictInt, StrictStr, ValidationError, model_validator
+
+import classes.activations as activations
 
 ACTIVATION_FUNCTIONS = Literal[
     "linear",
@@ -17,6 +19,20 @@ ACTIVATION_FUNCTIONS = Literal[
     "swish",
 ]
 
+STR2ACTIVATION = {
+    "linear": activations.linear,
+    "sigmoid": activations.sigmoid,
+    "softmax": activations.softmax,
+    "relu": activations.relu,
+    "leaky_relu": activations.leaky_relu,
+    "parametric_relu": activations.parametric_relu,
+    "binary_step": activations.binary_step,
+    "tanh": activations.tanh,
+    "arctan": activations.arctan,
+    "elu": activations.elu,
+    "swish": activations.swish,
+}
+
 
 class Dense(BaseModel):
     """Dense layer class.
@@ -29,6 +45,7 @@ class Dense(BaseModel):
     activation: ACTIVATION_FUNCTIONS = "linear"
     name: StrictStr | None = None
     _weights: np.ndarray | None = None
+    _activation: Callable | None = None
 
     @model_validator(mode="after")  # type: ignore
     def validator(self) -> None:
@@ -87,8 +104,12 @@ class Dense(BaseModel):
         """
 
         assert self._weights is not None, "Weights aren't initialized!"
+        assert self._activation is not None, "Activation function isn't initialized!"
 
         # add 1 so that the bias doesn't need any additional code apart from matmul
         modified_input = np.append(inputs, 1, axis=0)
 
-        return np.matmul(modified_input, self._weights)
+        # get new layer
+        propagated = np.matmul(modified_input, self._weights)
+
+        return self._activation(propagated)
