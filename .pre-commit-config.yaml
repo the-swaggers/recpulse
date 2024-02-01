@@ -76,7 +76,7 @@ repos:
       always_run: true
 
     - id: Pytest
-      name: "[13/14] Run pytest"
+      name: "[14/14] Run pytest"
       entry: bash -c 'pytest tests/test_activations.py'
       language: system
       pass_filenames: false
