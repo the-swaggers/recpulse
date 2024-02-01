@@ -42,10 +42,9 @@ class Dense(BaseModel):
 
     output_size: StrictInt
     input_size: StrictInt | None = None
-    activation: ACTIVATION_FUNCTIONS = "linear"
     name: StrictStr | None = None
     _weights: np.ndarray | None = None
-    _activation: Callable | None = None
+    _activation: Callable[[np.ndarray], np.ndarray] | None = None
 
     @model_validator(mode="after")  # type: ignore
     def validator(self) -> None:
@@ -53,6 +52,23 @@ class Dense(BaseModel):
 
         if self.output_size <= 0:
             raise ValidationError("Output size must be greater than 0.")
+
+    def __init__(
+        self,
+        output_size: StrictInt,
+        input_size: StrictInt | None = None,
+        activation: ACTIVATION_FUNCTIONS = "linear",
+        name: StrictStr | None = None,
+    ):
+        super().__init__(
+            output_size=output_size,
+            input_size=input_size,
+            name=name,
+        )
+
+        self._activation = STR2ACTIVATION[activation]
+        if input_size is not None:
+            self.initialize_weights()
 
     def initialize_weights(
         self,
