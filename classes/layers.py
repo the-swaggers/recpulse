@@ -1,9 +1,12 @@
-from typing import Callable, Literal
+from typing import Any, Callable, Literal
 
 import numpy as np
 from pydantic import BaseModel, StrictInt, StrictStr, ValidationError, model_validator
 
 import classes.activations as activations
+
+PRECISIONS = float | np.float16 | np.float32 | np.float64
+TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
 
 ACTIVATION_FUNCTIONS = Literal[
     "linear",
@@ -44,7 +47,7 @@ class Dense(BaseModel):
     input_size: StrictInt | None = None
     name: StrictStr | None = None
     _weights: np.ndarray | None = None
-    _activation: Callable[[np.ndarray], np.ndarray] | None = None
+    _activation: Callable[[Any], TENSOR_TYPE] | None = None
 
     @model_validator(mode="after")  # type: ignore
     def validator(self) -> None:
@@ -66,7 +69,7 @@ class Dense(BaseModel):
             name=name,
         )
 
-        self._activation = STR2ACTIVATION[activation]
+        self._activation = STR2ACTIVATION[activation]  # type: ignore
         if input_size is not None:
             self.initialize_weights()
 
