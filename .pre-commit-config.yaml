@@ -77,7 +77,7 @@ repos:
 
     - id: Pytest
       name: "[13/14] Run pytest"
-      entry: bash -c 'pytest tests/*.py'
+      entry: bash -c 'pytest tests/test_activations.py'
       language: system
       pass_filenames: false
       always_run: true

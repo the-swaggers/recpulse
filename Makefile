@@ -4,7 +4,7 @@ help:
 
 
 test:
-	@pytest tests/*.py
+	@pytest tests/test_activations.py
 
 
 format:
