@@ -18,5 +18,5 @@ class Sequential:
 
     @property
     def size(self) -> int:
-        """Returns numer of layers"""
+        """Returns number of layers"""
         return len(self.layers)
