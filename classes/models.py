@@ -23,6 +23,16 @@ class Sequential:
             input_size = layer.output_size
             layer.initialize_weights()
 
+    def predict(self, inputs):
+        """Pass inputs through all the layers and return outputs."""
+
+        x = inputs
+
+        for layer in self.layers:
+            x = layer.propadate(x)
+
+        return x
+
     @property
     def size(self) -> int:
         """Returns number of layers"""
