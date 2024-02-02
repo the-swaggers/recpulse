@@ -122,8 +122,10 @@ class Dense(BaseModel):
             np.array: an array of shape (self.output_size, )
         """
 
-        assert self._weights is not None, "Weights aren't initialized!"
-        assert self._activation is not None, "Activation function isn't initialized!"
+        if self._weights is None:
+            raise ValueError("Weights aren't initialized!")
+        if self._activation is None:
+            raise ValueError("Activation function isn't initialized!")
 
         # add 1 so that the bias doesn't need any additional code apart from matmul
         modified_input = np.append(inputs, 1, axis=0)
