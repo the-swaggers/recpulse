@@ -1,5 +1,3 @@
-import numpy as np
-
 from classes.layers import Dense
 
 
@@ -10,11 +8,20 @@ class Sequential:
         self,
         input_shape: tuple,
         layers: list[Dense],
-        precision: int = 16,
     ):
         self.layers = layers
-        self.precision = precision
-        self.weights = np.zeros(shape=(self.size, self.size), dtype=object)
+        self.input_shape = input_shape
+
+    def compile(self):
+        """Set input sizes and initializes weights."""
+        (input_size,) = self.input_shape
+        for layer in self.layers:
+            if layer.input_size is None:
+                layer.input_size = input_size
+            elif layer.input_size != input_size:
+                raise ValueError("Incompatible layers' sizes")
+            input_size = layer.output_size
+            layer.initialize_weights()
 
     @property
     def size(self) -> int:

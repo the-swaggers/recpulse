@@ -44,7 +44,7 @@ class Dense(BaseModel):
     """
 
     output_size: StrictInt
-    input_size: StrictInt | None = None
+    _input_size: StrictInt | None = None
     name: StrictStr | None = None
     _weights: np.ndarray | None = None
     _activation: Callable[[Any], TENSOR_TYPE] | None = None
@@ -56,6 +56,10 @@ class Dense(BaseModel):
         if self.output_size <= 0:
             raise ValidationError("Output size must be greater than 0.")
 
+        if self._input_size is not None:
+            if self._input_size <= 0:
+                raise ValidationError("Input size must be greater than 0.")
+
     def __init__(
         self,
         output_size: StrictInt,
@@ -65,13 +69,27 @@ class Dense(BaseModel):
     ):
         super().__init__(
             output_size=output_size,
-            input_size=input_size,
+            _input_size=input_size,
             name=name,
         )
 
         self._activation = STR2ACTIVATION[activation]  # type: ignore
         if input_size is not None:
             self.initialize_weights()
+
+    @property
+    def input_size(self):
+        """Python getter."""
+        return self._input_size
+
+    @input_size.setter
+    def input_size(self, value):
+        """Python setter."""
+        if not isinstance(value, int):
+            raise ValidationError("Input size must be an integer.")
+        if value <= 0:
+            raise ValueError("Input size must be positive.")
+        self._input_size = value
 
     def initialize_weights(
         self,
@@ -93,12 +111,13 @@ class Dense(BaseModel):
                  for weights initialization
         """
 
-        if self.input_size is None:
-            assert input_size is not None, (
-                "input_size is not specified neither in the function execution, "
-                "nor in the class's instance"
-            )
-            self.input_size = input_size
+        if self._input_size is None:
+            if input_size is None:
+                raise ValueError(
+                    "input_size is not specified neither in the function execution, "
+                    "nor in the class's instance"
+                )
+            self._input_size = input_size
 
         if standard_deviation is None:
             standard_deviation = 1
@@ -109,7 +128,7 @@ class Dense(BaseModel):
             mean = 0
 
         self._weights = np.random.normal(
-            mean, standard_deviation, size=(input_size + 1, self.output_size)  # type: ignore
+            mean, standard_deviation, size=(self._input_size + 1, self.output_size)  # type: ignore
         )
 
     def propagate(self, inputs: np.ndarray) -> np.ndarray:
