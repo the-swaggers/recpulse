@@ -1,17 +1,17 @@
-### Description
+# Description
 
-This project is created to make a framework for machine learning. The main task is rather not to overcome already existent ones such as tf, sklearn and torch, but to gain experience creating something similar.
+This project aims to create a new machine learning framework. The main goal is not to copy already existing frameworks such as TensorFlow, sklearn and Torch, but rather to gain experience and knowledge creating something similar.
 
-Here are the features that will be implemented (not all at once and not necessarily in the following order):
+Planned features, not in order of importance or priority:
 
-  * numpy based sequential API with dense layers
-  * optimization algorithms
-  * new layers
-  * low-level operations (switch from numpy to custom code on either C or C++)
+  * Numpy-based sequential API with dense layers
+  * Optimization algorithms
+  * New layers
+  * Low-level operations (switch from numpy to custom code on either C or C++)
   * Impulse neural network with new class for this
   * .ipynb documentation
-  * example models built with this API
+  * Example models built with this API
 
-This list is yet incomplete, but contains all the main ideas.
+This list is to be updated in the future.
 
 [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/maksym-petrenko/recpulse)
