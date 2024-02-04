@@ -1,10 +1,26 @@
+import json
+
 import numpy as np
 
 import classes.activations as activations
 
+# load test data from file
+with open("tests/test_data/ndarrays.json") as f:
+    NDARRAYS = json.load(f)
+    for key in NDARRAYS.keys():
+        NDARRAYS[key] = np.array(NDARRAYS[key])
 
-def test_linear():
-    x = np.array([1, 2, 3])
-    assert (x == activations.linear(x)).all()
-    x = np.array([[1, 2], [3, 4]])
-    assert (x == activations.linear(x)).all()
+
+class TestClassActivations:
+    @staticmethod
+    def linear(x):
+        return x
+
+    def test_linear(self):
+        for array in NDARRAYS.values():
+            function_answer = activations.linear(array)
+            # get a list of all indices
+            indices = list(zip(*[axis.flatten() for axis in np.indices(array.shape)]))
+
+            for index in indices:
+                assert self.linear(array[index]) == function_answer[index]
