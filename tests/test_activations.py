@@ -14,16 +14,23 @@ with open("tests/test_data/ndarrays.json") as f:
 
 class TestClassActivations:
     @staticmethod
-    def match_functions(function, activation):
+    def match_functions(function, activation, parametric: bool = False, alpha=None):
         """Go through all elements of each np.ndarray from all test
         sets and check activations at each point."""
         for array in NDARRAYS.values():
-            function_answer = activation(array)
+            if parametric:
+                function_answer = activation(array, alpha)
+            else:
+                function_answer = activation(array)
             # get a list of all indices
             indices = list(zip(*[axis.flatten() for axis in np.indices(array.shape)]))
 
-            for index in indices:
-                assert function(array[index]) == function_answer[index]
+            if parametric:
+                for index in indices:
+                    assert function(array[index], alpha) == function_answer[index]
+            else:
+                for index in indices:
+                    assert function(array[index]) == function_answer[index]
 
     @staticmethod
     def linear(x):
@@ -43,9 +50,20 @@ class TestClassActivations:
         """Python tester."""
         self.match_functions(self.sigmoid, activations.sigmoid)
 
-    # skip softmax for now as unlike other functions it's normed, therefore,
-    # values can't be tested individually
-    # TODO - add softmax tests
+    def test_softmax(self):
+        """Test softmax activation function."""
+        for array in NDARRAYS.values():
+            function_answer = activations.softmax(array)
+            # get a list of all indices
+            indices = list(zip(*[axis.flatten() for axis in np.indices(array.shape)]))
+
+            sum = np.sum(np.exp(array))
+
+            for index in indices:
+                assert np.isclose((np.exp(array[index]) / sum), function_answer[index])
+
+            # check whether the output is normalized
+            assert np.isclose(np.sum(function_answer), 1)
 
     @staticmethod
     def relu(x):
@@ -65,8 +83,26 @@ class TestClassActivations:
         """Python tester."""
         self.match_functions(self.leaky_relu, activations.leaky_relu)
 
-    # skip parametric relu for now as unlike other functions takes two input parameters
-    # TODO - add parametric relu tests
+    @staticmethod
+    def parametric_relu(x, alpha):
+        """Linear function"""
+        return x if x >= 0 else alpha * x
+
+    def test_parametric_relu(self):
+        """Python tester."""
+        # check with different parameters
+        self.match_functions(
+            self.parametric_relu, activations.parametric_relu, parametric=True, alpha=0
+        )
+        self.match_functions(
+            self.parametric_relu, activations.parametric_relu, parametric=True, alpha=1
+        )
+        self.match_functions(
+            self.parametric_relu, activations.parametric_relu, parametric=True, alpha=16
+        )
+        self.match_functions(
+            self.parametric_relu, activations.parametric_relu, parametric=True, alpha=0.23521426573
+        )
 
     @staticmethod
     def binary_step(x):
@@ -95,14 +131,24 @@ class TestClassActivations:
         """Python tester."""
         self.match_functions(self.arctan, activations.arctan)
 
-    # skip elu for now as unlike other functions takes two input parameters
-    # TODO - add elu tests
+    @staticmethod
+    def elu(x, alpha):
+        """Linear function"""
+        return x if x >= 0 else alpha * (np.exp(-x) - 1)
+
+    def test_elu(self):
+        """Python tester."""
+        # check with different parameters
+        self.match_functions(self.elu, activations.elu, parametric=True, alpha=1)
+        self.match_functions(self.elu, activations.elu, parametric=True, alpha=2)
+        self.match_functions(self.elu, activations.elu, parametric=True, alpha=4)
+        self.match_functions(self.elu, activations.elu, parametric=True, alpha=-0.1234)
 
     @staticmethod
     def swish(x):
         """Linear function"""
         return x / (1 + np.exp(-x))
 
-    def test_elu(self):
+    def test_swish(self):
         """Python tester."""
         self.match_functions(self.swish, activations.swish)
