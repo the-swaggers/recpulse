@@ -69,24 +69,28 @@ class Dense(BaseModel):
     ):
         super().__init__(
             output_size=output_size,
-            _input_size=input_size,
             name=name,
         )
 
         self._activation = STR2ACTIVATION[activation]  # type: ignore
         if input_size is not None:
+            self.input_size = input_size
             self.initialize_weights()
 
     @property
-    def input_size(self):
+    def input_size(self) -> int | None:
         """Python getter."""
         return self._input_size
 
     @input_size.setter
-    def input_size(self, value):
+    def input_size(self, value: int | tuple) -> None:
         """Python setter."""
+        if isinstance(value, tuple):
+            value, _ = value
         if not isinstance(value, int):
-            raise ValidationError("Input size must be an integer.")
+            raise ValidationError(
+                "Input size must be an integer or an integer" " in format of tuple of shape (1, )."
+            )
         if value <= 0:
             raise ValueError("Input size must be positive.")
         self._input_size = value
