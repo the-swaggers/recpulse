@@ -66,7 +66,7 @@ class Dense(BaseModel):
         input_size: StrictInt | None = None,
         activation: ACTIVATION_FUNCTIONS = "linear",
         name: StrictStr | None = None,
-    ):
+    ) -> None:
         super().__init__(
             output_size=output_size,
             name=name,
