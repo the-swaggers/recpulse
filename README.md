@@ -14,4 +14,4 @@ Planned features, not in order of importance or priority:
 
 This list is to be updated in the future.
 
-[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/maksym-petrenko/recpulse)
+[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/the-swaggers/recpulse)
