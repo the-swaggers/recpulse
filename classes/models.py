@@ -14,13 +14,13 @@ class Sequential:
 
     def compile(self):
         """Set input sizes and initializes weights."""
-        (input_size,) = self.input_shape
+        input_shape = self.input_shape
         for layer in self.layers:
-            if layer.input_size is None:
-                layer.input_size = input_size
-            elif layer.input_size != input_size:
+            if layer.input_shape is None:
+                layer.input_shape = input_shape
+            elif layer.input_shape != input_shape:
                 raise ValueError("Incompatible layers' sizes")
-            input_size = layer.output_size
+            input_shape = layer.output_shape
             layer.initialize_weights()
 
     def predict(self, inputs):

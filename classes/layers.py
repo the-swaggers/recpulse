@@ -43,7 +43,7 @@ class Dense(BaseModel):
     Layer that connects all inputs to all outputs and adds biases.
     """
 
-    output_size: StrictInt
+    _output_size: StrictInt
     _input_size: StrictInt | None = None
     name: StrictStr | None = None
     _weights: np.ndarray | None = None
@@ -53,7 +53,7 @@ class Dense(BaseModel):
     def validator(self) -> None:
         """Validate parameters of the layer."""
 
-        if self.output_size <= 0:
+        if self._output_size <= 0:
             raise ValidationError("Output size must be greater than 0.")
 
         if self._input_size is not None:
@@ -95,6 +95,20 @@ class Dense(BaseModel):
             raise ValueError("Input size must be positive.")
         self._input_size = value
 
+    @property
+    def input_shape(self) -> tuple | None:
+        """Python getter."""
+        if self._input_size is None:
+            raise ValueError("Input shape is not set yet.")
+        return (self._input_size,)
+
+    @property
+    def output_shape(self) -> tuple | None:
+        """Python getter."""
+        if self._output_size is None:
+            return None
+        return (self._output_size,)
+
     def initialize_weights(
         self,
         input_size: int | None = None,
@@ -132,7 +146,7 @@ class Dense(BaseModel):
             mean = 0
 
         self._weights = np.random.normal(
-            mean, standard_deviation, size=(self._input_size + 1, self.output_size)  # type: ignore
+            mean, standard_deviation, size=(self._input_size + 1, self._output_size)  # type: ignore
         )
 
     def propagate(self, inputs: np.ndarray) -> np.ndarray:
