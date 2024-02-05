@@ -1,7 +1,7 @@
 from typing import Any, Callable, Literal
 
 import numpy as np
-from pydantic import BaseModel, StrictInt, StrictStr, ValidationError, model_validator
+from pydantic import BaseModel, StrictStr, ValidationError, model_validator
 
 import classes.activations as activations
 
@@ -43,8 +43,8 @@ class Dense(BaseModel):
     Layer that connects all inputs to all outputs and adds biases.
     """
 
-    _output_size: StrictInt
-    _input_size: StrictInt | None = None
+    _output_shape: tuple
+    _input_shape: tuple | None = None
     name: StrictStr | None = None
     _weights: np.ndarray | None = None
     _activation: Callable[[Any], TENSOR_TYPE] | None = None
@@ -52,66 +52,59 @@ class Dense(BaseModel):
     @model_validator(mode="after")  # type: ignore
     def validator(self) -> None:
         """Validate parameters of the layer."""
+        output_size, _ = self._output_shape
 
-        if self._output_size <= 0:
-            raise ValidationError("Output size must be greater than 0.")
+        if output_size <= 0:
+            raise ValidationError("Output shape must be greater than 0.")
 
-        if self._input_size is not None:
-            if self._input_size <= 0:
-                raise ValidationError("Input size must be greater than 0.")
+        if self._input_shape is not None:
+            input_size, _ = self._input_shape
+
+            if input_size <= 0:
+                raise ValidationError("Input shape must be greater than 0.")
 
     def __init__(
         self,
-        output_size: StrictInt,
-        input_size: StrictInt | None = None,
+        output_shape: tuple,
+        input_shape: tuple | None = None,
         activation: ACTIVATION_FUNCTIONS = "linear",
         name: StrictStr | None = None,
     ) -> None:
         super().__init__(
-            output_size=output_size,
+            _output_shape=output_shape,
+            _input_shape=input_shape,
             name=name,
+            _activation=STR2ACTIVATION[activation],
         )
 
-        self._activation = STR2ACTIVATION[activation]  # type: ignore
-        if input_size is not None:
-            self.input_size = input_size
+        if input_shape is not None:
             self.initialize_weights()
-
-    @property
-    def input_size(self) -> int | None:
-        """Python getter."""
-        return self._input_size
-
-    @input_size.setter
-    def input_size(self, value: int | tuple) -> None:
-        """Python setter."""
-        if isinstance(value, tuple):
-            value, _ = value
-        if not isinstance(value, int):
-            raise ValidationError(
-                "Input size must be an integer or an integer" " in format of tuple of shape (1, )."
-            )
-        if value <= 0:
-            raise ValueError("Input size must be positive.")
-        self._input_size = value
 
     @property
     def input_shape(self) -> tuple | None:
         """Python getter."""
-        if self._input_size is None:
-            raise ValueError("Input shape is not set yet.")
-        return (self._input_size,)
+        return self._input_shape
+
+    @input_shape.setter
+    def input_shape(self, value: tuple):
+        """Python setter."""
+        size, _ = value
+        if not isinstance(size, int):
+            raise ValidationError(
+                "Input size must be an integer or an integer" " in format of tuple of shape (1, )."
+            )
+        if size <= 0:
+            raise ValueError("Input size must be positive.")
+        self._input_shape = value
 
     @property
-    def output_shape(self) -> tuple | None:
+    def output_shape(self) -> tuple:
         """Python getter."""
-        if self._output_size is None:
-            return None
-        return (self._output_size,)
+        return self._output_shape
 
     def initialize_weights(
         self,
-        input_size: int | None = None,
+        input_shape: tuple | None = None,
         mean: float | None = None,
         standard_deviation: float | None = None,
     ) -> None:
@@ -129,13 +122,16 @@ class Dense(BaseModel):
                  for weights initialization
         """
 
-        if self._input_size is None:
-            if input_size is None:
+        if self._input_shape is None:
+            if input_shape is None:
                 raise ValueError(
-                    "input_size is not specified neither in the function execution, "
+                    "input_shape is not specified neither in the function execution, "
                     "nor in the class's instance"
                 )
-            self._input_size = input_size
+            self._input_shape = input_shape
+
+        input_size, _ = self.input_shape  # type: ignore
+        output_size, _ = self.output_shape
 
         if standard_deviation is None:
             standard_deviation = 1
@@ -146,7 +142,7 @@ class Dense(BaseModel):
             mean = 0
 
         self._weights = np.random.normal(
-            mean, standard_deviation, size=(self._input_size + 1, self._output_size)  # type: ignore
+            mean, standard_deviation, size=(input_size + 1, output_size)  # type: ignore
         )
 
     def propagate(self, inputs: np.ndarray) -> np.ndarray:
