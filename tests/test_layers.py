@@ -1,3 +1,6 @@
+import classes.layers as layers
+
+
 class TestLayerClass:
     def test_init(self):
-        pass
+        layers.Dense((4,))

@@ -51,7 +51,7 @@ class Dense(BaseModel):
     Layer that connects all inputs to all outputs and adds biases.
     """
 
-    config = ConfigDict(validate_assignment=True)
+    model_config = ConfigDict(validate_assignment=True)
 
     output_shape: tuple = Field(frozen=True)
     input_shape: tuple | None = None
@@ -67,8 +67,7 @@ class Dense(BaseModel):
             raise ValueError("The output shape must contain output neurons.")
         if len(shape) > 1:
             raise ValueError("Dense layer can only have output of shape (n, ).")
-        size, _ = shape
-        if size <= 0:
+        if shape[0] <= 0:
             raise ValueError("Output size must be positive.")
 
         return shape
@@ -83,8 +82,7 @@ class Dense(BaseModel):
             raise ValueError("The output shape must contain output neurons.")
         if len(shape) > 1:
             raise ValueError("Dense layer can only have output of shape (n, ).")
-        size, _ = shape
-        if size <= 0:
+        if shape[0] <= 0:
             raise ValueError("Input size must be positive.")
 
         return shape
@@ -142,9 +140,6 @@ class Dense(BaseModel):
                 )
             self.input_shape = input_shape
 
-        input_size, _ = self.input_shape  # type: ignore
-        output_size, _ = self.output_shape
-
         if standard_deviation is None:
             standard_deviation = 1
         elif standard_deviation <= 0:
@@ -154,7 +149,9 @@ class Dense(BaseModel):
             mean = 0
 
         self._weights = np.random.normal(
-            mean, standard_deviation, size=(input_size + 1, output_size)  # type: ignore
+            mean,
+            standard_deviation,
+            size=(self.input_shape[0] + 1, self.output_shape[0]),  # type: ignore
         )
 
     def propagate(self, inputs: np.ndarray) -> np.ndarray:
