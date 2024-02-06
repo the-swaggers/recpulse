@@ -96,12 +96,14 @@ class Dense(BaseModel):
 
     def __init__(
         self,
-        output_shape: tuple,
+        output_shape: tuple | int,
         input_shape: tuple | None = None,
         activation: ACTIVATION_FUNCTIONS = "linear",
         name: StrictStr | None = None,
     ) -> None:
         """Class initializer."""
+        if isinstance(output_shape, int):
+            output_shape = (output_shape,)
         super().__init__(
             output_shape=output_shape,
             input_shape=input_shape,
