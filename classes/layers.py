@@ -1,7 +1,7 @@
 from typing import Any, Callable, Literal
 
 import numpy as np
-from pydantic import BaseModel, StrictStr, ValidationError, model_validator
+from pydantic import BaseModel, Field, StrictStr, field_validator
 
 import classes.activations as activations
 
@@ -43,25 +43,41 @@ class Dense(BaseModel):
     Layer that connects all inputs to all outputs and adds biases.
     """
 
-    _output_shape: tuple
-    _input_shape: tuple | None = None
+    output_shape: tuple = Field(frozen=True)
+    input_shape: tuple | None = Field(default=None)
     name: StrictStr | None = None
     _weights: np.ndarray | None = None
     _activation: Callable[[Any], TENSOR_TYPE] | None = None
 
-    @model_validator(mode="after")  # type: ignore
-    def validator(self) -> None:
-        """Validate parameters of the layer."""
-        output_size, _ = self._output_shape
+    @field_validator("output_shape", mode="after")
+    @classmethod
+    def validate_output_shape(cls, shape: tuple) -> tuple:
+        """Output shape validator."""
+        if len(shape) == 0:
+            raise ValueError("The output shape must contain output neurons.")
+        if len(shape) > 1:
+            raise ValueError("Dense layer can only have output of shape (n, ).")
+        size, _ = shape
+        if size <= 0:
+            raise ValueError("Output size must be positive.")
 
-        if output_size <= 0:
-            raise ValidationError("Output shape must be greater than 0.")
+        return shape
 
-        if self._input_shape is not None:
-            input_size, _ = self._input_shape
+    @field_validator("input_shape", mode="after")
+    @classmethod
+    def validate_input_shape(cls, shape: tuple) -> tuple | None:
+        """Input shape validator."""
+        if shape is None:
+            return None
+        if len(shape) == 0:
+            raise ValueError("The output shape must contain output neurons.")
+        if len(shape) > 1:
+            raise ValueError("Dense layer can only have output of shape (n, ).")
+        size, _ = shape
+        if size <= 0:
+            raise ValueError("Input size must be positive.")
 
-            if input_size <= 0:
-                raise ValidationError("Input shape must be greater than 0.")
+        return shape
 
     def __init__(
         self,
@@ -71,36 +87,14 @@ class Dense(BaseModel):
         name: StrictStr | None = None,
     ) -> None:
         super().__init__(
-            _output_shape=output_shape,
-            _input_shape=input_shape,
+            output_shape=output_shape,
+            input_shape=input_shape,
             name=name,
             _activation=STR2ACTIVATION[activation],
         )
 
         if input_shape is not None:
             self.initialize_weights()
-
-    @property
-    def input_shape(self) -> tuple | None:
-        """Python getter."""
-        return self._input_shape
-
-    @input_shape.setter
-    def input_shape(self, value: tuple):
-        """Python setter."""
-        size, _ = value
-        if not isinstance(size, int):
-            raise ValidationError(
-                "Input size must be an integer or an integer" " in format of tuple of shape (1, )."
-            )
-        if size <= 0:
-            raise ValueError("Input size must be positive.")
-        self._input_shape = value
-
-    @property
-    def output_shape(self) -> tuple:
-        """Python getter."""
-        return self._output_shape
 
     def initialize_weights(
         self,
@@ -122,13 +116,13 @@ class Dense(BaseModel):
                  for weights initialization
         """
 
-        if self._input_shape is None:
+        if self.input_shape is None:
             if input_shape is None:
                 raise ValueError(
                     "input_shape is not specified neither in the function execution, "
                     "nor in the class's instance"
                 )
-            self._input_shape = input_shape
+            self.input_shape = input_shape
 
         input_size, _ = self.input_shape  # type: ignore
         output_size, _ = self.output_shape
