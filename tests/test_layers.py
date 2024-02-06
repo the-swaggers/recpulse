@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
+import classes.activations as activations
 import classes.layers as layers
 
 ACTIVATIONS = [
@@ -72,3 +73,12 @@ class TestLayerClass:
         layer4.initialize_weights()
         with pytest.raises(Exception):
             layer2.input_shape = (8,)
+
+        layer5 = layers.Dense(4, input_shape=(2,), name="abc", activation="elu")
+        with pytest.raises(Exception):
+            layer5.activation = activations.relu
+
+        layer6 = layers.Dense(4, input_shape=(2,), name="abc", activation="elu")
+        assert layer6._weights.shape == (3, 4)
+        with pytest.raises(AttributeError):
+            layer6.initialize_weights()

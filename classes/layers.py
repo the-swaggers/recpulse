@@ -48,7 +48,7 @@ class Dense(BaseModel):
     output_shape: tuple = Field(frozen=True)
     input_shape: tuple | None = None
     name: StrictStr | None = None
-    _activation: Callable[[Any], TENSOR_TYPE] | None = None
+    activation: Callable[[Any], TENSOR_TYPE] = Field(frozen=True)
     _weights: np.ndarray | None = None
 
     @field_validator("output_shape", mode="after")
@@ -104,9 +104,9 @@ class Dense(BaseModel):
             output_shape=output_shape,
             input_shape=input_shape,
             name=name,
+            activation=STR2ACTIVATION[activation],  # type: ignore
         )
 
-        self._activation = STR2ACTIVATION[activation]  # type: ignore
         if input_shape is not None:
             self.initialize_weights()
 
@@ -125,10 +125,13 @@ class Dense(BaseModel):
 
         Inputs:
             input_size (int): size of the previous neuron layer.
-            mean (float): mean of normal distribution for weights initialization
+            mean (float): mean of normal distribution for weights initialization.
             standard_deviation (float): standard deviation of normal distribution
-                 for weights initialization
+                 for weights initialization.
         """
+
+        if self._weights is not None:
+            raise AttributeError("Weights are already initialized.")
 
         if self.input_shape is None:
             if input_shape is None:
@@ -164,7 +167,7 @@ class Dense(BaseModel):
 
         if self._weights is None:
             raise ValueError("Weights aren't initialized!")
-        if self._activation is None:
+        if self.activation is None:
             raise ValueError("Activation function isn't initialized!")
 
         # add 1 so that the bias doesn't need any additional code apart from matmul
@@ -173,4 +176,4 @@ class Dense(BaseModel):
         # get new layer
         propagated = np.matmul(modified_input, self._weights)
 
-        return self._activation(propagated)
+        return self.activation(propagated)
