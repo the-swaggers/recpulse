@@ -11,28 +11,19 @@ TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
 class Sequential:
     """Sequential model class."""
 
-    def __init__(
-        self,
-        input_shape: tuple,
-        layers: list[Dense],
-    ):
-        """
-
-        Args:
-            input_shape (tuple): shape of input tensor
-            layers (list[Dense]): ordered list of layers
-        """
-        self.layers = layers
+    def __init__(self, input_shape: tuple[int], layers: list[Dense]) -> None:
+        """Model initializer."""
         self.input_shape = input_shape
+        self.layers = layers
 
     def compile(self) -> None:
         """Set input sizes and initializes weights."""
-        input_shape, _ = self.input_shape
+        input_shape = self.input_shape
         for layer in self.layers:
             if layer.input_shape is None:
-                layer.input_size = input_shape  # TODO - change to shape
+                layer.input_shape = input_shape
             elif layer.input_shape != input_shape:
-                raise ValueError("Incompatible layers' sizes")
+                raise ValueError("Incompatible layers' shapes")
             input_shape = layer.output_shape
             layer.initialize_weights()
 
