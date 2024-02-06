@@ -67,6 +67,8 @@ class Dense(BaseModel):
             raise ValueError("The output shape must contain output neurons.")
         if len(shape) > 1:
             raise ValueError("Dense layer can only have output of shape (n, ).")
+        if not isinstance(shape[0], int):
+            raise ValueError("Output size must be integer.")
         if shape[0] <= 0:
             raise ValueError("Output size must be positive.")
 
@@ -82,6 +84,8 @@ class Dense(BaseModel):
             raise ValueError("The output shape must contain output neurons.")
         if len(shape) > 1:
             raise ValueError("Dense layer can only have output of shape (n, ).")
+        if not isinstance(shape[0], int):
+            raise ValueError("Input size must be integer.")
         if shape[0] <= 0:
             raise ValueError("Input size must be positive.")
 
