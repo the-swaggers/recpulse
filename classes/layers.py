@@ -1,7 +1,15 @@
 from typing import Any, Callable, Literal
 
 import numpy as np
-from pydantic import BaseModel, Field, StrictStr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 import classes.activations as activations
 
@@ -43,11 +51,13 @@ class Dense(BaseModel):
     Layer that connects all inputs to all outputs and adds biases.
     """
 
+    config = ConfigDict(validate_assignment=True)
+
     output_shape: tuple = Field(frozen=True)
-    input_shape: tuple | None = Field(default=None)
+    input_shape: tuple | None = None
     name: StrictStr | None = None
-    _weights: np.ndarray | None = None
     _activation: Callable[[Any], TENSOR_TYPE] | None = None
+    _weights: np.ndarray | None = None
 
     @field_validator("output_shape", mode="after")
     @classmethod
@@ -79,6 +89,13 @@ class Dense(BaseModel):
 
         return shape
 
+    @model_validator(mode="after")  # type: ignore
+    def validate_model_params(self) -> None:
+        """Model validator."""
+        if self.input_shape is not None and self._weights is not None:
+            if self.input_shape[1] + 1 != self._weights.shape[0]:
+                raise ValidationError("Input shape does not match weights shape.")
+
     def __init__(
         self,
         output_shape: tuple,
@@ -86,13 +103,14 @@ class Dense(BaseModel):
         activation: ACTIVATION_FUNCTIONS = "linear",
         name: StrictStr | None = None,
     ) -> None:
+        """Class initializer."""
         super().__init__(
             output_shape=output_shape,
             input_shape=input_shape,
             name=name,
-            _activation=STR2ACTIVATION[activation],
         )
 
+        self._activation = STR2ACTIVATION[activation]  # type: ignore
         if input_shape is not None:
             self.initialize_weights()
 
