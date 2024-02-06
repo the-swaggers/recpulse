@@ -1,15 +1,7 @@
 from typing import Any, Callable, Literal
 
 import numpy as np
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    StrictStr,
-    ValidationError,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 
 import classes.activations as activations
 
@@ -95,8 +87,8 @@ class Dense(BaseModel):
     def validate_model_params(self) -> None:
         """Model validator."""
         if self.input_shape is not None and self._weights is not None:
-            if self.input_shape[1] + 1 != self._weights.shape[0]:
-                raise ValidationError("Input shape does not match weights shape.")
+            if self.input_shape[0] + 1 != self._weights.shape[0]:
+                raise ValueError("Input shape does not match weights shape.")
 
     def __init__(
         self,

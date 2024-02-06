@@ -20,7 +20,7 @@ ACTIVATIONS = [
 
 class TestLayerClass:
     def test_dense_init(self):
-        """Test Dense initialization"""
+        """Test Dense initialization."""
         layers.Dense((4,))
         layers.Dense(4)
         layers.Dense(4, input_shape=(12,))
@@ -50,3 +50,25 @@ class TestLayerClass:
             layers.Dense(4, activation="abc")
         with pytest.raises(ValidationError):
             layers.Dense(4, name=4)
+
+    def test_dense_assignment(self):
+        """Test Dense assignment."""
+        layer1 = layers.Dense(4, input_shape=(2,), name="abc", activation="relu")
+        assert layer1.output_shape == (4,)
+        assert layer1.input_shape == (2,)
+        assert layer1.name == "abc"
+
+        layer2 = layers.Dense(4, input_shape=(4,), name="abc", activation="sigmoid")
+        with pytest.raises(Exception):
+            layer2.input_shape = (8,)
+
+        layer3 = layers.Dense(4, input_shape=(2,), name="abc", activation="softmax")
+        layer3.name = "aaa"
+        assert layer3.name == "aaa"
+
+        layer4 = layers.Dense(4)
+        layer4.input_shape = (2,)
+        layer4.input_shape = (3,)
+        layer4.initialize_weights()
+        with pytest.raises(Exception):
+            layer2.input_shape = (8,)
