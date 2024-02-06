@@ -171,7 +171,7 @@ class Dense(BaseModel):
             raise ValueError("Activation function isn't initialized!")
 
         # add 1 so that the bias doesn't need any additional code apart from matmul
-        modified_input = np.append(inputs, 1, axis=0)
+        modified_input = np.concatenate((inputs, [1]), axis=0)  # type: ignore
 
         # get new layer
         propagated = np.matmul(modified_input, self._weights)

@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 from pydantic import ValidationError
 
@@ -82,3 +83,18 @@ class TestLayerClass:
         assert layer6._weights.shape == (3, 4)
         with pytest.raises(AttributeError):
             layer6.initialize_weights()
+
+    def test_dense_propagation(self):
+        """Test Dense propagate function."""
+        x1 = np.array([1, 2, 3, 4, 5, 6, 7, 8])
+        layer1 = layers.Dense(4, input_shape=(8,), activation="softmax")
+        y1 = layer1.propagate(x1)
+        assert y1.shape == (4,)
+        assert (y1 > 0).all
+        assert np.isclose(np.sum(y1), 1)
+
+        x2 = np.array([-12.113, 125.842, 634.735, 235.876, -532.645, 3424.75, -234.234, 1.23])
+        layer2 = layers.Dense(12, input_shape=(8,), activation="relu")
+        y2 = layer2.propagate(x2)
+        assert y2.shape == (12,)
+        assert (y2 > 0).all
