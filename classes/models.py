@@ -1,20 +1,46 @@
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
 
 from classes.layers import Dense
 
 PRECISIONS = float | np.float16 | np.float32 | np.float64
 TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
+OPTIMIZERS = Literal["SGD"]
 
 
-class Sequential:
+class Sequential(BaseModel):
     """Sequential model class."""
 
-    def __init__(self, input_shape: tuple[int], layers: list[Dense]) -> None:
-        """Model initializer."""
-        self.input_shape = input_shape
-        self.layers = layers
+    model_config = ConfigDict(validate_assignment=True)
+
+    input_shape: tuple[StrictInt]
+    layers: list[Any]
+    learning_rate: StrictFloat = 0.001
+    optimizer: OPTIMIZERS = "SGD"
+
+    @field_validator("layers", mode="after")
+    @classmethod
+    def validate_layers(cls, layers: list[object]) -> list[object]:
+        """Layers validator."""
+        for layer in layers:
+            if not isinstance(layer, Dense):
+                raise ValueError("Wrong layers class is used")
+
+        return layers
+
+    @field_validator("input_shape", mode="after")
+    @classmethod
+    def validate_input_shape(cls, shape: tuple) -> tuple:
+        """Input shape validator."""
+        if len(shape) == 0:
+            raise ValueError("The output shape must contain output neurons.")
+        for dim in shape:
+            if dim <= 0:
+                raise ValueError("Input shape must contain only positive integers.")
+
+        return shape
 
     def compile(self) -> None:
         """Set input sizes and initializes weights."""
@@ -40,12 +66,3 @@ class Sequential:
             x = layer.propagate(x)
 
         return x
-
-    @property
-    def size(self) -> int:
-        """Property
-
-        Returns:
-            int: number of layers.
-        """
-        return len(self.layers)
