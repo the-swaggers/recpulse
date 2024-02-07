@@ -6,7 +6,7 @@ import classes.activations as activations
 
 # load test data from file
 # arrays are stored and not generated for better reproducibility of any errors
-with open("tests/test_data/ndarrays.json") as f:
+with open("tests/test_data/ndarrays4activations.json") as f:
     NDARRAYS = json.load(f)
     for key in NDARRAYS.keys():
         NDARRAYS[key] = np.array(NDARRAYS[key])
