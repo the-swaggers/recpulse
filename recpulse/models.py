@@ -1,9 +1,9 @@
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
 
-from recpulse.dtypes import OPTIMIZERS
+from recpulse.dtypes import LOSSES, OPTIMIZERS, STR2LOSS
 from recpulse.layers import Dense
 
 
@@ -15,7 +15,9 @@ class Sequential(BaseModel):
     input_shape: tuple[StrictInt]
     layers: list[Any]
     learning_rate: StrictFloat = 0.001
-    optimizer: OPTIMIZERS = "SGD"
+    loss: Callable[[Any, Any], Any] | None = None
+    optimizer: OPTIMIZERS | None = None
+    _compiled: bool = False
 
     @field_validator("layers", mode="after")
     @classmethod
@@ -39,7 +41,17 @@ class Sequential(BaseModel):
 
         return shape
 
-    def compile(self) -> None:
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Override __setattr__ to set _compiled to False on attribute change,
+        except for _compiled itself.
+        """
+        if name != "_compiled":
+            self.__dict__["_compiled"] = False
+        super().__setattr__(name, value)
+
+    def compile(
+        self, loss: LOSSES = "MSE", learning_rate: float = 0.001, optimizer: OPTIMIZERS = "SGD"
+    ) -> None:
         """Set input sizes and initializes weights."""
         input_shape = self.input_shape
         for layer in self.layers:
@@ -48,7 +60,12 @@ class Sequential(BaseModel):
             elif layer.input_shape != input_shape:
                 raise ValueError("Incompatible layers' shapes")
             input_shape = layer.output_shape
-            layer.initialize_weights()
+            if layer.initialized is not None:
+                layer.initialize_weights()
+        self.learning_rate = learning_rate
+        self.loss = STR2LOSS[loss]
+        self.optimizer = optimizer
+        self._compiled = True
 
     def predict(self, inputs: np.ndarray) -> np.ndarray:
         """Pass inputs through all the layers and return outputs.

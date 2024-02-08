@@ -149,3 +149,8 @@ class Dense(BaseModel):
         propagated = np.matmul(modified_input, self._weights)
 
         return self.activation(propagated)
+
+    @property
+    def initialized(self) -> bool:
+        """Return True if weights are initialized, False otherwise."""
+        return self._weights is not None
