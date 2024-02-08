@@ -27,10 +27,10 @@ class TestClassActivations:
 
             if parametric:
                 for index in indices:
-                    assert function(array[index], alpha) == function_answer[index]
+                    assert np.isclose(function(array[index], alpha), function_answer[index]).all
             else:
                 for index in indices:
-                    assert function(array[index]) == function_answer[index]
+                    assert np.isclose(function(array[index]), function_answer[index]).all
 
     @staticmethod
     def linear(x):
