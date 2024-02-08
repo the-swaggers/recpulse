@@ -35,7 +35,7 @@ def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     result = 0
 
     for index in indices:
-        if not (0 <= x[0] <= 1 or 0 <= x[0] <= 1):
+        if not (0 <= x[index] <= 1 and 0 <= y[index] <= 1):
             raise ValueError(
                 "Both predictions and outputs must be within range of [0; 1]. "
                 "You can use softmax to deal with it."
@@ -54,7 +54,7 @@ def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
         raise ValueError(
             "Incorrect shape. If dealing with multiple classes use Cross Entropy instead."
         )
-    if not (0 <= x[0] <= 1 or 0 <= x[0] <= 1):
+    if not (0 <= x[0] <= 1 and 0 <= y[0] <= 1):
         raise ValueError(
             "Both predictions and outputs must be within range of [0; 1]. "
             "You can use sigmoid to deal with it."
