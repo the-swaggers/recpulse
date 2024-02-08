@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pytest
 
-import classes.losses as losses
+import recpulse.losses as losses
 
 # load test data from file
 # arrays are stored and not generated for better reproducibility of any errors

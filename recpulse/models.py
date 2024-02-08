@@ -3,7 +3,7 @@ from typing import Any, Literal
 import numpy as np
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
 
-from classes.layers import Dense
+from recpulse.layers import Dense
 
 PRECISIONS = float | np.float16 | np.float32 | np.float64
 TENSOR_TYPE = np.ndarray[PRECISIONS, Any]

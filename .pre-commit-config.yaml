@@ -55,7 +55,7 @@ repos:
     - id: black
       name: "[11/14] Run black"
       entry: |
-        bash -c 'black --check classes/*.py tests/*.py'
+        bash -c 'black --check recpulse/*.py tests/*.py'
       language: system
       pass_filenames: false
       always_run: true
@@ -63,14 +63,14 @@ repos:
     - id: isort
       name: "[12/14] Run isort"
       entry: |
-        bash -c 'isort --check classes/*.py tests/*.py'
+        bash -c 'isort --check recpulse/*.py tests/*.py'
       language: system
       pass_filenames: false
       always_run: true
 
     - id: flake8
       name: "[13/14] Run flake8"
-      entry: bash -c 'flake8 classes/*.py tests/*.py'
+      entry: bash -c 'flake8 recpulse/*.py tests/*.py'
       language: system
       pass_filenames: false
       always_run: true

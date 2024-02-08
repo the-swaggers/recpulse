@@ -3,7 +3,7 @@ from typing import Any, Callable, Literal
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 
-import classes.activations as activations
+import recpulse.activations as activations
 
 PRECISIONS = float | np.float16 | np.float32 | np.float64
 TENSOR_TYPE = np.ndarray[PRECISIONS, Any]

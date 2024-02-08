@@ -8,15 +8,15 @@ test:
 
 
 format:
-	@black classes/*.py tests/*.py
+	@black recpulse/*.py tests/*.py
 
 
 lint:
 	@echo "run flake8"
-	@flake8 classes/*.py tests/*.py
+	@flake8 recpulse/*.py tests/*.py
 	@echo "run mypy"
-	@mypy classes/*.py tests/*.py
+	@mypy recpulse/*.py tests/*.py
 	@echo "run isort"
-	@isort classes/*.py tests/*.py
+	@isort recpulse/*.py tests/*.py
 	@echo "run pydocstyle"
-	@pydocstyle classes/*.py tests/*.py
+	@pydocstyle recpulse/*.py tests/*.py

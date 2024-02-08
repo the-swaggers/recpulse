@@ -1,7 +1,7 @@
 import pytest
 
-import classes.layers as layers
-from classes.models import Sequential
+import recpulse.layers as layers
+from recpulse.models import Sequential
 
 
 class TestClassSequential:

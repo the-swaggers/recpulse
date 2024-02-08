@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-import classes.activations as activations
-import classes.layers as layers
+import recpulse.activations as activations
+import recpulse.layers as layers
 
 ACTIVATIONS = [
     "linear",

@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 
-import classes.activations as activations
+import recpulse.activations as activations
 
 # load test data from file
 # arrays are stored and not generated for better reproducibility of any errors
