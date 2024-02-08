@@ -1,40 +1,12 @@
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 
-import recpulse.activations as activations
+from recpulse.dtypes import ACTIVATIONS, STR2ACTIVATION
 
 PRECISIONS = float | np.float16 | np.float32 | np.float64
 TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
-
-ACTIVATION_FUNCTIONS = Literal[
-    "linear",
-    "sigmoid",
-    "softmax",
-    "relu",
-    "leaky_relu",
-    "parametric_relu",
-    "binary_step",
-    "tanh",
-    "arctan",
-    "elu",
-    "swish",
-]
-
-STR2ACTIVATION = {
-    "linear": activations.linear,
-    "sigmoid": activations.sigmoid,
-    "softmax": activations.softmax,
-    "relu": activations.relu,
-    "leaky_relu": activations.leaky_relu,
-    "parametric_relu": activations.parametric_relu,
-    "binary_step": activations.binary_step,
-    "tanh": activations.tanh,
-    "arctan": activations.arctan,
-    "elu": activations.elu,
-    "swish": activations.swish,
-}
 
 
 class Dense(BaseModel):
@@ -94,7 +66,7 @@ class Dense(BaseModel):
         self,
         output_shape: tuple | int,
         input_shape: tuple | None = None,
-        activation: ACTIVATION_FUNCTIONS = "linear",
+        activation: ACTIVATIONS = "linear",
         name: StrictStr | None = None,
     ) -> None:
         """Class initializer."""

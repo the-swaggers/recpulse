@@ -1,13 +1,10 @@
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
 
+from recpulse.dtypes import OPTIMIZERS
 from recpulse.layers import Dense
-
-PRECISIONS = float | np.float16 | np.float32 | np.float64
-TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
-OPTIMIZERS = Literal["SGD"]
 
 
 class Sequential(BaseModel):
