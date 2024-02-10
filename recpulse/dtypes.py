@@ -1,6 +1,7 @@
 from typing import Literal
 
 import recpulse.activations as activations
+import recpulse.differentiated_activations as d_activations
 import recpulse.losses as losses
 
 ACTIVATIONS = Literal[
@@ -28,6 +29,10 @@ STR2ACTIVATION = {
     "arctan": activations.arctan,
     "elu": activations.elu,
     "swish": activations.swish,
+}
+
+STR2ACTIVATION = {
+    "linear": d_activations.linear,
 }
 
 LOSSES = Literal[

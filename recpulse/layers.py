@@ -3,7 +3,7 @@ from typing import Any, Callable
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 
-from recpulse.dtypes import ACTIVATIONS, STR2ACTIVATION
+from recpulse.dtypes import ACTIVATIONS, STR2ACTIVATION, STR2DACTIVATION
 
 PRECISIONS = float | np.float16 | np.float32 | np.float64
 TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
@@ -21,6 +21,7 @@ class Dense(BaseModel):
     input_shape: tuple | None = None
     name: StrictStr | None = None
     activation: Callable[[Any], TENSOR_TYPE] = Field(frozen=True)
+    d_activation: Callable[[Any], TENSOR_TYPE] = Field(frozen=True)
     _weights: np.ndarray | None = None
 
     @field_validator("output_shape", mode="after")
@@ -77,6 +78,7 @@ class Dense(BaseModel):
             input_shape=input_shape,
             name=name,
             activation=STR2ACTIVATION[activation],  # type: ignore
+            d_activation=STR2DACTIVATION[activation],  # type: ignore
         )
 
         if input_shape is not None:
@@ -154,3 +156,17 @@ class Dense(BaseModel):
     def initialized(self) -> bool:
         """Return True if weights are initialized, False otherwise."""
         return self._weights is not None
+
+    def back_propagate(
+        self, error: np.ndarray, inputs: np.ndarray, learning_rate: float = 0.001, tune: bool = True
+    ) -> float:
+        """Back propagation."""
+        modified_input = np.concatenate((inputs, [1]), axis=0)
+        propagated_error = np.dot(error, self._weights[:-1].T) * self.d_activation(
+            np.dot(modified_input, self._weights)
+        )
+
+        if tune:
+            self._weights -= learning_rate * np.dot(inputs.T, propagated_error)
+
+        return propagated_error
