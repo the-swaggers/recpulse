@@ -167,6 +167,8 @@ class Dense(BaseModel):
         )
 
         if tune:
-            self._weights -= learning_rate * np.dot(inputs.T, propagated_error)
+            pred = np.dot(self._weights, modified_input)
+            dW = np.dot((error*self.d_activation(pred)), inputs.T)
+            self._weights -= learning_rate * dW
 
         return propagated_error
