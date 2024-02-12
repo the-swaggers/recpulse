@@ -161,7 +161,10 @@ class Dense(BaseModel):
         self, error: np.ndarray, inputs: np.ndarray, learning_rate: float = 0.001, tune: bool = True
     ) -> float:
         """Back propagation."""
-        modified_input = np.concatenate((inputs, [1]), axis=0)
+        if self._weights is None:
+            raise ValueError("Weights aren't initialized!")
+
+        modified_input = np.concatenate((inputs, [1]), axis=0)  # type: ignore
         propagated_error = np.dot(error, self._weights[:-1].T) * self.d_activation(
             np.dot(modified_input, self._weights)
         )
