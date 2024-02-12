@@ -8,7 +8,7 @@ PRECISIONS = float | np.float16 | np.float32 | np.float64
 TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
 
 
-def reshape(matrix: TENSOR_TYPE, shape: tuple[int]) -> TENSOR_TYPE:
+def reshape(matrix: TENSOR_TYPE, shape: tuple) -> TENSOR_TYPE:
     """Reshape Jacobi matrix to appropriate tensor."""
     return matrix.reshape(shape + shape)
 
@@ -16,7 +16,7 @@ def reshape(matrix: TENSOR_TYPE, shape: tuple[int]) -> TENSOR_TYPE:
 def linear(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of linear activation function."""
     shape = x.shape
-    matrix = np.indentity(x.size)
+    matrix = np.identity(x.size)
     return reshape(matrix, shape)
 
 

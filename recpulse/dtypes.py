@@ -29,8 +29,17 @@ STR2ACTIVATION = {
     "swish": activations.swish,
 }
 
-STR2ACTIVATION = {
+STR2DACTIVATION = {
     "linear": d_activations.linear,
+    "sigmoid": d_activations.sigmoid,
+    "softmax": d_activations.softmax,
+    "relu": d_activations.relu,
+    "leaky_relu": d_activations.leaky_relu,
+    "parametric_relu": d_activations.parametric_relu,
+    "tanh": d_activations.tanh,
+    "arctan": d_activations.arctan,
+    "elu": d_activations.elu,
+    "swish": d_activations.swish,
 }
 
 LOSSES = Literal[
