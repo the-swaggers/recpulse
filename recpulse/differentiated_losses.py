@@ -6,16 +6,16 @@ PRECISIONS = float | np.float16 | np.float32 | np.float64
 TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
 
 
-def mse(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
+def mse(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of Mean Square Error loss function."""
     if x.shape != y.shape:
         raise ValueError("Incompatible tensors.")
     size = x.size
 
-    return 2 * (y - x) / size
+    return (2 * (y - x)) / size
 
 
-def mae(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
+def mae(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     """Mean Absolute Error loss function."""
     if x.shape != y.shape:
         raise ValueError("Incompatible tensors.")

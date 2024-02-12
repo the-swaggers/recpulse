@@ -2,6 +2,7 @@ from typing import Literal
 
 import recpulse.activations as activations
 import recpulse.differentiated_activations as d_activations
+import recpulse.differentiated_losses as d_losses
 import recpulse.losses as losses
 
 ACTIVATIONS = Literal[
@@ -53,6 +54,12 @@ STR2LOSS = {
     "MAE": losses.mae,
     "multiclass_cross_enrropy": losses.cross_entropy,
     "binary_cross_entropy": losses.binary_cross_entropy,
+}
+STR2DLOSS = {
+    "MSE": d_losses.mse,
+    "MAE": d_losses.mae,
+    # "multiclass_cross_enrropy": d_losses.cross_entropy,
+    # "binary_cross_entropy": d_losses.binary_cross_entropy,
 }
 
 OPTIMIZERS = Literal["SGD"]

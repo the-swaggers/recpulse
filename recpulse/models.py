@@ -3,7 +3,7 @@ from typing import Any, Callable
 import numpy as np
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
 
-from recpulse.dtypes import LOSSES, OPTIMIZERS, STR2LOSS
+from recpulse.dtypes import LOSSES, OPTIMIZERS, STR2DLOSS, STR2LOSS
 from recpulse.layers import Dense
 
 
@@ -16,6 +16,7 @@ class Sequential(BaseModel):
     layers: list[Any]
     learning_rate: StrictFloat = 0.001
     loss: Callable[[Any, Any], Any] | None = None
+    d_loss: Callable[[Any, Any], Any] | None = None
     optimizer: OPTIMIZERS | None = None
     _compiled: bool = False
 
@@ -64,6 +65,7 @@ class Sequential(BaseModel):
                 layer.initialize_weights()
         self.learning_rate = learning_rate
         self.loss = STR2LOSS[loss]
+        self.d_loss = STR2DLOSS[loss]
         self.optimizer = optimizer
         self._compiled = True
 
@@ -73,6 +75,8 @@ class Sequential(BaseModel):
         Returns:
             TENSOR_TYPE: tensor with predictions.
         """
+        if not self._compiled:
+            raise Exception("You must compile model before making predictions!")
 
         x = inputs
 
@@ -80,3 +84,32 @@ class Sequential(BaseModel):
             x = layer.propagate(x)
 
         return x
+
+    def fit(self, train_data: np.ndarray, epochs: int = 1) -> list[float]:
+        """Optimize model's parameters depending on data."""
+        if not self._compiled:
+            raise Exception("You must compile model before fitting it!")
+
+        history = []
+        for _ in range(epochs):
+            metric = 0.0
+            for sample in train_data:
+                x, y = sample
+                intermediate_results = [x]
+                for layer in self.layers:
+                    x = layer.propagate(x)
+                    intermediate_results.append(x)
+
+                loss = self.loss(x, y)  # type: ignore
+                metric += loss
+
+                error = self.d_loss(intermediate_results[-1], y)  # type: ignore
+
+                for layer in range(len(self.layers), 0, -1):
+                    error = self.layers[layer].back_propagate(
+                        error, intermediate_results, learning_rate=self.learning_rate, tune=True
+                    )
+            metric /= len(train_data)
+            history.append(metric)
+
+        return history

@@ -165,13 +165,13 @@ class Dense(BaseModel):
             raise ValueError("Weights aren't initialized!")
 
         modified_input = np.concatenate((inputs, [1]), axis=0)  # type: ignore
-        propagated_error = np.dot(error, self._weights[:-1].T) * self.d_activation(
-            np.dot(modified_input, self._weights)
-        )
+        pred = np.dot(self._weights, modified_input)
+        propagated_error = np.dot(
+            np.dot(error, self.d_activation(pred)), self._weights[:-1].T
+        ) * self.d_activation(np.dot(modified_input, self._weights))
 
         if tune:
-            pred = np.dot(self._weights, modified_input)
-            dW = np.dot((error * self.d_activation(pred)), inputs.T)
+            dW = np.dot(np.dot(error, self.d_activation(pred)), inputs.T)
             self._weights -= learning_rate * dW
 
         return propagated_error
