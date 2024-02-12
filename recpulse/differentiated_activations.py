@@ -59,11 +59,6 @@ def parametric_relu(x: TENSOR_TYPE, alpha: float = 0) -> TENSOR_TYPE:
     return reshape(matrix, shape)
 
 
-def binary_step(x: TENSOR_TYPE) -> TENSOR_TYPE:
-    """Derivative of binary step activation function."""
-    return np.where(x >= 0, 1, 0)
-
-
 def tanh(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of tanh activation function."""
     shape = x.shape
