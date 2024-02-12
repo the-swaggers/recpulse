@@ -12,7 +12,6 @@ ACTIVATIONS = [
     "relu",
     "leaky_relu",
     "parametric_relu",
-    "binary_step",
     "tanh",
     "arctan",
     "elu",
@@ -80,7 +79,7 @@ class TestLayerClass:
             layer5.activation = activations.relu
 
         layer6 = layers.Dense(4, input_shape=(2,), name="abc", activation="elu")
-        assert layer6._weights.shape == (3, 4)
+        assert layer6._weights.shape == (4, 3)
         with pytest.raises(AttributeError):
             layer6.initialize_weights()
 

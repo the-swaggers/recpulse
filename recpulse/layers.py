@@ -60,7 +60,7 @@ class Dense(BaseModel):
     def validate_model_params(self) -> None:
         """Model validator."""
         if self.input_shape is not None and self._weights is not None:
-            if self.input_shape[0] + 1 != self._weights.shape[0]:
+            if self.input_shape[0] + 1 != self._weights.shape[1]:
                 raise ValueError("Input shape does not match weights shape.")
 
     def __init__(
@@ -126,7 +126,7 @@ class Dense(BaseModel):
         self._weights = np.random.normal(
             mean,
             standard_deviation,
-            size=(self.input_shape[0] + 1, self.output_shape[0]),  # type: ignore
+            size=(self.output_shape[0], self.input_shape[0] + 1),  # type: ignore
         )
 
     def propagate(self, inputs: np.ndarray) -> np.ndarray:
@@ -148,7 +148,7 @@ class Dense(BaseModel):
         modified_input = np.concatenate((inputs, [1]), axis=0)  # type: ignore
 
         # get new layer
-        propagated = np.matmul(modified_input, self._weights)
+        propagated = np.dot(self._weights, modified_input)
 
         return self.activation(propagated)
 

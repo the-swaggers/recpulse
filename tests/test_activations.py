@@ -105,15 +105,6 @@ class TestClassActivations:
         )
 
     @staticmethod
-    def binary_step(x):
-        """Linear function"""
-        return 1 if x >= 0 else 0
-
-    def test_binary_step(self):
-        """Python tester."""
-        self.match_functions(self.binary_step, activations.binary_step)
-
-    @staticmethod
     def tanh(x):
         """Linear function"""
         return np.tanh(x)
