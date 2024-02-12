@@ -28,11 +28,13 @@ def sigmoid(x: TENSOR_TYPE) -> TENSOR_TYPE:
     return reshape(matrix, shape)
 
 
-# TODO - make softmax activation
 def softmax(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of softmax activation function."""
-    exponentiated = np.exp(x)
-    return exponentiated / np.sum(exponentiated)
+    shape = x.shape
+    x.flatten()
+    activated = activations.softmax(x)
+    matrix = np.diag(activated) - np.tensordot(activated, activated)
+    return reshape(matrix, shape)
 
 
 def relu(x: TENSOR_TYPE) -> TENSOR_TYPE:
