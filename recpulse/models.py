@@ -43,11 +43,8 @@ class Sequential(BaseModel):
         return shape
 
     def __setattr__(self, name: str, value: Any) -> None:
-        """Override __setattr__ to set _compiled to False on attribute change,
-        except for _compiled itself.
-        """
-        if name != "_compiled":
-            self.__dict__["_compiled"] = False
+        if name in {"input_shape", "layers", "learning_rate", "optimizer"}:
+            self._compiled = False
         super().__setattr__(name, value)
 
     def compile(

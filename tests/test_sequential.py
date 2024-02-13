@@ -17,6 +17,9 @@ class TestClassSequential:
             ],
         )
         model_1.compile()
+        assert model_1._compiled is True
+        model_1.learning_rate = 0.01
+        assert model_1._compiled is False
 
         model_2 = Sequential(
             input_shape=(4,),
