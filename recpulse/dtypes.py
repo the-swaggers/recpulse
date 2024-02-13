@@ -58,8 +58,8 @@ STR2LOSS = {
 STR2DLOSS = {
     "MSE": d_losses.mse,
     "MAE": d_losses.mae,
-    # "multiclass_cross_enrropy": d_losses.cross_entropy,
-    # "binary_cross_entropy": d_losses.binary_cross_entropy,
+    "multiclass_cross_enrropy": d_losses.cross_entropy,
+    "binary_cross_entropy": d_losses.binary_cross_entropy,
 }
 
 OPTIMIZERS = Literal["SGD"]

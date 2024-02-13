@@ -24,7 +24,6 @@ def mae(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     return np.sign(y - x) / size
 
 
-# TODO - add derivatives of entropy functions
 def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     """Derivative of Cross Entropy loss function."""
 
