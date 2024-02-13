@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
@@ -15,8 +15,7 @@ class Sequential(BaseModel):
     input_shape: tuple[StrictInt]
     layers: list[Any]
     learning_rate: StrictFloat = 0.001
-    loss: Callable[[Any, Any], Any] | None = None
-    d_loss: Callable[[Any, Any], Any] | None = None
+    loss: LOSSES | None = None
     optimizer: OPTIMIZERS | None = None
     _compiled: bool = False
 
@@ -61,8 +60,7 @@ class Sequential(BaseModel):
             if layer.initialized is False:
                 layer.initialize_weights()
         self.learning_rate = learning_rate
-        self.loss = STR2LOSS[loss]
-        self.d_loss = STR2DLOSS[loss]
+        self.loss = loss
         self.optimizer = optimizer
         self._compiled = True
 
@@ -97,10 +95,10 @@ class Sequential(BaseModel):
                     x = layer.propagate(x)
                     intermediate_results.append(x)
 
-                loss = self.loss(x, y)  # type: ignore
-                metric += loss
+                loss = STR2LOSS[self.loss](x, y)  # type: ignore
+                metric += loss  # type: ignore
 
-                error = self.d_loss(intermediate_results[-1], y)  # type: ignore
+                error = STR2DLOSS[self.loss](intermediate_results[-1], y)  # type: ignore
 
                 for layer in range(len(self.layers), 0, -1):
                     error = self.layers[layer].back_propagate(
