@@ -58,7 +58,7 @@ class Sequential(BaseModel):
             elif layer.input_shape != input_shape:
                 raise ValueError("Incompatible layers' shapes")
             input_shape = layer.output_shape
-            if layer.initialized is not None:
+            if layer.initialized is False:
                 layer.initialize_weights()
         self.learning_rate = learning_rate
         self.loss = STR2LOSS[loss]
