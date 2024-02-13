@@ -40,7 +40,7 @@ def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
                 "Both predictions and outputs must be within range of [0; 1]. "
                 "You can use softmax to deal with it."
             )
-        result -= x[index] * np.log(y[index])
+        result -= y[index] * np.log(x[index])
 
     return result
 
@@ -60,4 +60,4 @@ def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
             "You can use sigmoid to deal with it."
         )
 
-    return x[0] * np.log(y[0]) + (1 - x[0]) * np.log((1 - y[0]))
+    return y[0] * np.log(x[0]) + (1 - y[0]) * np.log((1 - x[0]))
