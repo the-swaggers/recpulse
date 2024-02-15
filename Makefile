@@ -8,15 +8,19 @@ test:
 
 
 format:
-	@black recpulse/*.py tests/*.py
+	@black recpulse/*.py tests/*.py tests/*.py tests/performance_requiring_tests/MNIST/main.py
 
 
 lint:
 	@echo "run flake8"
-	@flake8 recpulse/*.py tests/*.py
+	@flake8 recpulse/*.py tests/*.py tests/performance_requiring_tests/MNIST/main.py
 	@echo "run mypy"
-	@mypy recpulse/*.py tests/*.py
+	@mypy recpulse/*.py tests/*.py tests/performance_requiring_tests/MNIST/main.py
 	@echo "run isort"
-	@isort recpulse/*.py tests/*.py
+	@isort recpulse/*.py tests/*.py tests/performance_requiring_tests/MNIST/main.py
 	@echo "run pydocstyle"
-	@pydocstyle recpulse/*.py tests/*.py
+	@pydocstyle recpulse/*.py tests/*.py tests/performance_requiring_tests/MNIST/main.py
+
+
+test_mnist:
+	@python tests/performance_requiring_tests/MNIST/main.py
