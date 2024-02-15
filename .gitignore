@@ -1,3 +1,8 @@
 .idea/
 recpulse/__pycache__/
 tests/__pycache__/
+/.pypirc
+/dist/
+/build/
+/.pytest_cache/
+/recpulse.egg-info/
