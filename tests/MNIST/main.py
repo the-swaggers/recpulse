@@ -1,9 +1,10 @@
 import numpy as np
 
-from recpulse.layers import Dense
 from recpulse.models import Sequential
+from recpulse.layers import Dense
 
-data = np.load("tests/performance_requiring_tests/MNIST/mnist.npz")
+
+data = np.load("tests/MNIST/mnist.npz")
 print(data["train_x"].shape, data["train_x"].dtype)
 print(data["train_y"].shape, data["train_y"].dtype)
 print(data["test_x"].shape, data["test_x"].dtype)

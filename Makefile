@@ -23,4 +23,4 @@ lint:
 
 
 test_mnist:
-	@python tests/MNIST/main.py
+	@python -m tests.MNIST.main
