@@ -46,19 +46,19 @@ STR2DACTIVATION = {
 LOSSES = Literal[
     "MSE",
     "MAE",
-    "multiclass_cross_enpropy",
-    "binary_cross_enpropy",
+    "multiclass_cross_entropy",
+    "binary_cross_entropy",
 ]
 STR2LOSS = {
     "MSE": losses.mse,
     "MAE": losses.mae,
-    "multiclass_cross_enrropy": losses.cross_entropy,
+    "multiclass_cross_entropy": losses.cross_entropy,
     "binary_cross_entropy": losses.binary_cross_entropy,
 }
 STR2DLOSS = {
     "MSE": d_losses.mse,
     "MAE": d_losses.mae,
-    "multiclass_cross_enrropy": d_losses.cross_entropy,
+    "multiclass_cross_entropy": d_losses.cross_entropy,
     "binary_cross_entropy": d_losses.binary_cross_entropy,
 }
 

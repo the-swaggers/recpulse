@@ -36,6 +36,6 @@ model = Sequential(
     ],
 )
 
-model.compile(loss="MSE", learning_rate=0.001, optimizer="SGD")
+model.compile(loss="MAE", learning_rate=0.001, optimizer="SGD")
 
-history = model.fit(train_data, epochs=10)
+history = model.fit(test_data, epochs=10)

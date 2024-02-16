@@ -1,6 +1,7 @@
 from typing import Any
 
 import numpy as np
+from tqdm import tqdm
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
 
 from recpulse.dtypes import LOSSES, OPTIMIZERS, STR2DLOSS, STR2LOSS
@@ -86,9 +87,11 @@ class Sequential(BaseModel):
             raise Exception("You must compile model before fitting it!")
 
         history = []
-        for _ in range(epochs):
+        for epoch in range(epochs):
             metric = 0.0
-            for sample in train_data:
+            msg = f"Epoch {epoch}/{epochs}"
+            data_len = 0
+            for sample in tqdm(train_data, desc=msg):
                 x, y = sample
                 intermediate_results = [x]
                 for layer in self.layers:
@@ -107,7 +110,11 @@ class Sequential(BaseModel):
                         learning_rate=self.learning_rate,
                         tune=True,
                     )
-            metric /= len(train_data)
+                data_len += 1
+                if data_len == 100:
+                    break
+            metric /= data_len
+            print(metric)
             history.append(metric)
 
         return history
