@@ -15,3 +15,4 @@ dependencies:
   - isort=5.13.2
   - mypy=1.8.0
   - pydocstyle=6.3.0
+  - tqdm=4.66.2

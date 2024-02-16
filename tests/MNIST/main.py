@@ -32,7 +32,7 @@ model = Sequential(
     layers=[
         Dense(64, activation="relu"),
         Dense(64, activation="relu"),
-        Dense(10, activation="softmax"),
+        Dense(10, activation="sigmoid"),
     ],
 )
 

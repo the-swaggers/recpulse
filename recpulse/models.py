@@ -100,9 +100,12 @@ class Sequential(BaseModel):
 
                 error = STR2DLOSS[self.loss](intermediate_results[-1], y)  # type: ignore
 
-                for layer in reversed(self.layers):
-                    error = layer.back_propagate(
-                        error, intermediate_results, learning_rate=self.learning_rate, tune=True
+                for layer in range(len(self.layers) - 1, -1, -1):
+                    error = self.layers[layer].back_propagate(
+                        error=error,
+                        inputs=intermediate_results[layer],
+                        learning_rate=self.learning_rate,
+                        tune=True,
                     )
             metric /= len(train_data)
             history.append(metric)
