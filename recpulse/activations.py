@@ -18,6 +18,7 @@ def sigmoid(x: TENSOR_TYPE) -> TENSOR_TYPE:
 
 def softmax(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Softmax activation function."""
+    x = x - np.max(x)
     exponentiated = np.exp(x)
     return exponentiated / np.sum(exponentiated)
 

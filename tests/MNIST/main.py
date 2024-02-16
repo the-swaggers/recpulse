@@ -32,10 +32,10 @@ model = Sequential(
     layers=[
         Dense(64, activation="relu"),
         Dense(64, activation="relu"),
-        Dense(10, activation="sigmoid"),
+        Dense(10, activation="softmax"),
     ],
 )
 
-model.compile(loss="MAE", learning_rate=0.001, optimizer="SGD")
+model.compile(loss="MAE", learning_rate=0.1, optimizer="SGD")
 
 history = model.fit(test_data, epochs=10)

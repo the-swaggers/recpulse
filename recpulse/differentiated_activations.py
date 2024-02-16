@@ -33,7 +33,7 @@ def softmax(x: TENSOR_TYPE) -> TENSOR_TYPE:
     shape = x.shape
     x.flatten()
     activated = activations.softmax(x)
-    matrix = np.diag(activated) - np.tensordot(activated, activated)
+    matrix = np.diag(activated) - np.tensordot(activated, activated, axes=0)
     return reshape(matrix, shape)
 
 
