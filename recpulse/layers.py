@@ -166,12 +166,10 @@ class Dense(BaseModel):
 
         modified_input = np.concatenate((inputs, [1]), axis=0)  # type: ignore
         pred = np.dot(self._weights, modified_input)
-        propagated_error = np.dot(
-            np.dot(error, self.d_activation(pred)), self._weights[:-1].T
-        ) * self.d_activation(np.dot(modified_input, self._weights))
+        propagated_error = np.dot(np.dot(error, self._weights)[:-1], self.d_activation(inputs))
 
         if tune:
-            dW = np.dot(np.dot(error, self.d_activation(pred)), inputs.T)
+            dW = np.tensordot(np.dot(error, self.d_activation(pred)), modified_input, axes=0)
             self._weights -= learning_rate * dW
 
         return propagated_error

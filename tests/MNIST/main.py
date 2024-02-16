@@ -1,14 +1,10 @@
 import numpy as np
 
-from recpulse.models import Sequential
 from recpulse.layers import Dense
-
+from recpulse.models import Sequential
 
 data = np.load("tests/MNIST/mnist.npz")
-print(data["train_x"].shape, data["train_x"].dtype)
-print(data["train_y"].shape, data["train_y"].dtype)
-print(data["test_x"].shape, data["test_x"].dtype)
-print(data["test_y"].shape, data["test_y"].dtype)
+print("Data loaded successfully")
 
 
 def one_hot(val):
