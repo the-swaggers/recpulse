@@ -24,7 +24,7 @@ def mae(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     return np.sign(y - x) / size
 
 
-def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
+def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of Cross Entropy loss function."""
 
     if x.shape != y.shape:
@@ -32,20 +32,17 @@ def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
 
     indices = list(zip(*[axis.flatten() for axis in np.indices(x.shape)]))
 
-    result = 0
-
     for index in indices:
         if not (0 <= x[index] <= 1 and 0 <= y[index] <= 1):
             raise ValueError(
                 "Both predictions and outputs must be within range of [0; 1]. "
                 "You can use softmax to deal with it."
             )
-        result -= y[index] / x[index]
 
-    return result
+    return y / x
 
 
-def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
+def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of Binary Cross Entropy loss function."""
 
     if x.shape != y.shape:
@@ -60,4 +57,4 @@ def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
             "You can use sigmoid to deal with it."
         )
 
-    return y[0] / x[0] - (1 - y[0]) / (1 - x[0])
+    return y / x - (1 - y) / (1 - x)

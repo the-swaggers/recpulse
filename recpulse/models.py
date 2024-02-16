@@ -98,7 +98,7 @@ class Sequential(BaseModel):
                     x = layer.propagate(x)
                     intermediate_results.append(x)
 
-                loss = STR2LOSS[self.loss](x, y)  # type: ignore
+                loss = STR2LOSS[self.loss](intermediate_results[-1], y)  # type: ignore
                 metric += loss  # type: ignore
 
                 error = STR2DLOSS[self.loss](intermediate_results[-1], y)  # type: ignore
@@ -111,8 +111,6 @@ class Sequential(BaseModel):
                         tune=True,
                     )
                 data_len += 1
-                if data_len == 100:
-                    break
             metric /= data_len
             print(metric)
             history.append(metric)

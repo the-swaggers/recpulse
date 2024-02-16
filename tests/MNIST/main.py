@@ -30,12 +30,12 @@ test_data = test_data_generator(data)
 model = Sequential(
     input_shape=(784,),
     layers=[
-        Dense(64, activation="relu"),
-        Dense(64, activation="relu"),
+        Dense(64, activation="sigmoid"),
+        Dense(64, activation="sigmoid"),
         Dense(10, activation="softmax"),
     ],
 )
 
-model.compile(loss="MAE", learning_rate=0.1, optimizer="SGD")
+model.compile(loss="multiclass_cross_entropy", learning_rate=0.001, optimizer="SGD")
 
 history = model.fit(test_data, epochs=10)
