@@ -81,7 +81,7 @@ class Sequential(BaseModel):
 
         return x
 
-    def fit(self, train_data: np.ndarray, epochs: int = 1) -> list[float]:
+    def fit(self, train_x: np.ndarray, train_y: np.ndarray, epochs: int = 1) -> list[float]:
         """Optimize model's parameters depending on data."""
         if not self._compiled:
             raise Exception("You must compile model before fitting it!")
@@ -89,10 +89,10 @@ class Sequential(BaseModel):
         history = []
         for epoch in range(epochs):
             metric = 0.0
-            msg = f"Epoch {epoch}/{epochs}"
-            data_len = 0
-            for sample in tqdm(train_data, desc=msg):
-                x, y = sample
+            msg = f"Epoch {epoch+1}/{epochs}"
+            data_len = len(train_x)
+            for sample in tqdm(range(data_len), desc=msg):
+                x, y = train_x[sample], train_y[sample]
                 intermediate_results = [x]
                 for layer in self.layers:
                     x = layer.propagate(x)

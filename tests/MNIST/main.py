@@ -1,8 +1,11 @@
 import numpy as np
+from tqdm import tqdm
 
 from recpulse.layers import Dense
 from recpulse.models import Sequential
 
+
+print("Load data")
 data = np.load("tests/MNIST/mnist.npz")
 print("Data loaded successfully")
 
@@ -14,18 +17,21 @@ def one_hot(val):
     return result
 
 
-def train_data_generator(data):
-    for i in range(len(data["train_x"])):
-        yield data["train_x"][i].reshape((28**2,)), one_hot(data["train_y"][i])
+def data_generator(data, key_x: str, key_y: str):
+    length = len(data[key_x])
+    x = data[key_x].reshape(-1, 28**2) / 256
+    y = np.zeros(shape=(length, 10), dtype=np.bool_)
+    msg = f"One hot encoding {key_y}"
+    for i in tqdm(range(length), desc=msg):
+        y[i] = one_hot(data[key_y][i])
+
+    return x, y
 
 
-def test_data_generator(data):
-    for i in range(len(data["test_x"])):
-        yield data["test_x"][i].reshape((28**2,)), one_hot(data["test_y"][i])
-
-
-train_data = train_data_generator(data)
-test_data = test_data_generator(data)
+print("Reformat the data")
+train_x, train_y = data_generator(data, "train_x", "train_y")
+test_x, test_y = data_generator(data, "test_x", "test_y")
+print("Data reformatted successfully")
 
 model = Sequential(
     input_shape=(784,),
@@ -38,4 +44,4 @@ model = Sequential(
 
 model.compile(loss="multiclass_cross_entropy", learning_rate=0.001, optimizer="SGD")
 
-history = model.fit(test_data, epochs=10)
+history = model.fit(train_x, train_y, epochs=10)
