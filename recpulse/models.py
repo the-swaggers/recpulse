@@ -4,8 +4,11 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
 from tqdm import tqdm
 
-from recpulse.dtypes import LOSSES, OPTIMIZERS, STR2DLOSS, STR2LOSS
+from recpulse.dtypes import LOSSES, METRICS, OPTIMIZERS, STR2DLOSS, STR2LOSS
 from recpulse.layers import Dense
+from recpulse.metrics import metric
+
+PRECISIONS = float | np.float16 | np.float32 | np.float64
 
 
 class Sequential(BaseModel):
@@ -46,6 +49,10 @@ class Sequential(BaseModel):
         if name in {"input_shape", "layers", "learning_rate", "optimizer"}:
             self._compiled = False
         super().__setattr__(name, value)
+
+    @property
+    def output_size(self):
+        return self.layers[-1].output_size
 
     def compile(
         self, loss: LOSSES = "MSE", learning_rate: float = 0.001, optimizer: OPTIMIZERS = "SGD"
@@ -88,7 +95,7 @@ class Sequential(BaseModel):
 
         history = []
         for epoch in range(epochs):
-            metric = 0.0
+            metric_val = 0.0
             msg = f"Epoch {epoch+1}/{epochs}"
             data_len = len(train_x)
             for sample in tqdm(range(data_len), desc=msg):
@@ -99,7 +106,7 @@ class Sequential(BaseModel):
                     intermediate_results.append(x)
 
                 loss = STR2LOSS[self.loss](intermediate_results[-1], y)  # type: ignore
-                metric += loss  # type: ignore
+                metric_val += loss  # type: ignore
 
                 error = STR2DLOSS[self.loss](intermediate_results[-1], y)  # type: ignore
 
@@ -111,8 +118,27 @@ class Sequential(BaseModel):
                         tune=True,
                     )
                 data_len += 1
-            metric /= data_len
-            print(metric)
-            history.append(metric)
+            metric_val /= data_len
+            print(metric_val)
+            history.append(metric_val)
 
         return history
+
+    def evaluate(self, x: np.ndarray, y: np.ndarray, metric_type: METRICS) -> PRECISIONS:
+        """Evaluate the model."""
+
+        if x.shape[0] != y.shape[0]:
+            raise ValueError("Different sizes of input dataset sand output dataset sizes.")
+        if x[0].shape != self.input_shape:
+            raise ValueError("Wrong input size.")
+        if y[0].shape != self.output_size:
+            raise ValueError("Wrong output size.")
+
+        sum: PRECISIONS = 0.0
+
+        for sample in range(len(x)):
+            sum += metric(self.predict(x[sample]), y, metric_type=metric_type)
+
+        sum /= len(x)
+
+        return sum
