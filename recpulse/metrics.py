@@ -12,9 +12,7 @@ def binary_class_confusion_matrix(preds: np.ndarray, outputs: np.ndarray) -> np.
         raise ValueError("Different sizes of inputs and outputs datasets!")
 
     preds = np.rint(preds)
-
     matrix = np.zeros(shape=(2, 2), dtype=int)
-
     data_len = len(preds)
 
     for sample in range(data_len):
@@ -41,7 +39,7 @@ def multiclass_confusion_matrix(preds: np.ndarray, outputs: np.ndarray) -> np.nd
     return matrix
 
 
-def metric(preds: np.ndarray, outputs: np.ndarray, metric: METRICS) -> PRECISIONS:
+def metric(preds: np.ndarray, outputs: np.ndarray, metric_type: METRICS) -> PRECISIONS:
     """Evaluate model using the given metrics."""
 
     if preds.shape != outputs.shape:
@@ -49,12 +47,12 @@ def metric(preds: np.ndarray, outputs: np.ndarray, metric: METRICS) -> PRECISION
 
     shape = preds.shape
 
-    if metric in ["MSE", "MAE", "multiclass_cross_entropy", "binary_cross_entropy"]:
+    if metric_type in ["MSE", "MAE", "multiclass_cross_entropy", "binary_cross_entropy"]:
         data_len = len(preds)
         total: PRECISIONS = 0.0
 
         for sample in range(data_len):
-            total += STR2LOSS[metric](preds[sample], outputs[sample])
+            total += STR2LOSS[metric_type](preds[sample], outputs[sample])
 
         return total / data_len
 
@@ -66,14 +64,18 @@ def metric(preds: np.ndarray, outputs: np.ndarray, metric: METRICS) -> PRECISION
     else:
         matrix = multiclass_confusion_matrix(preds, outputs)
 
-    match metric:
+    number_of_classes = len(matrix)
+
+    match metric_type:
         case "accuracy":
             return np.trace(matrix) / np.sum(matrix)
         case "precision":
-            pass
+            return np.sum(np.diag(matrix) / np.sum(matrix, axis=0)) / number_of_classes
         case "recall":
-            pass
+            return np.sum(np.diag(matrix) / np.sum(matrix, axis=1)) / number_of_classes
         case "f1-score":
-            pass
+            precision = metric(preds=preds, outputs=outputs, metric_type="precision")
+            recall = metric(preds=preds, outputs=outputs, metric_type="recall")
+            return 2 * precision * recall / (precision + recall)
         case _:
             raise ValueError("Incorrect metric is used.")
