@@ -47,7 +47,9 @@ def metric(preds: np.ndarray, outputs: np.ndarray, metric: METRICS) -> PRECISION
     if preds.shape != outputs.shape:
         raise ValueError("Different sizes of inputs and outputs datasets!")
 
-    if metric in ["MSE", " MAE", "multiclass_cross_entropy", "binary_cross_entropy"]:
+    shape = preds.shape
+
+    if metric in ["MSE", "MAE", "multiclass_cross_entropy", "binary_cross_entropy"]:
         data_len = len(preds)
         total: PRECISIONS = 0.0
 
@@ -56,4 +58,22 @@ def metric(preds: np.ndarray, outputs: np.ndarray, metric: METRICS) -> PRECISION
 
         return total / data_len
 
-    return 0
+    if len(shape) > 2 or len(shape) < 2:
+        raise ValueError("This metric supports only a shape of (d, n)")
+
+    if shape[1] == 1:
+        matrix = binary_class_confusion_matrix(preds, outputs)
+    else:
+        matrix = multiclass_confusion_matrix(preds, outputs)
+
+    match metric:
+        case "accuracy":
+            return np.trace(matrix) / np.sum(matrix)
+        case "precision":
+            pass
+        case "recall":
+            pass
+        case "f1-score":
+            pass
+        case _:
+            raise ValueError("Incorrect metric is used.")
