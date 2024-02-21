@@ -63,3 +63,14 @@ STR2DLOSS = {
 }
 
 OPTIMIZERS = Literal["SGD"]
+
+METRICS = Literal[
+    "MSE",
+    "MAE",
+    "multiclass_cross_entropy",
+    "binary_cross_entropy",
+    "accuracy",
+    "precision",
+    "recall",
+    "f1-score",
+]

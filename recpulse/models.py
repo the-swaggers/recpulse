@@ -1,8 +1,8 @@
 from typing import Any
 
 import numpy as np
-from tqdm import tqdm
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
+from tqdm import tqdm
 
 from recpulse.dtypes import LOSSES, OPTIMIZERS, STR2DLOSS, STR2LOSS
 from recpulse.layers import Dense

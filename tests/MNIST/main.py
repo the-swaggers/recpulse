@@ -4,7 +4,6 @@ from tqdm import tqdm
 from recpulse.layers import Dense
 from recpulse.models import Sequential
 
-
 print("Load data")
 data = np.load("tests/MNIST/mnist.npz")
 print("Data loaded successfully")
