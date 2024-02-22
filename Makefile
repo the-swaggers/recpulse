@@ -18,6 +18,9 @@ lint:
 	@mypy recpulse/*.py tests/*.py tests/MNIST/main.py
 	@echo "run isort"
 	@isort recpulse/*.py tests/*.py tests/MNIST/main.py
+
+
+docstyle:
 	@echo "run pydocstyle"
 	@pydocstyle recpulse/*.py tests/*.py tests/MNIST/main.py
 
