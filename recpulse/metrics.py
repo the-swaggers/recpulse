@@ -41,7 +41,7 @@ def multiclass_confusion_matrix(preds: TENSOR_TYPE, outputs: TENSOR_TYPE) -> TEN
 def metric(preds: TENSOR_TYPE, outputs: TENSOR_TYPE, metric_type: METRICS) -> PRECISIONS:
     """Evaluate model using the given metrics."""
 
-    if preds.shape != outputs.shape:
+    if preds.shape[0] != outputs.shape[0]:
         raise ValueError("Different sizes of inputs and outputs datasets!")
 
     shape = preds.shape
