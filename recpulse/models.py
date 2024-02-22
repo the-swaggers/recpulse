@@ -51,13 +51,13 @@ class Sequential(BaseModel):
         super().__setattr__(name, value)
 
     @property
-    def output_size(self):
-        return self.layers[-1].output_size
+    def output_shape(self):
+        return self.layers[-1].output_shape
 
     def compile(
         self, loss: LOSSES = "MSE", learning_rate: float = 0.001, optimizer: OPTIMIZERS = "SGD"
     ) -> None:
-        """Set input sizes and initializes weights."""
+        """Set input shapes and initializes weights."""
         input_shape = self.input_shape
         for layer in self.layers:
             if layer.input_shape is None:
@@ -130,9 +130,9 @@ class Sequential(BaseModel):
         if x.shape[0] != y.shape[0]:
             raise ValueError("Different sizes of input dataset sand output dataset sizes.")
         if x[0].shape != self.input_shape:
-            raise ValueError("Wrong input size.")
-        if y[0].shape != self.output_size:
-            raise ValueError("Wrong output size.")
+            raise ValueError("Wrong input shape.")
+        if y[0].shape != self.output_shape:
+            raise ValueError("Wrong output shape.")
 
         sum: PRECISIONS = 0.0
 

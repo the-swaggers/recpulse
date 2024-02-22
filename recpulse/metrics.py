@@ -34,7 +34,7 @@ def multiclass_confusion_matrix(preds: np.ndarray, outputs: np.ndarray) -> np.nd
     data_len = len(preds)
 
     for sample in range(data_len):
-        matrix[np.argmax(preds[sample])][outputs[sample]] += 1
+        matrix[np.argmax(preds[sample])][np.argmax(outputs[sample])] += 1
 
     return matrix
 
