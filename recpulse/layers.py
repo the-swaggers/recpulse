@@ -1,31 +1,80 @@
 from typing import Any, Callable
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 from recpulse.dtypes import ACTIVATIONS, STR2ACTIVATION, STR2DACTIVATION
-from recpulse.np_dtypes import TENSOR_TYPE
+from recpulse.np_dtypes import PRECISIONS, SHAPE_TYPE, TENSOR_TYPE
 
 
 class Dense(BaseModel):
     """Dense layer class.
 
-    Layer that connects all inputs to all outputs and adds biases.
+    A fully connected layer where each input neuron connects to all output
+    neurons, with biases added.
+
+    Args:
+        output_shape (SHAPE_TYPE | int): The desired output shape of the layer,
+            specified as a tuple of integers (e.g., (10,) for 10 output neurons).
+            If an integer is provided, it's converted to a tuple.
+        input_shape (SHAPE_TYPE | None, optional): The input shape expected by the
+            layer. If None, weights will be initialized upon the first call
+            to the `propagate` method. Defaults to None.
+        activation (ACTIVATIONS, optional): The activation function to be
+            applied. Can be one of the supported strings defined in the
+            `ACTIVATIONS` literal type. Defaults to "linear".
+        name (StrictStr | None, optional): An optional name for the layer.
+            Defaults to None.
+
+    Attributes:
+        model_config (ConfigDict): Internal configuration for the Pydantic model.
+        output_shape (SHAPE_TYPE): The finalized output shape of the layer.
+        input_shape (SHAPE_TYPE | None): The finalized input shape of the layer.
+        name (StrictStr | None): The name of the layer.
+        activation (Callable[[Any], TENSOR_TYPE]): The callable activation function.
+        d_activation (Callable[[Any], TENSOR_TYPE]): The callable derivative
+            of the activation function.
+        _weights (TENSOR_TYPE | None): The internal weight matrix of the layer.
+
+    Raises:
+        ValueError: If invalid values for `output_shape`, `input_shape`,
+            `standard_deviation` in `initialize_weights`, or
+            `input_shape` in `propagate` are provided.
+        AttributeError: If `weights` is accessed before initialization.
     """
 
     model_config = ConfigDict(validate_assignment=True)
 
-    output_shape: tuple = Field(frozen=True)
-    input_shape: tuple | None = None
+    output_shape: SHAPE_TYPE = Field(frozen=True)
+    input_shape: SHAPE_TYPE | None = None
     name: StrictStr | None = None
     activation: Callable[[Any], TENSOR_TYPE] = Field(frozen=True)
     d_activation: Callable[[Any], TENSOR_TYPE] = Field(frozen=True)
-    _weights: np.ndarray | None = None
+    _weights: TENSOR_TYPE | None = None
 
     @field_validator("output_shape", mode="after")
     @classmethod
-    def validate_output_shape(cls, shape: tuple) -> tuple:
-        """Output shape validator."""
+    def validate_output_shape(cls, shape: SHAPE_TYPE) -> SHAPE_TYPE:
+        """Validates the provided output shape for the Dense layer.
+
+        Args:
+            shape (SHAPE_TYPE): The proposed output shape for the layer.
+
+        Returns:
+             SHAPE_TYPE: The validated output shape.
+
+        Raises:
+            ValueError: If the output shape is empty, has more than one dimension,
+                contains a non-integer value, or has a non-positive output size.
+        """
         if len(shape) == 0:
             raise ValueError("The output shape must contain output neurons.")
         if len(shape) > 1:
@@ -39,8 +88,20 @@ class Dense(BaseModel):
 
     @field_validator("input_shape", mode="after")
     @classmethod
-    def validate_input_shape(cls, shape: tuple) -> tuple | None:
-        """Input shape validator."""
+    def validate_input_shape(cls, shape: SHAPE_TYPE) -> SHAPE_TYPE | None:
+        """Validates the provided input shape for the Dense layer.
+
+        Args:
+            shape (SHAPE_TYPE): The proposed input shape for the layer.
+
+        Returns:
+            SHAPE_TYPE | None: The validated input shape as a tuple, or None if the
+                input shape is not specified.
+
+        Raises:
+             ValueError: If the input shape is empty, has more than one dimension,
+                 contains a non-integer value, or has a non-positive input size.
+        """
         if shape is None:
             return None
         if len(shape) == 0:
@@ -56,19 +117,37 @@ class Dense(BaseModel):
 
     @model_validator(mode="after")  # type: ignore
     def validate_model_params(self) -> None:
-        """Model validator."""
+        """Ensures consistency between the input shape and weight matrix dimensions.
+
+        Raises:
+            ValueError: If the input shape (+1 for bias) does not match the
+                number of columns in the initialized weight matrix.
+        """
         if self.input_shape is not None and self._weights is not None:
             if self.input_shape[0] + 1 != self._weights.shape[1]:
                 raise ValueError("Input shape does not match weights shape.")
 
     def __init__(
         self,
-        output_shape: tuple | int,
-        input_shape: tuple | None = None,
+        output_shape: SHAPE_TYPE | StrictInt,
+        input_shape: SHAPE_TYPE | None = None,
         activation: ACTIVATIONS = "linear",
         name: StrictStr | None = None,
     ) -> None:
-        """Class initializer."""
+        """Initializes a Dense layer instance.
+
+        Args:
+            output_shape (SHAPE_TYPE | StrictInt): The desired output shape of the layer.
+                If an integer is provided, it's converted to a tuple (e.g., 10 becomes (10,)).
+            input_shape (SHAPE_TYPE | None, optional): The expected input shape. If
+                None, weights will be initialized later during the first call
+                to the `propagate` method. Defaults to None.
+            activation (ACTIVATIONS, optional): The activation function to use.
+                Must be one of the supported strings defined in the `ACTIVATIONS`
+                literal type. Defaults to "linear".
+            name (StrictStr | None, optional): An optional name for the layer.
+                Defaults to None.
+        """
         if isinstance(output_shape, int):
             output_shape = (output_shape,)
         super().__init__(
@@ -84,22 +163,28 @@ class Dense(BaseModel):
 
     def initialize_weights(
         self,
-        input_shape: tuple | None = None,
-        mean: float | None = None,
-        standard_deviation: float | None = None,
+        input_shape: SHAPE_TYPE | None = None,
+        mean: PRECISIONS | None = None,
+        standard_deviation: PRECISIONS | None = None,
     ) -> None:
-        """Weights initializer.
+        """Initializes the weight matrix for the Dense layer.
 
-        Creates a numpy array of shape (input_size + 1, self.output_size) with integers
-        randomly generated by normal distribution.
+        Weights are randomly generated using a normal distribution. If no input shape
+        is provided, it checks if the `input_shape` attribute is set.
 
-        input_size + 1 is used instead of input_size to include biases for this layer.
+        Args:
+            input_shape (SHAPE_TYPE | None, optional): The input shape for the layer.
+                Used if not already defined in the layer's `input_shape` attribute.
+                Defaults to None.
+            mean (PRECISIONS | None, optional): The mean of the normal distribution
+                for weight initialization. Defaults to 0.
+            standard_deviation (PRECISIONS | None, optional): The standard deviation of
+                the normal distribution. Defaults to 1.
 
-        Inputs:
-            input_size (int): size of the previous neuron layer.
-            mean (float): mean of normal distribution for weights initialization.
-            standard_deviation (float): standard deviation of normal distribution
-                 for weights initialization.
+        Raises:
+            ValueError: If an input shape is not provided and cannot be inferred
+                from the `input_shape` attribute.
+            ValueError: If the standard deviation is less than or equal to zero.
         """
 
         if self._weights is not None:
@@ -127,14 +212,17 @@ class Dense(BaseModel):
             size=(self.output_shape[0], self.input_shape[0] + 1),  # type: ignore
         )
 
-    def propagate(self, inputs: np.ndarray) -> np.ndarray:
-        """Propagates input tensor.
+    def propagate(self, inputs: TENSOR_TYPE) -> TENSOR_TYPE:
+        """Propagates an input tensor through the Dense layer.
 
-        Inputs:
-            inputs (np.array): an array of shape (self.input_size, )
+        Args:
+            inputs (TENSOR_TYPE): The input array representing data for the layer.
 
         Returns:
-            np.array: an array of shape (self.output_size, )
+            TENSOR_TYPE: The output array after applying weights and the activation function.
+
+        Raises:
+            ValueError: If weights or the activation function haven't been initialized.
         """
 
         if self._weights is None:
@@ -152,13 +240,39 @@ class Dense(BaseModel):
 
     @property
     def initialized(self) -> bool:
-        """Return True if weights are initialized, False otherwise."""
+        """Indicates whether the layer's weights have been initialized.
+
+        Returns:
+            bool: True if weights are initialized, False otherwise.
+        """
         return self._weights is not None
 
     def back_propagate(
-        self, error: np.ndarray, inputs: np.ndarray, learning_rate: float = 0.001, tune: bool = True
-    ) -> float:
-        """Back propagation."""
+        self,
+        error: TENSOR_TYPE,
+        inputs: TENSOR_TYPE,
+        learning_rate: PRECISIONS = 0.001,
+        tune: bool = True,
+    ) -> PRECISIONS:
+        """Performs backpropagation for the Dense layer.
+
+        Calculates the error gradient, updates weights (if `tune` is True), and
+        returns the error to be propagated to the previous layer.
+
+        Args:
+            error (TENSOR_TYPE): The error gradient from the subsequent layer.
+            inputs (TENSOR_TYPE): The input data used in forward propagation.
+            learning_rate (PRECISIONS, optional): The learning rate to apply during
+                weight updates. Defaults to 0.001.
+            tune (bool, optional): Controls whether to update the layer's weights.
+                Defaults to True.
+
+        Returns:
+            PRECISIONS: The error value to be propagated to the previous layer.
+
+        Raises:
+            ValueError: If the layer's weights haven't been initialized.
+        """
         if self._weights is None:
             raise ValueError("Weights aren't initialized!")
 

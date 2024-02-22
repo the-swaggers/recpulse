@@ -1,6 +1,7 @@
 from typing import Any, Literal
 
 import numpy as np
+from pydantic import StrictInt
 
 import recpulse.activations as activations
 import recpulse.differentiated_activations as d_activations
@@ -9,6 +10,7 @@ import recpulse.losses as losses
 
 PRECISIONS = float | np.float16 | np.float32 | np.float64
 TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
+SHAPE_TYPE = tuple[StrictInt]
 
 ACTIVATIONS = Literal[
     "linear",
