@@ -1,3 +1,14 @@
+""" Layers.
+================================================================
+Contains:
+    Class `Dense` - class of a layer with pairwise connections
+        between all input and output neurons.
+================================================================
+Authors: maksym-petrenko
+Contact: maksym.petrenko.a@gmail.com
+License: MIT
+================================================================
+"""
 from typing import Any, Callable
 
 import numpy as np

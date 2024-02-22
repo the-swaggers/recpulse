@@ -1,3 +1,14 @@
+""" Models.
+================================================================
+Contains:
+    Class `Sequential` - class of a model with common
+        feed-forward architecture.
+================================================================
+Authors: maksym-petrenko
+Contact: maksym.petrenko.a@gmail.com
+License: MIT
+================================================================
+"""
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_validator
