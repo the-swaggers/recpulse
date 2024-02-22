@@ -1,11 +1,10 @@
 import numpy as np
 
 from recpulse.dtypes import METRICS, STR2LOSS
+from recpulse.np_dtypes import PRECISIONS, TENSOR_TYPE
 
-PRECISIONS = float | np.float16 | np.float32 | np.float64
 
-
-def binary_class_confusion_matrix(preds: np.ndarray, outputs: np.ndarray) -> np.ndarray:
+def binary_class_confusion_matrix(preds: TENSOR_TYPE, outputs: TENSOR_TYPE) -> TENSOR_TYPE:
     """Create a confusion matrix of shape (2, 2)."""
 
     if preds.shape != outputs.shape:
@@ -21,7 +20,7 @@ def binary_class_confusion_matrix(preds: np.ndarray, outputs: np.ndarray) -> np.
     return matrix
 
 
-def multiclass_confusion_matrix(preds: np.ndarray, outputs: np.ndarray) -> np.ndarray:
+def multiclass_confusion_matrix(preds: TENSOR_TYPE, outputs: TENSOR_TYPE) -> TENSOR_TYPE:
     """Create a confusion matrix of shape (number_of_classes, number_of_classes)."""
 
     if preds.shape != outputs.shape:
@@ -39,7 +38,7 @@ def multiclass_confusion_matrix(preds: np.ndarray, outputs: np.ndarray) -> np.nd
     return matrix
 
 
-def metric(preds: np.ndarray, outputs: np.ndarray, metric_type: METRICS) -> PRECISIONS:
+def metric(preds: TENSOR_TYPE, outputs: TENSOR_TYPE, metric_type: METRICS) -> PRECISIONS:
     """Evaluate model using the given metrics."""
 
     if preds.shape != outputs.shape:

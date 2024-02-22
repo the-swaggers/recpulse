@@ -4,9 +4,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 
 from recpulse.dtypes import ACTIVATIONS, STR2ACTIVATION, STR2DACTIVATION
-
-PRECISIONS = float | np.float16 | np.float32 | np.float64
-TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
+from recpulse.np_dtypes import TENSOR_TYPE
 
 
 class Dense(BaseModel):

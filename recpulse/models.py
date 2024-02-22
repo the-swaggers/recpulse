@@ -1,14 +1,19 @@
 from typing import Any
 
-import numpy as np
 from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
 from tqdm import tqdm
 
-from recpulse.dtypes import LOSSES, METRICS, OPTIMIZERS, STR2DLOSS, STR2LOSS
+from recpulse.dtypes import (
+    LOSSES,
+    METRICS,
+    OPTIMIZERS,
+    PRECISIONS,
+    STR2DLOSS,
+    STR2LOSS,
+    TENSOR_TYPE,
+)
 from recpulse.layers import Dense
 from recpulse.metrics import metric
-
-PRECISIONS = float | np.float16 | np.float32 | np.float64
 
 
 class Sequential(BaseModel):
@@ -149,7 +154,7 @@ class Sequential(BaseModel):
         self.optimizer = optimizer
         self._compiled = True
 
-    def predict(self, inputs: np.ndarray) -> np.ndarray:
+    def predict(self, inputs: TENSOR_TYPE) -> TENSOR_TYPE:
         """Generates predictions for the provided input data.
 
         Args:
@@ -172,7 +177,7 @@ class Sequential(BaseModel):
 
         return x
 
-    def fit(self, train_x: np.ndarray, train_y: np.ndarray, epochs: int = 1) -> list[float]:
+    def fit(self, train_x: TENSOR_TYPE, train_y: TENSOR_TYPE, epochs: int = 1) -> list[float]:
         """Trains the model on the provided data.
 
         Args:
@@ -220,7 +225,7 @@ class Sequential(BaseModel):
 
         return history
 
-    def evaluate(self, x: np.ndarray, y: np.ndarray, metric_type: METRICS) -> PRECISIONS:
+    def evaluate(self, x: TENSOR_TYPE, y: TENSOR_TYPE, metric_type: METRICS) -> PRECISIONS:
         """Evaluates the model's performance on provided data using a specified metric.
 
         Args:

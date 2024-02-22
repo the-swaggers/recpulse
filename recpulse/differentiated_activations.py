@@ -1,11 +1,7 @@
-from typing import Any
-
 import numpy as np
 
 import recpulse.activations as activations
-
-PRECISIONS = float | np.float16 | np.float32 | np.float64
-TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
+from recpulse.np_dtypes import TENSOR_TYPE
 
 
 def reshape(matrix: TENSOR_TYPE, shape: tuple) -> TENSOR_TYPE:

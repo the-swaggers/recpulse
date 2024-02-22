@@ -1,9 +1,14 @@
-from typing import Literal
+from typing import Any, Literal
+
+import numpy as np
 
 import recpulse.activations as activations
 import recpulse.differentiated_activations as d_activations
 import recpulse.differentiated_losses as d_losses
 import recpulse.losses as losses
+
+PRECISIONS = float | np.float16 | np.float32 | np.float64
+TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
 
 ACTIVATIONS = Literal[
     "linear",

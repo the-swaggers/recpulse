@@ -1,9 +1,6 @@
-from typing import Any
-
 import numpy as np
 
-PRECISIONS = float | np.float16 | np.float32 | np.float64
-TENSOR_TYPE = np.ndarray[PRECISIONS, Any]
+from recpulse.np_dtypes import TENSOR_TYPE
 
 
 def mse(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
