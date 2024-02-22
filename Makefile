@@ -1,10 +1,10 @@
 help:
 	@echo "help - display this message"
 	@echo "format - formats all .py files and makes sure they are styled well"
-
-
-test:
-	@pytest tests/*.py
+	@echo "lint - static type checker"
+	@echo "docstyle - checks docstrings"
+	@echo "test - run unit tests"
+	@echo "test_mnist - run simple NN on MNIST dataset (this one is a way heavier task)"
 
 
 format:
@@ -23,6 +23,10 @@ lint:
 docstyle:
 	@echo "run pydocstyle"
 	@pydocstyle recpulse/*.py tests/*.py tests/MNIST/main.py
+
+
+test:
+	@pytest tests/*.py
 
 
 test_mnist:
