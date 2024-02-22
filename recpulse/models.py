@@ -12,7 +12,34 @@ PRECISIONS = float | np.float16 | np.float32 | np.float64
 
 
 class Sequential(BaseModel):
-    """Sequential model class."""
+    """Defines a sequential neural network model.
+
+    A sequential model consists of a linear stack of layers, allowing for the
+    construction of common feedforward neural network architectures. This class
+    provides essential methods for compiling, training, and evaluating such models.
+
+    Args:
+        input_shape: A tuple of integers defining the shape of the model's input data.
+        layers: A list of `Dense` layer objects defining the model's architecture.
+        learning_rate: A float specifying the learning rate for the optimizer (default: 0.001).
+        loss: A member of the `LOSSES` enumeration:
+            * 'MSE' (Mean Squared Error)
+            * 'MAE' (Mean Absolute Error)
+            * 'multiclass_cross_entropy' (Categorical Crossentropy)
+            * 'binary_cross_entropy' (Binary Crossentropy)
+        optimizer:  Currently supports only 'SGD' (Stochastic Gradient Descent).
+
+    Attributes:
+        model_config: A Pydantic configuration class ensuring data validation.
+        _compiled:  A boolean flag indicating whether the model has been compiled.
+        output_shape: A tuple representing the shape of the model's output.
+
+    Raises:
+        ValueError: If any of the following conditions occur:
+            - An invalid layer type is provided in the `layers` list.
+            - The `input_shape` contains non-positive dimensions.
+            - Layer input and output shapes are incompatible.
+    """
 
     model_config = ConfigDict(validate_assignment=True)
 
@@ -26,7 +53,20 @@ class Sequential(BaseModel):
     @field_validator("layers", mode="after")
     @classmethod
     def validate_layers(cls, layers: list[object]) -> list[object]:
-        """Layers validator."""
+        """Ensures all layers provided in the `layers` list are valid.
+
+        This method acts as a validator, guaranteeing that only instances of the
+        `Dense` class are included within the model architecture.
+
+        Args:
+            layers: A list of layer objects intended for the sequential model.
+
+        Raises:
+            ValueError: If any layer in the `layers` list is not a `Dense` object.
+
+        Returns:
+            list[object]: The original list of layers if validation is successful.
+        """
         for layer in layers:
             if not isinstance(layer, Dense):
                 raise ValueError("Wrong layers class is used")
@@ -36,7 +76,23 @@ class Sequential(BaseModel):
     @field_validator("input_shape", mode="after")
     @classmethod
     def validate_input_shape(cls, shape: tuple) -> tuple:
-        """Input shape validator."""
+        """Validates the provided input shape for the sequential model.
+
+        Ensures the input shape meets these criteria:
+            * Contains only positive integer dimensions.
+            * Has at least one dimension (specifying output neurons).
+
+        Args:
+            shape: A tuple of integers representing the expected input shape.
+
+        Raises:
+            ValueError: If either of the following conditions are violated:
+                * The input shape contains any non-positive dimensions.
+                * The input shape is empty.
+
+        Returns:
+            tuple: The original input shape if validation is successful.
+        """
         if len(shape) == 0:
             raise ValueError("The output shape must contain output neurons.")
         for dim in shape:
@@ -46,12 +102,33 @@ class Sequential(BaseModel):
         return shape
 
     def __setattr__(self, name: str, value: Any) -> None:
+        """Overrides default attribute setting behavior.
+
+        Primarily used to manage model compilation status. If any of the following
+        attributes are modified, the model's compiled status is reset:
+            * 'input_shape'
+            * 'layers'
+            * 'learning_rate'
+            * 'optimizer'
+
+        Args:
+            name: The name of the attribute being set.
+            value: The new value to be assigned to the attribute.
+        """
         if name in {"input_shape", "layers", "learning_rate", "optimizer"}:
             self._compiled = False
         super().__setattr__(name, value)
 
     @property
-    def output_shape(self):
+    def output_shape(self) -> tuple[StrictInt]:
+        """Gets the output shape of the sequential model.
+
+        The output shape is in fact the output shape of the final layer in the
+        model's `layers` list.
+
+        Returns:
+            tuple[StrictInt]: A tuple representing the output shape of the model.
+        """
         return self.layers[-1].output_shape
 
     def compile(
@@ -73,10 +150,17 @@ class Sequential(BaseModel):
         self._compiled = True
 
     def predict(self, inputs: np.ndarray) -> np.ndarray:
-        """Pass inputs through all the layers and return outputs.
+        """Generates predictions for the provided input data.
+
+        Args:
+            inputs: A NumPy array containing the input data. The shape of the array
+                should be compatible with the model's `input_shape`.
 
         Returns:
-            TENSOR_TYPE: tensor with predictions.
+            A NumPy array containing the model's predictions for the given inputs.
+
+        Raises:
+            Exception: If the model has not been compiled.
         """
         if not self._compiled:
             raise Exception("You must compile model before making predictions!")
@@ -89,7 +173,19 @@ class Sequential(BaseModel):
         return x
 
     def fit(self, train_x: np.ndarray, train_y: np.ndarray, epochs: int = 1) -> list[float]:
-        """Optimize model's parameters depending on data."""
+        """Trains the model on the provided data.
+
+        Args:
+            train_x: A NumPy array containing the training input data.
+            train_y: A NumPy array containing the corresponding target outputs.
+            epochs: The number of iterations to run over the training dataset.
+
+        Returns:
+            A list of floats representing the loss value for each epoch.
+
+        Raises:
+            Exception: If the model has not been compiled.
+        """
         if not self._compiled:
             raise Exception("You must compile model before fitting it!")
 
@@ -125,8 +221,22 @@ class Sequential(BaseModel):
         return history
 
     def evaluate(self, x: np.ndarray, y: np.ndarray, metric_type: METRICS) -> PRECISIONS:
-        """Evaluate the model."""
+        """Evaluates the model's performance on provided data using a specified metric.
 
+        Args:
+            x: A NumPy array containing the input data.
+            y: A NumPy array containing the corresponding target outputs.
+            metric_type: A member of the `METRICS` enum indicating the metric to use
+                for evaluation.
+
+        Returns:
+            The calculated metric value (e.g., an accuracy score). The exact data type
+            depends on the chosen metric.
+
+        Raises:
+            ValueError: If there's a mismatch between input and output shapes, or if
+                the input shape is incompatible with the model.
+        """
         if x.shape[0] != y.shape[0]:
             raise ValueError("Different sizes of input dataset sand output dataset sizes.")
         if x[0].shape != self.input_shape:
