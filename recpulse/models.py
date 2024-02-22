@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from tqdm import tqdm
 
 from recpulse.dtypes import (
@@ -8,6 +8,7 @@ from recpulse.dtypes import (
     METRICS,
     OPTIMIZERS,
     PRECISIONS,
+    SHAPE_TYPE,
     STR2DLOSS,
     STR2LOSS,
     TENSOR_TYPE,
@@ -48,9 +49,9 @@ class Sequential(BaseModel):
 
     model_config = ConfigDict(validate_assignment=True)
 
-    input_shape: tuple[StrictInt]
+    input_shape: SHAPE_TYPE
     layers: list[Any]
-    learning_rate: StrictFloat = 0.001
+    learning_rate: float = 0.001
     loss: LOSSES | None = None
     optimizer: OPTIMIZERS | None = None
     _compiled: bool = False
@@ -80,7 +81,7 @@ class Sequential(BaseModel):
 
     @field_validator("input_shape", mode="after")
     @classmethod
-    def validate_input_shape(cls, shape: tuple) -> tuple:
+    def validate_input_shape(cls, shape: SHAPE_TYPE) -> SHAPE_TYPE:
         """Validates the provided input shape for the sequential model.
 
         Ensures the input shape meets these criteria:
@@ -96,7 +97,7 @@ class Sequential(BaseModel):
                 * The input shape is empty.
 
         Returns:
-            tuple: The original input shape if validation is successful.
+            SHAPE_TYPE: The original input shape if validation is successful.
         """
         if len(shape) == 0:
             raise ValueError("The output shape must contain output neurons.")
@@ -125,21 +126,43 @@ class Sequential(BaseModel):
         super().__setattr__(name, value)
 
     @property
-    def output_shape(self) -> tuple[StrictInt]:
+    def output_shape(self) -> SHAPE_TYPE:
         """Gets the output shape of the sequential model.
 
         The output shape is in fact the output shape of the final layer in the
         model's `layers` list.
 
         Returns:
-            tuple[StrictInt]: A tuple representing the output shape of the model.
+            SHAPE_TYPE: A tuple representing the output shape of the model.
         """
         return self.layers[-1].output_shape
 
     def compile(
         self, loss: LOSSES = "MSE", learning_rate: float = 0.001, optimizer: OPTIMIZERS = "SGD"
     ) -> None:
-        """Set input shapes and initializes weights."""
+        """Prepares the model for training.
+
+        This method performs the following steps:
+            1. **Shape Validation:** Ensures compatibility between the input
+                shapes of consecutive layers.
+            2. **Weight Initialization:** Initializes weights for any layers
+                that haven't been initialized yet.
+            3. **Sets Compilation Settings:** Stores the specified loss function,
+                learning rate, and optimizer.
+            4. **Marks Model as Compiled:** Sets the `_compiled` flag to True.
+
+        Args:
+            loss (LOSSES, optional): The loss function to use for training.
+                Supported options are 'MSE', 'MAE', 'multiclass_cross_entropy',
+                and 'binary_cross_entropy'. Defaults to "MSE".
+            learning_rate (float, optional): The learning rate for the optimizer.
+                Defaults to 0.001. optimizer (OPTIMIZERS, optional): The optimizer to use.
+                Currently only supports 'SGD' (Stochastic Gradient Descent). Defaults to "SGD".
+
+        Raises:
+            ValueError: If the input shape of any layer is incompatible with the output shape of the
+                previous layer.
+        """
         input_shape = self.input_shape
         for layer in self.layers:
             if layer.input_shape is None:
@@ -158,11 +181,11 @@ class Sequential(BaseModel):
         """Generates predictions for the provided input data.
 
         Args:
-            inputs: A NumPy array containing the input data. The shape of the array
+            inputs (TENSOR_TYPE): An array containing the input data. The shape of the array
                 should be compatible with the model's `input_shape`.
 
         Returns:
-            A NumPy array containing the model's predictions for the given inputs.
+            TENSOR_TYPE: An array containing the model's predictions for the given inputs.
 
         Raises:
             Exception: If the model has not been compiled.
@@ -177,16 +200,17 @@ class Sequential(BaseModel):
 
         return x
 
-    def fit(self, train_x: TENSOR_TYPE, train_y: TENSOR_TYPE, epochs: int = 1) -> list[float]:
+    def fit(self, train_x: TENSOR_TYPE, train_y: TENSOR_TYPE, epochs: int = 1) -> list[PRECISIONS]:
         """Trains the model on the provided data.
 
         Args:
-            train_x: A NumPy array containing the training input data.
-            train_y: A NumPy array containing the corresponding target outputs.
-            epochs: The number of iterations to run over the training dataset.
+            train_x (TENSOR_TYPE): An array containing the training input data.
+            train_y (TENSOR_TYPE): An array containing the corresponding target outputs.
+            epochs (int, optional): The number of iterations to run over the training dataset.
+                Defaults to 1.
 
         Returns:
-            A list of floats representing the loss value for each epoch.
+            list[PRECISIONS]: A list of floats representing the loss value for each epoch.
 
         Raises:
             Exception: If the model has not been compiled.
@@ -194,7 +218,7 @@ class Sequential(BaseModel):
         if not self._compiled:
             raise Exception("You must compile model before fitting it!")
 
-        history = []
+        history: list[PRECISIONS] = []
         for epoch in range(epochs):
             metric_val = 0.0
             msg = f"Epoch {epoch+1}/{epochs}"
@@ -229,14 +253,14 @@ class Sequential(BaseModel):
         """Evaluates the model's performance on provided data using a specified metric.
 
         Args:
-            x: A NumPy array containing the input data.
-            y: A NumPy array containing the corresponding target outputs.
-            metric_type: A member of the `METRICS` enum indicating the metric to use
+            x (TENSOR_TYPE): An array containing the input data.
+            y (TENSOR_TYPE): An array containing the corresponding target outputs.
+            metric_type (METRICS): A member of the `METRICS` enum indicating the metric to use
                 for evaluation.
 
         Returns:
-            The calculated metric value (e.g., an accuracy score). The exact data type
-            depends on the chosen metric.
+            PRECISIONS: The calculated metric value (e.g., an accuracy score). The exact data type
+                depends on the chosen metric.
 
         Raises:
             ValueError: If there's a mismatch between input and output shapes, or if

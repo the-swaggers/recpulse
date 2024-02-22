@@ -186,7 +186,6 @@ class Dense(BaseModel):
                 from the `input_shape` attribute.
             ValueError: If the standard deviation is less than or equal to zero.
         """
-
         if self._weights is not None:
             raise AttributeError("Weights are already initialized.")
 
@@ -224,7 +223,6 @@ class Dense(BaseModel):
         Raises:
             ValueError: If weights or the activation function haven't been initialized.
         """
-
         if self._weights is None:
             raise ValueError("Weights aren't initialized!")
         if self.activation is None:
