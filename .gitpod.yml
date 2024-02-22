@@ -13,4 +13,5 @@ tasks:
       echo "Activating the environment..."
       conda activate recpulse
       pre-commit install
+      mypy .
       yes | mypy --install-types
