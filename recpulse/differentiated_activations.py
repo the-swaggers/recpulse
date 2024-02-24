@@ -1,3 +1,23 @@
+"""Differentiated activations.
+================================================================
+Contains:
+  Derivatives (Jacobi matrices) of these functions:
+    linear         : Linear activation function (pass-through).
+    sigmoid        : Sigmoid activation function.
+    softmax        : Softmax activation function.
+    relu           : Rectified Linear Unit (ReLU) activation function.
+    leaky_relu     : Leaky ReLU activation function.
+    parametric_relu: Parametric ReLU activation function.
+    tanh           : Hyperbolic tangent activation function.
+    arctan         : Arctangent activation function.
+    elu            : Exponential Linear Unit (ELU) activation function.
+    swish          : Swish activation function.
+================================================================
+Authors: maksym-petrenko
+Contact: maksym.petrenko.a@gmail.com
+License: MIT
+================================================================
+"""
 import numpy as np
 
 import recpulse.activations as activations

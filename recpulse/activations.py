@@ -41,17 +41,17 @@ def softmax(x: TENSOR_TYPE) -> TENSOR_TYPE:
 
 
 def relu(x: TENSOR_TYPE) -> TENSOR_TYPE:
-    """ReLU activation function."""
+    """Relu activation function."""
     return np.where(x >= 0, x, 0)
 
 
 def leaky_relu(x: TENSOR_TYPE) -> TENSOR_TYPE:
-    """Leaky ReLU activation function."""
+    """Leaky Relu activation function."""
     return np.where(x >= 0, x, 0.1 * x)
 
 
 def parametric_relu(x: TENSOR_TYPE, alpha: float = 0) -> TENSOR_TYPE:
-    """Parametric ReLU activation function."""
+    """Parametric Relu activation function."""
     return np.where(x >= 0, x, alpha * x)
 
 
@@ -66,7 +66,7 @@ def arctan(x: TENSOR_TYPE) -> TENSOR_TYPE:
 
 
 def elu(x: TENSOR_TYPE, alpha: float = 1) -> TENSOR_TYPE:
-    """ELU activation function."""
+    """Elu activation function."""
     return np.where(x >= 0, x, alpha * (np.exp(-x) - 1))
 
 
