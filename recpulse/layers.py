@@ -1,4 +1,4 @@
-""" Layers.
+"""Layers.
 ================================================================
 Contains:
     Class `Dense` - class of a layer with pairwise connections

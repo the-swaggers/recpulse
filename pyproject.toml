@@ -8,3 +8,5 @@ line_length = 100
 
 [tool.pydocstyle]
 convention = "google"
+# ignore requirements for module docstring format
+add-ignore = "D205"

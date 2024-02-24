@@ -1,4 +1,4 @@
-""" Models.
+"""Models.
 ================================================================
 Contains:
     Class `Sequential` - class of a model with common
