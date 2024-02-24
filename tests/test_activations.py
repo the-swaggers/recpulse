@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import numpy as np
 
@@ -14,7 +15,7 @@ with open("tests/test_data/ndarrays4activations.json") as f:
 
 class TestClassActivations:
     @staticmethod
-    def match_functions(function, activation, parametric: bool = False, alpha=None):
+    def match_functions(function, activation, parametric: bool = False, alpha: Any = None):
         """Go through all elements of each np.ndarray from all test
         sets and check activations at each point."""
         for array in NDARRAYS.values():
@@ -34,7 +35,7 @@ class TestClassActivations:
 
     @staticmethod
     def linear(x):
-        """Linear function"""
+        """Linear function."""
         return x
 
     def test_linear(self):
@@ -43,7 +44,7 @@ class TestClassActivations:
 
     @staticmethod
     def sigmoid(x):
-        """Linear function"""
+        """Sigmoid function."""
         return 1 / (1 + np.exp(-x))
 
     def test_sigmoid(self):
@@ -67,7 +68,7 @@ class TestClassActivations:
 
     @staticmethod
     def relu(x):
-        """Linear function"""
+        """Relu function."""
         return x if x >= 0 else 0
 
     def test_relu(self):
@@ -76,7 +77,7 @@ class TestClassActivations:
 
     @staticmethod
     def leaky_relu(x):
-        """Linear function"""
+        """Leaky relu function."""
         return x if x >= 0 else 0.1 * x
 
     def test_leaky_relu(self):
@@ -85,28 +86,20 @@ class TestClassActivations:
 
     @staticmethod
     def parametric_relu(x, alpha):
-        """Linear function"""
+        """Parametric relu function."""
         return x if x >= 0 else alpha * x
 
     def test_parametric_relu(self):
         """Python tester."""
         # check with different parameters
-        self.match_functions(
-            self.parametric_relu, activations.parametric_relu, parametric=True, alpha=0
-        )
-        self.match_functions(
-            self.parametric_relu, activations.parametric_relu, parametric=True, alpha=1
-        )
-        self.match_functions(
-            self.parametric_relu, activations.parametric_relu, parametric=True, alpha=16
-        )
-        self.match_functions(
-            self.parametric_relu, activations.parametric_relu, parametric=True, alpha=0.23521426573
-        )
+        for param in [0, 1, 16, 0.23521426573]:
+            self.match_functions(
+                self.parametric_relu, activations.parametric_relu, parametric=True, alpha=param
+            )
 
     @staticmethod
     def tanh(x):
-        """Linear function"""
+        """Tanh function."""
         return np.tanh(x)
 
     def test_tanh(self):
@@ -115,7 +108,7 @@ class TestClassActivations:
 
     @staticmethod
     def arctan(x):
-        """Linear function"""
+        """Arctan function."""
         return np.arctan(x)
 
     def test_arctan(self):
@@ -124,7 +117,7 @@ class TestClassActivations:
 
     @staticmethod
     def elu(x, alpha):
-        """Linear function"""
+        """Elu function."""
         return x if x >= 0 else alpha * (np.exp(-x) - 1)
 
     def test_elu(self):
@@ -137,7 +130,7 @@ class TestClassActivations:
 
     @staticmethod
     def swish(x):
-        """Linear function"""
+        """Swish function."""
         return x / (1 + np.exp(-x))
 
     def test_swish(self):
