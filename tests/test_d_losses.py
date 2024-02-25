@@ -41,3 +41,23 @@ class TestClassDifferentiatedLosses:
     def test_d_mae(self):
         """Python tester."""
         self.match_d_functions(self.d_mae, d_losses.mae, "regression")
+
+    @staticmethod
+    def d_cross_entropy(x, y):
+        return y / x
+
+    def test_d_cross_entropy(self):
+        """Python tester."""
+        self.match_d_functions(
+            self.d_cross_entropy, d_losses.cross_entropy, "multiclass_cross_entropy"
+        )
+
+    @staticmethod
+    def d_binary_cross_entropy(x, y):
+        return y / x - (1 - y) / (1 - x)
+
+    def test_d_binary_cross_entropy(self):
+        """Python tester."""
+        self.match_d_functions(
+            self.d_binary_cross_entropy, d_losses.binary_cross_entropy, "binary_cross_entropy"
+        )
