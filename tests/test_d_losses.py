@@ -2,6 +2,8 @@ import json
 
 import numpy as np
 
+import recpulse.differentiated_losses as d_losses
+
 # load test data from file
 # arrays are stored and not generated for better reproducibility of any errors
 with open("tests/test_data/ndarrays4losses.json") as f:
@@ -14,11 +16,28 @@ with open("tests/test_data/ndarrays4losses.json") as f:
 
 class TestClassDifferentiatedLosses:
     @staticmethod
-    def match_d_functions(function, activation):
+    def match_d_functions(function, loss, category):
         """Go through all elements of each np.ndarray from all test
         sets and check activations at each point."""
-        for category in NDARRAYS.values():
-            for instance in category.values():
-                function_answer = function(instance["x"], instance["y"])
-                expected = activation(instance["x"], instance["y"])
-                assert np.isclose(function_answer, expected).all
+        for instance in NDARRAYS[category].values():
+            function_answer = function(instance["x"], instance["y"])
+            expected = loss(instance["x"], instance["y"])
+            assert np.isclose(function_answer, expected).all
+
+    @staticmethod
+    def d_mse(x, y):
+        """Differentiated MSE loss function."""
+        return (2 * (y - x)) / x.size
+
+    def test_d_mse(self):
+        """Python tester."""
+        self.match_d_functions(self.d_mse, d_losses.mse, "regression")
+
+    @staticmethod
+    def d_mae(x, y):
+        """Differentiated MAE loss function."""
+        return np.sign(y - x) / x.size
+
+    def test_d_mae(self):
+        """Python tester."""
+        self.match_d_functions(self.d_mae, d_losses.mae, "regression")
