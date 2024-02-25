@@ -11,7 +11,6 @@ with open("tests/test_data/ndarrays4losses.json") as f:
     NDARRAYS = json.load(f)
     for category in NDARRAYS.keys():
         for key in NDARRAYS[category].keys():
-            print(NDARRAYS[category][key])
             NDARRAYS[category][key]["x"] = np.array(NDARRAYS[category][key]["x"])
             NDARRAYS[category][key]["y"] = np.array(NDARRAYS[category][key]["y"])
 
