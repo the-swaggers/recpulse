@@ -1,7 +1,7 @@
 """Layers.
 ================================================================
 Contains:
-    Class `Dense` - class of a layer with pairwise connections
+    Class `Dense`: class of a layer with pairwise connections
         between all input and output neurons.
 ================================================================
 Authors: maksym-petrenko

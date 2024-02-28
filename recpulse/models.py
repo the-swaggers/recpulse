@@ -1,7 +1,7 @@
 """Models.
 ================================================================
 Contains:
-    Class `Sequential` - class of a model with common
+    Class `Sequential`: class of a model with common
         feed-forward architecture.
 ================================================================
 Authors: maksym-petrenko

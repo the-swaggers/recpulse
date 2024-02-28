@@ -1,3 +1,19 @@
+"""Metrics.
+================================================================
+Contains:
+  Functions:
+    `binary_class_confusion_matrix`: Calculates confusion
+        matrix for a set of predictions and expected values
+    `multiclass_confusion_matrix`: Calculates confusion
+        matrix for a set of predictions and expected values
+    `metrics`: Calculates the given metric for a set of
+        predictions and expected values
+================================================================
+Authors: maksym-petrenko
+Contact: maksym.petrenko.a@gmail.com
+License: MIT
+================================================================
+"""
 import numpy as np
 
 from recpulse.dtypes import METRICS, STR2LOSS
@@ -5,8 +21,15 @@ from recpulse.np_dtypes import PRECISIONS, TENSOR_TYPE
 
 
 def binary_class_confusion_matrix(preds: TENSOR_TYPE, outputs: TENSOR_TYPE) -> TENSOR_TYPE:
-    """Create a confusion matrix of shape (2, 2)."""
+    """Creates a confusion matrix for binary classification tasks.
 
+    Args:
+        preds (TENSOR_TYPE): An array of model predictions (probabilities or class labels).
+        outputs (TENSOR_TYPE): An array of true target labels.
+
+    Returns:
+        TENSOR_TYPE: An array representing the confusion matrix with shape (2, 2).
+    """
     if preds.shape != outputs.shape:
         raise ValueError("Different sizes of inputs and outputs datasets!")
 
@@ -21,8 +44,16 @@ def binary_class_confusion_matrix(preds: TENSOR_TYPE, outputs: TENSOR_TYPE) -> T
 
 
 def multiclass_confusion_matrix(preds: TENSOR_TYPE, outputs: TENSOR_TYPE) -> TENSOR_TYPE:
-    """Create a confusion matrix of shape (number_of_classes, number_of_classes)."""
+    """Creates a confusion matrix for multiclass classification tasks.
 
+    Args:
+        preds (TENSOR_TYPE): An array of model predictions (probabilities or class labels).
+        outputs (TENSOR_TYPE): An array of true target labels.
+
+    Returns:
+        TENSOR_TYPE: An array representing the confusion matrix with
+            shape (number_of_classes, number_of_classes).
+    """
     if preds.shape != outputs.shape:
         raise ValueError("Different sizes of inputs and outputs datasets!")
 
@@ -39,8 +70,18 @@ def multiclass_confusion_matrix(preds: TENSOR_TYPE, outputs: TENSOR_TYPE) -> TEN
 
 
 def metric(preds: TENSOR_TYPE, outputs: TENSOR_TYPE, metric_type: METRICS) -> PRECISIONS:
-    """Evaluate model using the given metrics."""
+    """Calculates a specified performance metric for model evaluation.
 
+    Args:
+        preds (TENSOR_TYPE): An array of model predictions.
+        outputs (TENSOR_TYPE): An array of true target labels.
+        metric_type: A string indicating the desired metric from the supported options
+                     ('MSE', 'MAE', 'multiclass_cross_entropy', 'binary_cross_entropy',
+                     'accuracy', 'precision', 'recall', 'f1-score').
+
+    Returns:
+        The calculated value of the specified metric.
+    """
     if preds.shape[0] != outputs.shape[0]:
         raise ValueError("Different sizes of inputs and outputs datasets!")
 
