@@ -287,7 +287,7 @@ class Sequential(BaseModel):
         sum: PRECISIONS = 0.0
 
         for sample in range(len(x)):
-            sum += metric(self.predict(x[sample]), y, metric_type=metric_type)
+            sum += metric(self.predict(x[sample]), y[sample], metric_type=metric_type)
 
         sum /= len(x)
 

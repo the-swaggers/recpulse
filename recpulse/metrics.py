@@ -82,7 +82,7 @@ def metric(preds: TENSOR_TYPE, outputs: TENSOR_TYPE, metric_type: METRICS) -> PR
     Returns:
         The calculated value of the specified metric.
     """
-    if preds.shape[0] != outputs.shape[0]:
+    if preds.shape != outputs.shape:
         raise ValueError("Different sizes of inputs and outputs datasets!")
 
     shape = preds.shape
