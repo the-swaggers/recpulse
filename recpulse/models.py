@@ -284,11 +284,8 @@ class Sequential(BaseModel):
         if y[0].shape != self.output_shape:
             raise ValueError("Wrong output shape.")
 
-        sum: PRECISIONS = 0.0
-
-        for sample in range(len(x)):
-            sum += metric(self.predict(x[sample]), y[sample], metric_type=metric_type)
-
-        sum /= len(x)
-
-        return sum
+        return metric(
+            [self.predict(x[sample]) for sample in range(len(x))],  # type: ignore
+            y,
+            metric_type=metric_type,
+        )
