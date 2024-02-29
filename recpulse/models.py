@@ -11,6 +11,7 @@ License: MIT
 """
 from typing import Any
 
+import numpy as np
 from pydantic import BaseModel, ConfigDict, field_validator
 from tqdm import tqdm
 
@@ -285,7 +286,7 @@ class Sequential(BaseModel):
             raise ValueError("Wrong output shape.")
 
         return metric(
-            [self.predict(x[sample]) for sample in range(len(x))],  # type: ignore
+            np.array([self.predict(x[sample]) for sample in range(len(x))]),
             y,
             metric_type=metric_type,
         )
