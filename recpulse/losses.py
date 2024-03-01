@@ -14,28 +14,40 @@ Contact: maksym.petrenko.a@gmail.com
 License: MIT
 ================================================================
 """
+from typing import Callable
+
 import numpy as np
+from numba import njit  # type: ignore
 
 from recpulse.np_dtypes import PRECISIONS, TENSOR_TYPE
 
 
-def validate_tensors(x: TENSOR_TYPE, y: TENSOR_TYPE) -> None:
-    """Verifies that two tensors have compatible shapes.
+def validate_tensors(func: Callable) -> Callable:
+    """Decorator to ensure compatible shapes for input tensors.
 
-    This function is intended to ensure that input data shapes are suitable for
-    operations that require matching dimensions.
+    This decorator checks if two input tensors have the same shape before
+    passing them to the decorated function.
 
     Args:
-        x (TENSOR_TYPE): The first tensor.
-        y (TENSOR_TYPE): The second tensor.
+        func (Callable): The function to be decorated.
+
+    Returns:
+        Callable: The decorated function.
 
     Raises:
-        ValueError: If the tensors have incompatible shapes.
+        ValueError: If the input tensors have incompatible shapes.
     """
-    if x.shape != y.shape:
-        raise ValueError("Incompatible tensors.")
+
+    def wrapper(x: TENSOR_TYPE, y: TENSOR_TYPE):
+        if x.shape != y.shape:
+            raise ValueError("Incompatible tensors.")
+        return func(x, y)
+
+    return wrapper
 
 
+@validate_tensors
+@njit
 def mse(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     """Calculates the Mean Squared Error (MSE) between predictions and targets.
 
@@ -52,12 +64,13 @@ def mse(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     Raises:
         ValueError: If the shapes of 'x' and 'y' are not compatible.
     """
-    validate_tensors(x, y)
     size = x.size
 
     return np.sum((x - y) ** 2) / size
 
 
+@validate_tensors
+@njit
 def mae(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     """Calculates the Mean Absolute Error (MAE) between predictions and targets.
 
@@ -74,12 +87,13 @@ def mae(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     Raises:
         ValueError: If the shapes of 'x' and 'y' are not compatible.
     """
-    validate_tensors(x, y)
     size = x.size
 
     return np.sum(abs(x - y)) / size
 
 
+@validate_tensors
+@njit
 def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     """Calculates the cross-entropy loss for multiclass classification.
 
@@ -99,7 +113,6 @@ def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
         ValueError: If the shapes of 'x' and 'y' are not compatible.
         ValueError: If the values in 'x' or 'y' are outside the range [0, 1].
     """
-    validate_tensors(x, y)
 
     if not ((0 <= x <= 1).all() and (0 <= y <= 1).all()):
         raise ValueError(
@@ -110,6 +123,8 @@ def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     return -np.sum(y * np.log(x))
 
 
+@validate_tensors
+@njit
 def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     """Calculates the binary cross-entropy loss for binary classification.
 
@@ -128,7 +143,6 @@ def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
         ValueError: If the shapes of 'x' and 'y' are not compatible.
         ValueError: If the values in 'x' or 'y' are outside the range [0, 1].
     """
-    validate_tensors(x, y)
 
     if x.shape != (1,):
         raise ValueError(
