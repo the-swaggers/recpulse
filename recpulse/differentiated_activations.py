@@ -18,92 +18,95 @@ Contact: maksym.petrenko.a@gmail.com
 License: MIT
 ================================================================
 """
+from typing import Callable
+
 import numpy as np
+from numba import njit  # type: ignore
 
 import recpulse.activations as activations
 from recpulse.np_dtypes import TENSOR_TYPE
 
 
-def reshape(matrix: TENSOR_TYPE, shape: tuple) -> TENSOR_TYPE:
+def reshape(func: Callable) -> Callable:
     """Reshape Jacobi matrix to appropriate tensor."""
-    return matrix.reshape(shape + shape)
+
+    def wrapper(x: TENSOR_TYPE, *alpha):
+        shape = x.shape
+        if len(alpha) == 0:
+            matrix = func(x.flatten())
+        else:
+            matrix = func(x.flatten(), alpha[0])
+        return matrix.reshape(shape + shape)
+
+    return wrapper
 
 
+@reshape
+@njit
 def linear(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of linear activation function."""
-    shape = x.shape
-    matrix = np.identity(x.size)
-    return reshape(matrix, shape)
+    return np.identity(x.size)
 
 
+@reshape
+@njit
 def sigmoid(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of sigmoid activation function."""
-    shape = x.shape
-    x = x.flatten()
-    matrix = np.diag(activations.sigmoid(x) * (1 - activations.sigmoid(x)))
-    return reshape(matrix, shape)
+    return np.diag(activations.sigmoid(x) * (1 - activations.sigmoid(x)))
 
 
+@reshape
+@njit
 def softmax(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of softmax activation function."""
-    shape = x.shape
-    x = x.flatten()
     activated = activations.softmax(x)
-    matrix = np.diag(activated) - np.tensordot(activated, activated, axes=0)
-    return reshape(matrix, shape)
+    return np.subtract(np.diag(activated), np.dot(np.expand_dims(activated, axis=0), activated.T))
 
 
+@reshape
+@njit
 def relu(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of ReLU activation function."""
-    shape = x.shape
-    x = x.flatten()
-    matrix = np.diag(np.where(x >= 0, 1, 0))
-    return reshape(matrix, shape)
+    return np.diag(np.where(x >= 0, 1, 0))
 
 
+@reshape
+@njit
 def leaky_relu(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of leaky ReLU activation function."""
-    shape = x.shape
-    x = x.flatten()
-    matrix = np.diag(np.where(x >= 0, 1, 0.1))
-    return reshape(matrix, shape)
+    return np.diag(np.where(x >= 0, 1, 0.1))
 
 
+@reshape
+@njit
 def parametric_relu(x: TENSOR_TYPE, alpha: float = 0) -> TENSOR_TYPE:
     """Derivative of parametric ReLU activation function."""
-    shape = x.shape
-    x = x.flatten()
-    matrix = np.diag(np.where(x >= 0, 1, alpha))
-    return reshape(matrix, shape)
+    return np.diag(np.where(x >= 0, 1, alpha))
 
 
+@reshape
+@njit
 def tanh(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of tanh activation function."""
-    shape = x.shape
-    x = x.flatten()
-    matrix = np.diag(1 - np.tanh(x) ** 2)
-    return reshape(matrix, shape)
+    return np.diag(1 - np.tanh(x) ** 2)
 
 
+@reshape
+@njit
 def arctan(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of arctan activation function."""
-    shape = x.shape
-    x = x.flatten()
-    matrix = np.diag(1 / (1 + x**2))
-    return reshape(matrix, shape)
+    return np.diag(1 / (1 + x**2))
 
 
+@reshape
+@njit
 def elu(x: TENSOR_TYPE, alpha: float = 1) -> TENSOR_TYPE:
     """Derivative of ELU activation function."""
-    shape = x.shape
-    x = x.flatten()
-    matrix = np.diag(np.where(x >= 0, 1, -alpha * np.exp(-x)))
-    return reshape(matrix, shape)
+    return np.diag(np.where(x >= 0, 1, -alpha * np.exp(-x)))
 
 
+@reshape
+@njit
 def swish(x: TENSOR_TYPE) -> TENSOR_TYPE:
     """Derivative of swish activation function."""
-    shape = x.shape
-    x = x.flatten()
-    matrix = np.diag(activations.sigmoid(x) * (1 + x * (1 - activations.sigmoid(x))))
-    return reshape(matrix, shape)
+    return np.diag(activations.sigmoid(x) * (1 + x * (1 - activations.sigmoid(x))))

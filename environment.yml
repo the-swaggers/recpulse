@@ -17,3 +17,4 @@ dependencies:
   - pydocstyle=6.3.0
   - tqdm=4.66.2
   - numba=0.59.0
+  - scipy=1.12.0
