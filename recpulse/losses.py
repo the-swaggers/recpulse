@@ -101,19 +101,13 @@ def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     """
     validate_tensors(x, y)
 
-    indices = list(zip(*[axis.flatten() for axis in np.indices(x.shape)]))
+    if not ((0 <= x <= 1).all() and (0 <= y <= 1).all()):
+        raise ValueError(
+            "Both predictions and outputs must be within range of [0; 1]. "
+            "You can use softmax to deal with it."
+        )
 
-    result = 0
-
-    for index in indices:
-        if not (0 <= x[index] <= 1 and 0 <= y[index] <= 1):
-            raise ValueError(
-                "Both predictions and outputs must be within range of [0; 1]. "
-                "You can use softmax to deal with it."
-            )
-        result -= y[index] * np.log(x[index])
-
-    return result
+    return -np.sum(y * np.log(x))
 
 
 def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
