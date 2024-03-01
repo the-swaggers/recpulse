@@ -87,9 +87,7 @@ def mae(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
     Raises:
         ValueError: If the shapes of 'x' and 'y' are not compatible.
     """
-    size = x.size
-
-    return np.sum(abs(x - y)) / size
+    return np.mean(np.absolute(x - y))
 
 
 @validate_tensors
@@ -114,7 +112,7 @@ def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> PRECISIONS:
         ValueError: If the values in 'x' or 'y' are outside the range [0, 1].
     """
 
-    if not ((0 <= x <= 1).all() and (0 <= y <= 1).all()):
+    if not ((0 <= x).all() and (x <= 1).all() and (0 <= y).all() and (x <= 1).all()):
         raise ValueError(
             "Both predictions and outputs must be within range of [0; 1]. "
             "You can use softmax to deal with it."

@@ -35,7 +35,7 @@ class TestClassActivations:
         for data in NDARRAYS["regression"].values():
             loss = abs(data["x"] - data["y"]) / data["x"].size
 
-            assert np.isclose(loss, losses.mse(data["x"], data["y"])).all
+            assert np.isclose(loss, losses.mae(data["x"], data["y"])).all
 
     def test_mae_validation(self):
         """Python tester."""
@@ -54,7 +54,7 @@ class TestClassActivations:
             for index in indices:
                 loss -= data["x"][index] * np.log(data["y"][index])
 
-            assert np.isclose(loss, losses.mse(data["x"], data["y"])).all
+            assert np.isclose(loss, losses.cross_entropy(data["x"], data["y"])).all
 
     def test_multiclass_cross_entropy_validation(self):
         """Python tester."""
@@ -73,7 +73,7 @@ class TestClassActivations:
                 (1 - data["y"][0])
             )
 
-            assert np.isclose(loss, losses.mse(data["x"], data["y"])).all
+            assert np.isclose(loss, losses.binary_cross_entropy(data["x"], data["y"])).all
 
     def test_binary_cross_entropy_validation(self):
         """Python tester."""
