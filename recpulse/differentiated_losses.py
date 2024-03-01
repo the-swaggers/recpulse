@@ -20,10 +20,14 @@ License: MIT
 ================================================================
 """
 import numpy as np
+from numba import njit  # type: ignore
 
+from recpulse.losses import validate_tensors
 from recpulse.np_dtypes import TENSOR_TYPE
 
 
+@validate_tensors
+@njit
 def mse(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     """Calculates the derivative of the Mean Squared Error (MSE) loss function.
 
@@ -41,13 +45,13 @@ def mse(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     Raises:
         ValueError: If the shapes of 'x' and 'y' are not compatible.
     """
-    if x.shape != y.shape:
-        raise ValueError("Incompatible tensors.")
     size = x.size
 
     return (2 * (y - x)) / size
 
 
+@validate_tensors
+@njit
 def mae(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     """Calculates the derivative of the Mean Absolute Error (MAE) loss function.
 
@@ -65,13 +69,13 @@ def mae(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     Raises:
         ValueError: If the shapes of 'x' and 'y' are not compatible.
     """
-    if x.shape != y.shape:
-        raise ValueError("Incompatible tensors.")
     size = x.size
 
     return np.sign(y - x) / size
 
 
+@validate_tensors
+@njit
 def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     """Calculates the derivative of the cross-entropy loss function for multiclass classification.
 
@@ -89,21 +93,18 @@ def cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
         ValueError: If the shapes of 'x' and 'y' are not compatible.
         ValueError: If the values in 'x' or 'y' are outside the range [0, 1].
     """
-    if x.shape != y.shape:
-        raise ValueError("Incompatible tensors.")
 
-    indices = list(zip(*[axis.flatten() for axis in np.indices(x.shape)]))
-
-    for index in indices:
-        if not (0 <= x[index] <= 1 and 0 <= y[index] <= 1):
-            raise ValueError(
-                "Both predictions and outputs must be within range of [0; 1]. "
-                "You can use softmax to deal with it."
-            )
+    if not ((0 <= x).all() and (x <= 1).all() and (0 <= y).all() and (x <= 1).all()):
+        raise ValueError(
+            "Both predictions and outputs must be within range of [0; 1]. "
+            "You can use softmax to deal with it."
+        )
 
     return y / x
 
 
+@validate_tensors
+@njit
 def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
     """Calculates the derivative of the binary cross-entropy loss function.
 
@@ -121,8 +122,6 @@ def binary_cross_entropy(x: TENSOR_TYPE, y: TENSOR_TYPE) -> TENSOR_TYPE:
         ValueError: If the shapes of 'x' and 'y' are not compatible.
         ValueError: If the values in 'x' or 'y' are outside the range [0, 1].
     """
-    if x.shape != y.shape:
-        raise ValueError("Incompatible tensors.")
     if x.shape != (1,):
         raise ValueError(
             "Incorrect shape. If dealing with multiple classes use Cross Entropy instead."
