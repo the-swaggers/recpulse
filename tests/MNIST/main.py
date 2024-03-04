@@ -18,7 +18,7 @@ def one_hot(val):
 
 def data_generator(data, key_x: str, key_y: str):
     length = len(data[key_x])
-    x = data[key_x].reshape(-1, 28**2) / 256
+    x = data[key_x].reshape(-1, 28**2)
     y = np.zeros(shape=(length, 10), dtype=np.bool_)
     msg = f"One hot encoding {key_y}"
     for i in tqdm(range(length), desc=msg):
@@ -28,7 +28,7 @@ def data_generator(data, key_x: str, key_y: str):
 
 
 print("Reformat the data")
-train_x, train_y = data_generator(data, "train_x", "train_y")
+# train_x, train_y = data_generator(data, "train_x", "train_y")
 test_x, test_y = data_generator(data, "test_x", "test_y")
 print("Data reformatted successfully")
 
@@ -43,10 +43,9 @@ model = Sequential(
 model.compile(loss="multiclass_cross_entropy", learning_rate=0.001, optimizer="SGD")
 
 
-for i in range(100):
-    print(model.predict(test_x[i]))
-
 history = model.fit(test_x, test_y, epochs=10)
+
+print(history)
 
 print(model.evaluate(test_x, test_y, "accuracy"))
 
