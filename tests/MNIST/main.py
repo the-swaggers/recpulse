@@ -35,13 +35,21 @@ print("Data reformatted successfully")
 model = Sequential(
     input_shape=(784,),
     layers=[
-        Dense(16, activation="relu"),
+        Dense(16, activation="sigmoid"),
         Dense(10, activation="softmax"),
     ],
 )
 
 model.compile(loss="multiclass_cross_entropy", learning_rate=0.001, optimizer="SGD")
 
-history = model.fit(train_x, train_y, epochs=1)
+
+for i in range(100):
+    print(model.predict(test_x[i]))
+
+history = model.fit(test_x, test_y, epochs=10)
 
 print(model.evaluate(test_x, test_y, "accuracy"))
+
+
+for i in range(100):
+    print(model.predict(test_x[i]))
