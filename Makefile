@@ -31,3 +31,9 @@ test:
 
 test_mnist:
 	@python -m tests.MNIST.main
+
+
+build_cuda:
+	@nvcc -o cuda_utils/tensor.so --shared -Xcompiler -fPIC cuda_utils/tensor.cu
+	@nvcc -o cuda_utils/libcuda_config.so --shared -Xcompiler -fPIC cuda_utils/cuda_config.cu
+
