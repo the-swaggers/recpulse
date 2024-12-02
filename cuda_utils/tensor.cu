@@ -3,17 +3,13 @@
 #include <stdio.h>
 
 
-void debug_log(const char* message) {
-    FILE* log_file = fopen("/home/drexon/projects/recpulse/cuda_utils/tensor_debug.log", "a");
-    if (log_file == NULL) {
-        fprintf(stderr, "Could not open log file. Error message: %s\n", message);
-        return;
-    }
+void log_message(const char* message) {
+    FILE* log_file = fopen("/home/drexon/projects/recpulse/cuda_utils/cuda_debug.log", "a");
+    
     fprintf(log_file, "%s\n", message);
     fflush(log_file);
     fclose(log_file);
 }
-
 
 __global__ void fill_kernel_scalar(float* vals, float value, size_t size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -22,11 +18,9 @@ __global__ void fill_kernel_scalar(float* vals, float value, size_t size) {
     }
 }
 
-__global__ void fill_kernel_vals(float* vals, float* new_vals, size_t size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        vals[idx] = new_vals[idx];
-    }
+void fill_kernel_vals(Tensor32* tensor, float* new_vals, size_t size) {
+    cudaMemcpy(tensor->vals, new_vals, tensor->size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaDeviceSynchronize(); 
 }
 
 
@@ -61,11 +55,38 @@ void fill_tensor_scalar(Tensor32* tensor, float value) {
 }
 
 void fill_tensor_vals(Tensor32* tensor, float* new_vals) {
+    char str[50];
+    int size = tensor->size;
+
+    str[0] = '\0';
+    char temp[10];
+    for (int i = 0; i < size; i++) {
+        sprintf(temp, "%.6f ", new_vals[i]);
+        strcat(str, temp);
+    }
+
+    log_message(str);
+
     int block_size = 256;
     int num_blocks = (tensor->size + block_size - 1) / block_size;
     
-    fill_kernel_vals<<<num_blocks, block_size>>>(tensor->vals, new_vals, tensor->size);
-    cudaDeviceSynchronize();
+    sprintf(temp, "%d ", num_blocks);
+    log_message(temp);
+
+    fill_kernel_vals(tensor, new_vals, tensor->size);
+
+    float arr[tensor->size];
+    
+    sprintf(temp, "%.4f ", arr[1]);
+    log_message(temp);
+  
+    arr[1] = 1.1111;
+
+    vals_from_tensor(tensor, arr);
+    
+    log_message("haha");
+    sprintf(temp, "%.4f ", arr[1]);
+    log_message(temp);
 }
 
 void vals_from_tensor(Tensor32* tensor, float* array) {

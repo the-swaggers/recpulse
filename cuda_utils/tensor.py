@@ -56,9 +56,15 @@ class Tensor:
         
         vals = flatten(vals)
         new_vals = (ctypes.c_float * len(vals))(*vals)
+
+        arr1 = self.to_numpy()
+
         self.fill_vals(new_vals)
-        print("chikipuki")
-    
+        
+        arr2 = self.to_numpy()
+
+        print(arr1, arr2)
+
     def fill_vals(self, new_vals) -> None:
         self.__lib.fill_tensor_vals(self.__tensor_ptr, new_vals)
     
