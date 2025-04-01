@@ -2,25 +2,23 @@
 #define TENSOR_CUH
 
 
-// supports float32 only for simplicity
-// TODO - add support for other types
 typedef struct {
-    float* vals;
+    void* vals;
     int* shape;
     int ndim;
     size_t size;
-} Tensor32;
+} Tensor;
 
 extern "C" {
-    Tensor32* create_tensor(int* shape, int ndim);
-    void free_tensor(Tensor32* tensor);
-    void fill_tensor_scalar(Tensor32* tensor, float value);
-    void fill_tensor_vals(Tensor32* tensor, float* new_vals);
-    float element_from_tensor(Tensor32* tensor, int* idx);
-    void vals_from_tensor(Tensor32* tensor, float* array);
-    void free_array(float* arr);
+    Tensor* create_tensor(int* shape, int ndim);
+    void free_tensor(Tensor* tensor);
+    void fill_tensor_scalar(Tensor* tensor, void value);
+    void fill_tensor_vals(Tensor* tensor, void* new_vals);
+    float element_from_tensor(Tensor* tensor, int* idx);
+    void vals_from_tensor(Tensor* tensor, void* array);
+    void free_array(void* arr);
 }
 
-__global__ void fill_kernel(float* vals, float value, size_t size);
+__global__ void fill_kernel(void* vals, void value, size_t size);
 
 #endif

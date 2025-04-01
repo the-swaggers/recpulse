@@ -104,13 +104,17 @@ class Tensor:
     def __str__(self):
         return str(self.to_numpy())
 
-a = Tensor([[0, 1], [2, 3]], shape=(2,2))
+if __name__ == "__main__":
+    import os
+    os.remove("cuda_debug.log")
+    
+    a = Tensor([[0, 1], [2, 3]], shape=(2,2))
 
-print("adas")
-
-arr = a.to_numpy()
-
-print(arr)
-
-print(a[0, 0])
-
+    print("adas")
+    arr = a.to_numpy()
+    print(arr)
+    print(a[0, 0])
+    
+    print("CUDA LOG:")
+    with open("cuda_debug.log", 'r') as f:
+        print(f.read())
