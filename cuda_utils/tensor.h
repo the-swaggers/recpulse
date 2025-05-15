@@ -1,14 +1,15 @@
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifndef TENSOR_H
 #define TENSOR_H
 
 typedef enum {
-    float8,
-    float16,
-    float32,
-    float64,
+    DTYPE_FLOAT8,
+    DTYPE_FLOAT16,
+    DTYPE_FLOAT32,
+    DTYPE_FLOAT64,
 } DType;
 
 typedef enum {
@@ -16,17 +17,17 @@ typedef enum {
     DEVICE_CUDA,
 } DeviceType;
 
-struct Tensor{
+typedef struct {
     size_t size;
     uint ndim;
-    *int shape;
-    *void vals;
+    int* shape;
+    void* vals;
     DType dtype;
     DeviceType device_type;
-    uint device_id;
+    uint32_t device_id;
     requires_grad bool;
     owns_data bool;
-}
+} Tensor;
 
 
 #endif
