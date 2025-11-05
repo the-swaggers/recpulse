@@ -7,6 +7,7 @@
 typedef enum {
     DTYPE_FLOAT32,
     DTYPE_FLOAT64,
+    DTYPE_PRESERVE = -1,
 } DType;
 
 
@@ -43,19 +44,20 @@ struct Tensor {
 
 Tensor* zeros_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
 Tensor* ones_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
-Tensor* values_cpu_tensor(void* vals, DType dtype, int ndim, int* shape, Meta* metadata);
+Tensor* values_cpu_tensor(void* vals, DType vals_dtype, DType target_dtype, int ndim, int* shape, Meta* metadata);
 
 Tensor* zeros_cuda_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
 Tensor* ones_cuda_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
 Tensor* values_cuda_tensor(void* vals, DType dtype, int ndim, int* shape, Meta* metadata);
 
-Tensor* move_cpu_to_cuda(Tensor* tensor, int device_id);
-Tensor* move_cuda_to_cpu(Tensor* tensor);
-Tensor* move_cuda_to_cuda(Tensor* tensor, int device_id);
-Tensor* tensor_copy_cpu(Tensor* tensor);
+Tensor* move_cpu_to_cuda(Tensor* tensor, int device_id, DType target_dtype);
+Tensor* move_cuda_to_cpu(Tensor* tensor, DType target_dtype);
+Tensor* move_cuda_to_cuda(Tensor* tensor, int device_id, DType target_dtype);
+Tensor* tensor_copy_cpu(Tensor* tensor, DType target_dtype);
 
 
 Tensor* tensor_copy(Tensor* tensor);
+Tensor* tensor_to(Tensor* src, DeviceType target_device, int target_device_id, DType target_dtype, bool inplace);
 
 void free_tensor(Tensor* tensor);
 
