@@ -41,4 +41,25 @@ struct Tensor {
     Meta* metadata;
 }; 
 
+Tensor* zeros_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
+Tensor* ones_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
+Tensor* values_cpu_tensor(void* vals, DType dtype, int ndim, int* shape, Meta* metadata);
+
+Tensor* zeros_cuda_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
+Tensor* ones_cuda_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
+Tensor* values_cuda_tensor(void* vals, DType dtype, int ndim, int* shape, Meta* metadata);
+
+Tensor* move_cpu_to_cuda(Tensor* tensor, int device_id);
+Tensor* move_cuda_to_cpu(Tensor* tensor);
+Tensor* move_cuda_to_cuda(Tensor* tensor, int device_id);
+Tensor* tensor_copy_cpu(Tensor* tensor);
+
+
+Tensor* tensor_copy(Tensor* tensor);
+
+void free_tensor(Tensor* tensor);
+
+void free_tensor_cpu(Tensor* tensor);
+void free_tensor_cuda(Tensor* tensor);
+
 #endif
