@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-Tensor* zeros_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
+Tensor* zeros_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;  
     size_t total_elements = 1;
@@ -44,7 +44,7 @@ Tensor* zeros_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     tensor->dtype = dtype;
     tensor->ndim = ndim;
     tensor->size = total_elements;
-    tensor->device = DEVICE_CPU;
+    tensor->device = HOST;
     tensor->device_id = 0;
     tensor->owns_data = true;
     tensor->metadata = metadata;
@@ -52,7 +52,7 @@ Tensor* zeros_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     return tensor;
 }
 
-Tensor* ones_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
+Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
 
@@ -106,7 +106,7 @@ Tensor* ones_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     tensor->dtype = dtype;
     tensor->ndim = ndim;
     tensor->size = total_elements;
-    tensor->device = DEVICE_CPU;
+    tensor->device = HOST;
     tensor->device_id = 0;
     tensor->owns_data = true;
     tensor->metadata = metadata;
@@ -114,7 +114,7 @@ Tensor* ones_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     return tensor;
 }
 
-Tensor* values_cpu_tensor(void* vals, DType vals_dtype, DType target_dtype, int ndim, int* shape, Meta* metadata) {
+Tensor* values_host_tensor(void* vals, DType vals_dtype, DType target_dtype, int ndim, int* shape, Meta* metadata) {
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
 
@@ -173,7 +173,7 @@ Tensor* values_cpu_tensor(void* vals, DType vals_dtype, DType target_dtype, int 
     tensor->dtype = target_dtype;
     tensor->ndim = ndim;
     tensor->size = total_elements;
-    tensor->device = DEVICE_CPU;
+    tensor->device = HOST;
     tensor->device_id = 0;
     tensor->owns_data = true;
     tensor->metadata = metadata;
@@ -181,8 +181,8 @@ Tensor* values_cpu_tensor(void* vals, DType vals_dtype, DType target_dtype, int 
     return tensor;
 }
 
-Tensor* tensor_copy_cpu(Tensor* tensor, DType target_dtype) {
-    if (tensor->device != DEVICE_CPU) return NULL;
+Tensor* tensor_copy_host(Tensor* tensor, DType target_dtype) {
+    if (tensor->device != HOST) return NULL;
 
     Tensor* copy = (Tensor*)malloc(sizeof(Tensor));
     if (!copy) return NULL;
@@ -232,7 +232,7 @@ Tensor* tensor_copy_cpu(Tensor* tensor, DType target_dtype) {
     copy->dtype = target_dtype;
     copy->ndim = tensor->ndim;
     copy->size = tensor->size;
-    copy->device = DEVICE_CPU;
+    copy->device = HOST;
     copy->device_id = 0;
     copy->owns_data = true;
 
@@ -250,9 +250,9 @@ Tensor* tensor_copy_cpu(Tensor* tensor, DType target_dtype) {
     return copy;
 }
 
-void free_tensor_cpu(Tensor* tensor) {
+void free_tensor_host(Tensor* tensor) {
     if (!tensor) return;
-    if (tensor->device != DEVICE_CPU) return;
+    if (tensor->device != HOST) return;
 
     if (tensor->owns_data && tensor->data) {
         free(tensor->data);
@@ -268,7 +268,7 @@ void free_tensor_cpu(Tensor* tensor) {
 
     if (tensor->metadata) {
         if (tensor->metadata->grad) {
-            free_tensor_cpu(tensor->metadata->grad);
+            free_tensor_host(tensor->metadata->grad);
         }
         free(tensor->metadata);
     }

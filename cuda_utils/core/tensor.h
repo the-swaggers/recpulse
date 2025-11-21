@@ -12,8 +12,8 @@ typedef enum {
 
 
 typedef enum {
-    DEVICE_CPU,
-    DEVICE_CUDA,
+    HOST,
+    DEVICE,
 } DeviceType;
 
 
@@ -42,18 +42,18 @@ struct Tensor {
     Meta* metadata;
 }; 
 
-Tensor* zeros_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
-Tensor* ones_cpu_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
-Tensor* values_cpu_tensor(void* vals, DType vals_dtype, DType target_dtype, int ndim, int* shape, Meta* metadata);
+Tensor* zeros_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
+Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
+Tensor* values_host_tensor(void* vals, DType vals_dtype, DType target_dtype, int ndim, int* shape, Meta* metadata);
 
-Tensor* zeros_cuda_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
-Tensor* ones_cuda_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
-Tensor* values_cuda_tensor(void* vals, DType dtype, int ndim, int* shape, Meta* metadata);
+Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Meta* metadata);
+Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Meta* metadata);
+Tensor* values_device_tensor(void* vals, DType dtype, int device_id, int ndim, int* shape, Meta* metadata);
 
-Tensor* move_cpu_to_cuda(Tensor* tensor, int device_id, DType target_dtype);
-Tensor* move_cuda_to_cpu(Tensor* tensor, DType target_dtype);
-Tensor* move_cuda_to_cuda(Tensor* tensor, int device_id, DType target_dtype);
-Tensor* tensor_copy_cpu(Tensor* tensor, DType target_dtype);
+Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype);
+Tensor* move_device_to_host(Tensor* tensor, DType target_dtype);
+Tensor* move_device_to_device(Tensor* tensor, int device_id, DType target_dtype);
+Tensor* tensor_copy_host(Tensor* tensor, DType target_dtype);
 
 
 Tensor* tensor_copy(Tensor* tensor);
@@ -61,7 +61,7 @@ Tensor* tensor_to(Tensor* src, DeviceType target_device, int target_device_id, D
 
 void free_tensor(Tensor* tensor);
 
-void free_tensor_cpu(Tensor* tensor);
-void free_tensor_cuda(Tensor* tensor);
+void free_tensor_host(Tensor* tensor);
+void free_tensor_device(Tensor* tensor);
 
 #endif
