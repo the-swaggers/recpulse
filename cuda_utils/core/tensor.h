@@ -45,16 +45,17 @@ struct Tensor {
 Tensor* zeros_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
 Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
 Tensor* values_host_tensor(void* vals, DType vals_dtype, DType target_dtype, int ndim, int* shape, Meta* metadata);
+Tensor* fill_value_host_tensor(double value, Tensor* tensor);
 
 Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Meta* metadata);
 Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Meta* metadata);
 Tensor* values_device_tensor(void* vals, DType dtype, int device_id, int ndim, int* shape, Meta* metadata);
+Tensor* fill_value_device_tensor(double value, Tensor* tensor);
 
 Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype);
 Tensor* move_device_to_host(Tensor* tensor, DType target_dtype);
 Tensor* move_device_to_device(Tensor* tensor, int device_id, DType target_dtype);
 Tensor* tensor_copy_host(Tensor* tensor, DType target_dtype);
-
 
 Tensor* tensor_copy(Tensor* tensor);
 Tensor* tensor_to(Tensor* src, DeviceType target_device, int target_device_id, DType target_dtype, bool inplace);
