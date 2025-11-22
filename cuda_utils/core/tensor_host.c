@@ -275,3 +275,21 @@ void free_tensor_host(Tensor* tensor) {
 
     free(tensor);
 }
+
+
+Tensor* fill_value_host_tensor(double value, Tensor* tensor){
+    if (tensor->dtype == DTYPE_FLOAT32) {
+        float* data = (float*)tensor->data;
+        float f_value = (float)value;
+        for (size_t i = 0; i < tensor->size; i++) {
+            data[i] = f_value;
+        }
+    } else {
+        double* data = (double*)tensor->data;
+        for (size_t i = 0; i < tensor->size; i++) {
+            data[i] = value;
+        }
+    }
+    return tensor;
+}
+
