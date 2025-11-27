@@ -235,10 +235,8 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     size_t threads_per_block = 256;
     size_t num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
 
-    // Handle source from HOST
     if (source_device == HOST) {
         if (vals_dtype == target_dtype) {
-            // Same dtype - direct copy from host to device
             err = cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyHostToDevice);
             if (err != cudaSuccess) {
                 fprintf(stderr, "Failed to copy host to device: %s\n", cudaGetErrorString(err));
@@ -249,7 +247,6 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
                 return NULL;
             }
         } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-            // float -> double: copy to temp device buffer, then convert
             float* device_src;
             err = cudaMalloc(&device_src, total_elements * sizeof(float));
             if (err != cudaSuccess) {
@@ -278,7 +275,6 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
             cudaDeviceSynchronize();
             cudaFree(device_src);
         } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-            // double -> float: copy to temp device buffer, then convert
             double* device_src;
             err = cudaMalloc(&device_src, total_elements * sizeof(double));
             if (err != cudaSuccess) {
@@ -308,10 +304,8 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
             cudaFree(device_src);
         }
     }
-    // Handle source from DEVICE
     else {
         if (vals_dtype == target_dtype) {
-            // Same dtype - direct device to device copy
             err = cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyDeviceToDevice);
             if (err != cudaSuccess) {
                 fprintf(stderr, "Failed to copy device to device: %s\n", cudaGetErrorString(err));
@@ -322,13 +316,11 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
                 return NULL;
             }
         } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-            // float -> double: convert directly on device
             copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>(
                 (double*)tensor->data, (float*)vals, total_elements
             );
             cudaDeviceSynchronize();
         } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-            // double -> float: convert directly on device
             copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>(
                 (float*)tensor->data, (double*)vals, total_elements
             );
@@ -339,3 +331,24 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     return tensor;
 }
 
+void free_tensor_device(Tensor* tensor){
+    
+    if (!tensor) return;
+    if (tensor->device != DEVICE) return;
+    if (tensor->metadata){
+        if (tensor->metadata->grad){
+            free_tensor(tensor->metadata->grad);
+        };
+    }
+
+    if (tensor->owns_data){
+        cudaSetDevice(tensor->device_id);
+        cudaFree(tensor->data);
+    }
+
+    if (tensor->strides) free(tensor->strides);
+    if (tensor->shape) free(tensor->shape);
+    if (tensor->metadata) free(tensor->metadata);
+
+    free(tensor);
+};
