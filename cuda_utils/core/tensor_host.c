@@ -1,14 +1,16 @@
 #include "tensor.h"
+#include "cuda_helpers.h"
 #include <stdlib.h>
 #include <string.h>
 
 Tensor* zeros_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
+    if (!check_shape_valid(ndim, shape)) return NULL;
+
+    size_t total_elements;
+    if (!calculate_total_elements(ndim, shape, &total_elements)) return NULL;
+
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
-    if (!tensor) return NULL;  
-    size_t total_elements = 1;
-    for (int i = 0; i < ndim; i++) {
-        total_elements *= shape[i];
-    }
+    if (!tensor) return NULL;
 
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) {
@@ -53,13 +55,13 @@ Tensor* zeros_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
 }
 
 Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
+    if (!check_shape_valid(ndim, shape)) return NULL;
+
+    size_t total_elements;
+    if (!calculate_total_elements(ndim, shape, &total_elements)) return NULL;
+
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
-
-    size_t total_elements = 1;
-    for (int i = 0; i < ndim; i++) {
-        total_elements *= shape[i];
-    }
 
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) {
@@ -115,13 +117,13 @@ Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
 }
 
 Tensor* values_host_tensor(void* vals, DType vals_dtype, DType target_dtype, int ndim, int* shape, Meta* metadata) {
+    if (!check_shape_valid(ndim, shape)) return NULL;
+
+    size_t total_elements;
+    if (!calculate_total_elements(ndim, shape, &total_elements)) return NULL;
+
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
-
-    size_t total_elements = 1;
-    for (int i = 0; i < ndim; i++) {
-        total_elements *= shape[i];
-    }
 
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) {

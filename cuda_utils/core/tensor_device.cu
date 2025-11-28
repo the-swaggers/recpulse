@@ -1,16 +1,18 @@
 #include "tensor.h"
+#include "cuda_helpers.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <cuda_runtime.h>
 
 Tensor* zeros_device_tensor(DType dtype, int ndim, int* shape, int device_id, Meta* metadata) {
+    if (!check_shape_valid(ndim, shape)) return NULL;
+
+    size_t total_elements;
+    if (!calculate_total_elements(ndim, shape, &total_elements)) return NULL;
+
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
-    if (!tensor) return NULL;  
-    size_t total_elements = 1;
-    for (int i = 0; i < ndim; i++) {
-        total_elements *= shape[i];
-    }
+    if (!tensor) return NULL;
 
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) {
@@ -35,27 +37,21 @@ Tensor* zeros_device_tensor(DType dtype, int ndim, int* shape, int device_id, Me
     size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
     size_t data_size = total_elements * dtype_size;
 
-    cudaError_t err = cudaSetDevice(device_id);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to set CUDA device %d: %s\n", device_id, cudaGetErrorString(err));
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) {
         free(tensor->strides);
         free(tensor->shape);
         free(tensor);
         return NULL;
     }
 
-    err = cudaMalloc(&tensor->data, data_size);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate CUDA memory: %s\n", cudaGetErrorString(err));
+    if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) {
         free(tensor->strides);
         free(tensor->shape);
         free(tensor);
         return NULL;
     }
 
-    err = cudaMemset(tensor->data, 0, data_size);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to zero CUDA memory: %s\n", cudaGetErrorString(err));
+    if (!check_cuda_call(cudaMemset(tensor->data, 0, data_size), "cudaMemset")) {
         cudaFree(tensor->data);
         free(tensor->strides);
         free(tensor->shape);
@@ -94,9 +90,7 @@ __global__ void copy_value_kernel(DstType* dst, SrcType* src, size_t size) {
 Tensor* fill_value_device_tensor(double value, Tensor* tensor){
     if (!tensor || !tensor->data) return NULL;
 
-    cudaError_t err = cudaSetDevice(tensor->device_id);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to set CUDA device %d: %s\n", tensor->device_id, cudaGetErrorString(err));
+    if (!check_cuda_call(cudaSetDevice(tensor->device_id), "cudaSetDevice")) {
         return NULL;
     }
 
@@ -110,28 +104,19 @@ Tensor* fill_value_device_tensor(double value, Tensor* tensor){
         fill_value_kernel<double><<<num_blocks, threads_per_block>>>((double*)tensor->data, tensor->size, value);
     }
 
-    err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
-        return NULL;
-    }
-
-    err = cudaDeviceSynchronize();
-    if (err != cudaSuccess) {
-        fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
-        return NULL;
-    }
+    if (!check_cuda_kernel()) return NULL;
 
     return tensor;
 }
 
 Tensor* ones_device_tensor(DType dtype, int ndim, int* shape, int device_id, Meta* metadata) {
+    if (!check_shape_valid(ndim, shape)) return NULL;
+
+    size_t total_elements;
+    if (!calculate_total_elements(ndim, shape, &total_elements)) return NULL;
+
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
-    if (!tensor) return NULL;  
-    size_t total_elements = 1;
-    for (int i = 0; i < ndim; i++) {
-        total_elements *= shape[i];
-    }
+    if (!tensor) return NULL;
 
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) {
@@ -156,18 +141,14 @@ Tensor* ones_device_tensor(DType dtype, int ndim, int* shape, int device_id, Met
     size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
     size_t data_size = total_elements * dtype_size;
 
-    cudaError_t err = cudaSetDevice(device_id);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to set CUDA device %d: %s\n", device_id, cudaGetErrorString(err));
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) {
         free(tensor->strides);
         free(tensor->shape);
         free(tensor);
         return NULL;
     }
 
-    err = cudaMalloc(&tensor->data, data_size);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate CUDA memory: %s\n", cudaGetErrorString(err));
+    if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) {
         free(tensor->strides);
         free(tensor->shape);
         free(tensor);
@@ -191,13 +172,13 @@ Tensor* ones_device_tensor(DType dtype, int ndim, int* shape, int device_id, Met
 }
 
 Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, DeviceType source_device, int ndim, int* shape, int device_id, Meta* metadata) {
+    if (!check_shape_valid(ndim, shape)) return NULL;
+
+    size_t total_elements;
+    if (!calculate_total_elements(ndim, shape, &total_elements)) return NULL;
+
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
-
-    size_t total_elements = 1;
-    for (int i = 0; i < ndim; i++) {
-        total_elements *= shape[i];
-    }
 
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) {
@@ -223,18 +204,14 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     size_t vals_dtype_size = (vals_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
     size_t data_size = total_elements * target_dtype_size;
 
-    cudaError_t err = cudaSetDevice(device_id);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to set CUDA device %d: %s\n", device_id, cudaGetErrorString(err));
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) {
         free(tensor->strides);
         free(tensor->shape);
         free(tensor);
         return NULL;
     }
 
-    err = cudaMalloc(&tensor->data, data_size);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to allocate CUDA memory: %s\n", cudaGetErrorString(err));
+    if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) {
         free(tensor->strides);
         free(tensor->shape);
         free(tensor);
@@ -254,35 +231,20 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
 
     if (source_device == HOST) {
         if (vals_dtype == target_dtype) {
-            err = cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyHostToDevice);
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Failed to copy host to device: %s\n", cudaGetErrorString(err));
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+            if (!check_cuda_call(cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) {
+                free_tensor_device(tensor);
                 return NULL;
             }
         } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
             float* device_src;
-            err = cudaMalloc(&device_src, total_elements * sizeof(float));
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Failed to allocate temp CUDA memory: %s\n", cudaGetErrorString(err));
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+            if (!check_cuda_call(cudaMalloc(&device_src, total_elements * sizeof(float)), "cudaMalloc")) {
+                free_tensor_device(tensor);
                 return NULL;
             }
 
-            err = cudaMemcpy(device_src, vals, total_elements * sizeof(float), cudaMemcpyHostToDevice);
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Failed to copy host to device: %s\n", cudaGetErrorString(err));
+            if (!check_cuda_call(cudaMemcpy(device_src, vals, total_elements * sizeof(float), cudaMemcpyHostToDevice), "cudaMemcpy")) {
                 cudaFree(device_src);
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+                free_tensor_device(tensor);
                 return NULL;
             }
 
@@ -290,49 +252,23 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
                 (double*)tensor->data, device_src, total_elements
             );
 
-            err = cudaGetLastError();
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
+            if (!check_cuda_kernel()) {
                 cudaFree(device_src);
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
-                return NULL;
-            }
-
-            err = cudaDeviceSynchronize();
-            if (err != cudaSuccess) {
-                fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
-                cudaFree(device_src);
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+                free_tensor_device(tensor);
                 return NULL;
             }
 
             cudaFree(device_src);
         } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
             double* device_src;
-            err = cudaMalloc(&device_src, total_elements * sizeof(double));
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Failed to allocate temp CUDA memory: %s\n", cudaGetErrorString(err));
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+            if (!check_cuda_call(cudaMalloc(&device_src, total_elements * sizeof(double)), "cudaMalloc")) {
+                free_tensor_device(tensor);
                 return NULL;
             }
 
-            err = cudaMemcpy(device_src, vals, total_elements * sizeof(double), cudaMemcpyHostToDevice);
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Failed to copy host to device: %s\n", cudaGetErrorString(err));
+            if (!check_cuda_call(cudaMemcpy(device_src, vals, total_elements * sizeof(double), cudaMemcpyHostToDevice), "cudaMemcpy")) {
                 cudaFree(device_src);
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+                free_tensor_device(tensor);
                 return NULL;
             }
 
@@ -340,25 +276,9 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
                 (float*)tensor->data, device_src, total_elements
             );
 
-            err = cudaGetLastError();
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
+            if (!check_cuda_kernel()) {
                 cudaFree(device_src);
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
-                return NULL;
-            }
-
-            err = cudaDeviceSynchronize();
-            if (err != cudaSuccess) {
-                fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
-                cudaFree(device_src);
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+                free_tensor_device(tensor);
                 return NULL;
             }
 
@@ -367,13 +287,8 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     }
     else {
         if (vals_dtype == target_dtype) {
-            err = cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyDeviceToDevice);
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Failed to copy device to device: %s\n", cudaGetErrorString(err));
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+            if (!check_cuda_call(cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyDeviceToDevice), "cudaMemcpy")) {
+                free_tensor_device(tensor);
                 return NULL;
             }
         } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
@@ -381,23 +296,8 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
                 (double*)tensor->data, (float*)vals, total_elements
             );
 
-            err = cudaGetLastError();
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
-                return NULL;
-            }
-
-            err = cudaDeviceSynchronize();
-            if (err != cudaSuccess) {
-                fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+            if (!check_cuda_kernel()) {
+                free_tensor_device(tensor);
                 return NULL;
             }
         } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
@@ -405,23 +305,8 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
                 (float*)tensor->data, (double*)vals, total_elements
             );
 
-            err = cudaGetLastError();
-            if (err != cudaSuccess) {
-                fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
-                return NULL;
-            }
-
-            err = cudaDeviceSynchronize();
-            if (err != cudaSuccess) {
-                fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
-                cudaFree(tensor->data);
-                free(tensor->strides);
-                free(tensor->shape);
-                free(tensor);
+            if (!check_cuda_kernel()) {
+                free_tensor_device(tensor);
                 return NULL;
             }
         }
