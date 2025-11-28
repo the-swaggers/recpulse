@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 
-Tensor* zeros_device_tensor(DType dtype, int ndim, int* shape, int device_id, Meta* metadata) {
+Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Meta* metadata) {
     if (!check_shape_valid(ndim, shape)) return NULL;
 
     size_t total_elements;
@@ -109,7 +109,7 @@ Tensor* fill_value_device_tensor(double value, Tensor* tensor){
     return tensor;
 }
 
-Tensor* ones_device_tensor(DType dtype, int ndim, int* shape, int device_id, Meta* metadata) {
+Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Meta* metadata) {
     if (!check_shape_valid(ndim, shape)) return NULL;
 
     size_t total_elements;
