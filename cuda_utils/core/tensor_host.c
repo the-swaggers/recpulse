@@ -268,7 +268,7 @@ void free_tensor_host(Tensor* tensor) {
 
     if (tensor->metadata) {
         if (tensor->metadata->grad) {
-            free_tensor_host(tensor->metadata->grad);
+            free_tensor(tensor->metadata->grad);
         }
         free(tensor->metadata);
     }
@@ -278,6 +278,8 @@ void free_tensor_host(Tensor* tensor) {
 
 
 Tensor* fill_value_host_tensor(double value, Tensor* tensor){
+    if (!tensor || !tensor->data) return NULL;
+
     if (tensor->dtype == DTYPE_FLOAT32) {
         float* data = (float*)tensor->data;
         float f_value = (float)value;

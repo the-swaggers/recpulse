@@ -92,6 +92,8 @@ __global__ void copy_value_kernel(DstType* dst, SrcType* src, size_t size) {
 }
 
 Tensor* fill_value_device_tensor(double value, Tensor* tensor){
+    if (!tensor || !tensor->data) return NULL;
+
     cudaError_t err = cudaSetDevice(tensor->device_id);
     if (err != cudaSuccess) {
         fprintf(stderr, "Failed to set CUDA device %d: %s\n", tensor->device_id, cudaGetErrorString(err));
@@ -107,7 +109,19 @@ Tensor* fill_value_device_tensor(double value, Tensor* tensor){
     } else {
         fill_value_kernel<double><<<num_blocks, threads_per_block>>>((double*)tensor->data, tensor->size, value);
     }
-    cudaDeviceSynchronize();
+
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
+        return NULL;
+    }
+
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
+        return NULL;
+    }
+
     return tensor;
 }
 
@@ -168,8 +182,11 @@ Tensor* ones_device_tensor(DType dtype, int ndim, int* shape, int device_id, Met
     tensor->owns_data = true;
     tensor->metadata = metadata;
 
-    fill_value_device_tensor(1, tensor);
-    
+    if (!fill_value_device_tensor(1, tensor)) {
+        free_tensor_device(tensor);
+        return NULL;
+    }
+
     return tensor;
 }
 
@@ -272,7 +289,29 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
             copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>(
                 (double*)tensor->data, device_src, total_elements
             );
-            cudaDeviceSynchronize();
+
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
+                cudaFree(device_src);
+                cudaFree(tensor->data);
+                free(tensor->strides);
+                free(tensor->shape);
+                free(tensor);
+                return NULL;
+            }
+
+            err = cudaDeviceSynchronize();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
+                cudaFree(device_src);
+                cudaFree(tensor->data);
+                free(tensor->strides);
+                free(tensor->shape);
+                free(tensor);
+                return NULL;
+            }
+
             cudaFree(device_src);
         } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
             double* device_src;
@@ -300,7 +339,29 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
             copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>(
                 (float*)tensor->data, device_src, total_elements
             );
-            cudaDeviceSynchronize();
+
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
+                cudaFree(device_src);
+                cudaFree(tensor->data);
+                free(tensor->strides);
+                free(tensor->shape);
+                free(tensor);
+                return NULL;
+            }
+
+            err = cudaDeviceSynchronize();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
+                cudaFree(device_src);
+                cudaFree(tensor->data);
+                free(tensor->strides);
+                free(tensor->shape);
+                free(tensor);
+                return NULL;
+            }
+
             cudaFree(device_src);
         }
     }
@@ -319,12 +380,50 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
             copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>(
                 (double*)tensor->data, (float*)vals, total_elements
             );
-            cudaDeviceSynchronize();
+
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
+                cudaFree(tensor->data);
+                free(tensor->strides);
+                free(tensor->shape);
+                free(tensor);
+                return NULL;
+            }
+
+            err = cudaDeviceSynchronize();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
+                cudaFree(tensor->data);
+                free(tensor->strides);
+                free(tensor->shape);
+                free(tensor);
+                return NULL;
+            }
         } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
             copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>(
                 (float*)tensor->data, (double*)vals, total_elements
             );
-            cudaDeviceSynchronize();
+
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(err));
+                cudaFree(tensor->data);
+                free(tensor->strides);
+                free(tensor->shape);
+                free(tensor);
+                return NULL;
+            }
+
+            err = cudaDeviceSynchronize();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "cudaDeviceSynchronize failed: %s\n", cudaGetErrorString(err));
+                cudaFree(tensor->data);
+                free(tensor->strides);
+                free(tensor->shape);
+                free(tensor);
+                return NULL;
+            }
         }
     }
 
