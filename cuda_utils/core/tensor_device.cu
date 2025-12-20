@@ -14,19 +14,17 @@ Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Me
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
 
+    tensor->shape = NULL;
+    tensor->strides = NULL;
+    tensor->data = NULL;
+    tensor->metadata = metadata;
+
     tensor->shape = (int*)malloc(ndim * sizeof(int));
-    if (!tensor->shape) {
-        free(tensor);
-        return NULL;
-    }
+    if (!tensor->shape) goto cleanup;
     memcpy(tensor->shape, shape, ndim * sizeof(int));
 
     tensor->strides = (int*)malloc(ndim * sizeof(int));
-    if (!tensor->strides) {
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
+    if (!tensor->strides) goto cleanup;
 
     int stride = 1;
     for (int i = ndim - 1; i >= 0; i--) {
@@ -37,27 +35,9 @@ Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Me
     size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
     size_t data_size = total_elements * dtype_size;
 
-    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) {
-        free(tensor->strides);
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
-
-    if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) {
-        free(tensor->strides);
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
-
-    if (!check_cuda_call(cudaMemset(tensor->data, 0, data_size), "cudaMemset")) {
-        cudaFree(tensor->data);
-        free(tensor->strides);
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
+    if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) goto cleanup;
+    if (!check_cuda_call(cudaMemset(tensor->data, 0, data_size), "cudaMemset")) goto cleanup;
 
     tensor->dtype = dtype;
     tensor->ndim = ndim;
@@ -65,9 +45,15 @@ Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Me
     tensor->device = DEVICE;
     tensor->device_id = device_id;
     tensor->owns_data = true;
-    tensor->metadata = metadata;
 
     return tensor;
+
+cleanup:
+    if (tensor->data) cudaFree(tensor->data);
+    if (tensor->strides) free(tensor->strides);
+    if (tensor->shape) free(tensor->shape);
+    free(tensor);
+    return NULL;
 }
 
 
@@ -118,19 +104,17 @@ Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Met
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
 
+    tensor->shape = NULL;
+    tensor->strides = NULL;
+    tensor->data = NULL;
+    tensor->metadata = metadata;
+
     tensor->shape = (int*)malloc(ndim * sizeof(int));
-    if (!tensor->shape) {
-        free(tensor);
-        return NULL;
-    }
+    if (!tensor->shape) goto cleanup;
     memcpy(tensor->shape, shape, ndim * sizeof(int));
 
     tensor->strides = (int*)malloc(ndim * sizeof(int));
-    if (!tensor->strides) {
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
+    if (!tensor->strides) goto cleanup;
 
     int stride = 1;
     for (int i = ndim - 1; i >= 0; i--) {
@@ -141,19 +125,8 @@ Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Met
     size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
     size_t data_size = total_elements * dtype_size;
 
-    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) {
-        free(tensor->strides);
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
-
-    if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) {
-        free(tensor->strides);
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
+    if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) goto cleanup;
 
     tensor->dtype = dtype;
     tensor->ndim = ndim;
@@ -161,14 +134,17 @@ Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Met
     tensor->device = DEVICE;
     tensor->device_id = device_id;
     tensor->owns_data = true;
-    tensor->metadata = metadata;
 
-    if (!fill_value_device_tensor(1, tensor)) {
-        free_tensor_device(tensor);
-        return NULL;
-    }
+    if (!fill_value_device_tensor(1, tensor)) goto cleanup;
 
     return tensor;
+
+cleanup:
+    if (tensor->data) cudaFree(tensor->data);
+    if (tensor->strides) free(tensor->strides);
+    if (tensor->shape) free(tensor->shape);
+    free(tensor);
+    return NULL;
 }
 
 Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, DeviceType source_device, int ndim, int* shape, int device_id, Meta* metadata) {
@@ -180,19 +156,18 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
 
+    tensor->shape = NULL;
+    tensor->strides = NULL;
+    tensor->data = NULL;
+    tensor->metadata = metadata;
+    void* device_src = NULL;
+
     tensor->shape = (int*)malloc(ndim * sizeof(int));
-    if (!tensor->shape) {
-        free(tensor);
-        return NULL;
-    }
+    if (!tensor->shape) goto cleanup;
     memcpy(tensor->shape, shape, ndim * sizeof(int));
 
     tensor->strides = (int*)malloc(ndim * sizeof(int));
-    if (!tensor->strides) {
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
+    if (!tensor->strides) goto cleanup;
 
     int stride = 1;
     for (int i = ndim - 1; i >= 0; i--) {
@@ -204,19 +179,8 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     size_t vals_dtype_size = (vals_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
     size_t data_size = total_elements * target_dtype_size;
 
-    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) {
-        free(tensor->strides);
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
-
-    if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) {
-        free(tensor->strides);
-        free(tensor->shape);
-        free(tensor);
-        return NULL;
-    }
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
+    if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) goto cleanup;
 
     tensor->dtype = target_dtype;
     tensor->ndim = ndim;
@@ -224,95 +188,53 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     tensor->device = DEVICE;
     tensor->device_id = device_id;
     tensor->owns_data = true;
-    tensor->metadata = metadata;
 
     size_t threads_per_block = 256;
     size_t num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
 
     if (source_device == HOST) {
         if (vals_dtype == target_dtype) {
-            if (!check_cuda_call(cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) {
-                free_tensor_device(tensor);
-                return NULL;
-            }
+            if (!check_cuda_call(cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
         } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-            float* device_src;
-            if (!check_cuda_call(cudaMalloc(&device_src, total_elements * sizeof(float)), "cudaMalloc")) {
-                free_tensor_device(tensor);
-                return NULL;
-            }
+            if (!check_cuda_call(cudaMalloc(&device_src, total_elements * sizeof(float)), "cudaMalloc")) goto cleanup;
+            if (!check_cuda_call(cudaMemcpy(device_src, vals, total_elements * sizeof(float), cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
 
-            if (!check_cuda_call(cudaMemcpy(device_src, vals, total_elements * sizeof(float), cudaMemcpyHostToDevice), "cudaMemcpy")) {
-                cudaFree(device_src);
-                free_tensor_device(tensor);
-                return NULL;
-            }
-
-            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>(
-                (double*)tensor->data, device_src, total_elements
-            );
-
-            if (!check_cuda_kernel()) {
-                cudaFree(device_src);
-                free_tensor_device(tensor);
-                return NULL;
-            }
+            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)tensor->data, (float*)device_src, total_elements);
+            if (!check_cuda_kernel()) goto cleanup;
 
             cudaFree(device_src);
+            device_src = NULL;
         } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-            double* device_src;
-            if (!check_cuda_call(cudaMalloc(&device_src, total_elements * sizeof(double)), "cudaMalloc")) {
-                free_tensor_device(tensor);
-                return NULL;
-            }
+            if (!check_cuda_call(cudaMalloc(&device_src, total_elements * sizeof(double)), "cudaMalloc")) goto cleanup;
+            if (!check_cuda_call(cudaMemcpy(device_src, vals, total_elements * sizeof(double), cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
 
-            if (!check_cuda_call(cudaMemcpy(device_src, vals, total_elements * sizeof(double), cudaMemcpyHostToDevice), "cudaMemcpy")) {
-                cudaFree(device_src);
-                free_tensor_device(tensor);
-                return NULL;
-            }
-
-            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>(
-                (float*)tensor->data, device_src, total_elements
-            );
-
-            if (!check_cuda_kernel()) {
-                cudaFree(device_src);
-                free_tensor_device(tensor);
-                return NULL;
-            }
+            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)tensor->data, (double*)device_src, total_elements);
+            if (!check_cuda_kernel()) goto cleanup;
 
             cudaFree(device_src);
+            device_src = NULL;
         }
-    }
-    else {
+    } else {
         if (vals_dtype == target_dtype) {
-            if (!check_cuda_call(cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyDeviceToDevice), "cudaMemcpy")) {
-                free_tensor_device(tensor);
-                return NULL;
-            }
+            if (!check_cuda_call(cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyDeviceToDevice), "cudaMemcpy")) goto cleanup;
         } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>(
-                (double*)tensor->data, (float*)vals, total_elements
-            );
-
-            if (!check_cuda_kernel()) {
-                free_tensor_device(tensor);
-                return NULL;
-            }
+            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)tensor->data, (float*)vals, total_elements);
+            if (!check_cuda_kernel()) goto cleanup;
         } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>(
-                (float*)tensor->data, (double*)vals, total_elements
-            );
-
-            if (!check_cuda_kernel()) {
-                free_tensor_device(tensor);
-                return NULL;
-            }
+            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)tensor->data, (double*)vals, total_elements);
+            if (!check_cuda_kernel()) goto cleanup;
         }
     }
 
     return tensor;
+
+cleanup:
+    if (device_src) cudaFree(device_src);
+    if (tensor->data) cudaFree(tensor->data);
+    if (tensor->strides) free(tensor->strides);
+    if (tensor->shape) free(tensor->shape);
+    free(tensor);
+    return NULL;
 }
 
 void free_tensor_device(Tensor* tensor){
