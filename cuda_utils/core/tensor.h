@@ -59,8 +59,8 @@ Tensor* fill_value_tensor(double value, Tensor* tensor);
 
 Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype);
 Tensor* move_device_to_host(Tensor* tensor, DType target_dtype);
-Tensor* move_device_to_device(Tensor* tensor, int device_id, DType target_dtype);
 Tensor* tensor_copy_host(Tensor* tensor, DType target_dtype);
+Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype);
 
 Tensor* tensor_copy(Tensor* tensor);
 Tensor* tensor_to(Tensor* src, DeviceType target_device, int target_device_id, DType target_dtype, bool inplace);

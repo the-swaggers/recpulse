@@ -259,7 +259,7 @@ void free_tensor_device(Tensor* tensor){
     free(tensor);
 };
 
-Tensor* move_device_to_device(Tensor* tensor, int device_id, DType target_dtype) {
+Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype) {
     if (tensor->device != DEVICE) return NULL;
 
     Tensor* copy = (Tensor*)malloc(sizeof(Tensor));

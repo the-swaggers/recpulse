@@ -56,8 +56,7 @@ Tensor* tensor_copy(Tensor* tensor) {
         return tensor_copy_host(tensor, tensor->dtype);
     }
     if (tensor->device == DEVICE) {
-        fprintf(stderr, "Error: tensor_copy for DEVICE not yet implemented\n");
-        return NULL;
+        return tensor_copy_device(tensor, tensor->device_id, tensor->dtype);
     }
 
     fprintf(stderr, "Error: Invalid device type %d in tensor_copy\n", tensor->device);
