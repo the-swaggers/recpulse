@@ -352,3 +352,164 @@ cleanup:
     if (copy->shape) free(copy->shape);
     free(copy);
     return NULL;
+}
+
+Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype) {
+    if (tensor->device != HOST) return NULL;
+
+    Tensor* result = (Tensor*)malloc(sizeof(Tensor));
+    if (!result) return NULL;
+
+    result->shape = NULL;
+    result->strides = NULL;
+    result->data = NULL;
+    result->metadata = NULL;
+    void* temp_buffer = NULL;
+
+    result->shape = (int*)malloc(tensor->ndim * sizeof(int));
+    if (!result->shape) goto cleanup;
+    memcpy(result->shape, tensor->shape, tensor->ndim * sizeof(int));
+
+    result->strides = (int*)malloc(tensor->ndim * sizeof(int));
+    if (!result->strides) goto cleanup;
+    memcpy(result->strides, tensor->strides, tensor->ndim * sizeof(int));
+
+    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = tensor->size * target_dtype_size;
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
+    if (!check_cuda_call(cudaMalloc(&result->data, data_size), "cudaMalloc")) goto cleanup;
+
+    size_t threads_per_block = 256;
+    size_t num_blocks = (tensor->size + threads_per_block - 1) / threads_per_block;
+
+    if (tensor->dtype == target_dtype) {
+        if (!check_cuda_call(cudaMemcpy(result->data, tensor->data, data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
+    } else {
+        size_t src_dtype_size = (tensor->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+        size_t src_data_size = tensor->size * src_dtype_size;
+
+        if (!check_cuda_call(cudaMalloc(&temp_buffer, src_data_size), "cudaMalloc temp")) goto cleanup;
+        if (!check_cuda_call(cudaMemcpy(temp_buffer, tensor->data, src_data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
+
+        if (tensor->dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
+            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)result->data, (float*)temp_buffer, tensor->size);
+        } else if (tensor->dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
+            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)result->data, (double*)temp_buffer, tensor->size);
+        }
+
+        if (!check_cuda_kernel()) goto cleanup;
+
+        cudaFree(temp_buffer);
+        temp_buffer = NULL;
+    }
+
+    result->dtype = target_dtype;
+    result->ndim = tensor->ndim;
+    result->size = tensor->size;
+    result->device = DEVICE;
+    result->device_id = device_id;
+    result->owns_data = true;
+
+    if (tensor->metadata) {
+        result->metadata = (Meta*)malloc(sizeof(Meta));
+        if (result->metadata) {
+            memcpy(result->metadata, tensor->metadata, sizeof(Meta));
+            result->metadata->grad = NULL;
+            result->metadata->grad_fn = NULL;
+        }
+    }
+
+    return result;
+
+cleanup:
+    if (temp_buffer) cudaFree(temp_buffer);
+    if (result->data) cudaFree(result->data);
+    if (result->strides) free(result->strides);
+    if (result->shape) free(result->shape);
+    free(result);
+    return NULL;
+}
+
+Tensor* move_device_to_host(Tensor* tensor, DType target_dtype) {
+    if (tensor->device != DEVICE) return NULL;
+
+    Tensor* result = (Tensor*)malloc(sizeof(Tensor));
+    if (!result) return NULL;
+
+    result->shape = NULL;
+    result->strides = NULL;
+    result->data = NULL;
+    result->metadata = NULL;
+    void* temp_buffer = NULL;
+
+    result->shape = (int*)malloc(tensor->ndim * sizeof(int));
+    if (!result->shape) goto cleanup;
+    memcpy(result->shape, tensor->shape, tensor->ndim * sizeof(int));
+
+    result->strides = (int*)malloc(tensor->ndim * sizeof(int));
+    if (!result->strides) goto cleanup;
+    memcpy(result->strides, tensor->strides, tensor->ndim * sizeof(int));
+
+    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = tensor->size * target_dtype_size;
+
+    result->data = malloc(data_size);
+    if (!result->data) goto cleanup;
+
+    if (!check_cuda_call(cudaSetDevice(tensor->device_id), "cudaSetDevice")) goto cleanup;
+
+    if (tensor->dtype == target_dtype) {
+        if (!check_cuda_call(cudaMemcpy(result->data, tensor->data, data_size, cudaMemcpyDeviceToHost), "cudaMemcpy")) goto cleanup;
+    } else {
+        size_t src_dtype_size = (tensor->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+        size_t src_data_size = tensor->size * src_dtype_size;
+
+        temp_buffer = malloc(src_data_size);
+        if (!temp_buffer) goto cleanup;
+
+        if (!check_cuda_call(cudaMemcpy(temp_buffer, tensor->data, src_data_size, cudaMemcpyDeviceToHost), "cudaMemcpy")) goto cleanup;
+
+        if (tensor->dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
+            float* src = (float*)temp_buffer;
+            double* dst = (double*)result->data;
+            for (size_t i = 0; i < tensor->size; i++) {
+                dst[i] = (double)src[i];
+            }
+        } else if (tensor->dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
+            double* src = (double*)temp_buffer;
+            float* dst = (float*)result->data;
+            for (size_t i = 0; i < tensor->size; i++) {
+                dst[i] = (float)src[i];
+            }
+        }
+
+        free(temp_buffer);
+        temp_buffer = NULL;
+    }
+
+    result->dtype = target_dtype;
+    result->ndim = tensor->ndim;
+    result->size = tensor->size;
+    result->device = HOST;
+    result->device_id = 0;
+    result->owns_data = true;
+
+    if (tensor->metadata) {
+        result->metadata = (Meta*)malloc(sizeof(Meta));
+        if (result->metadata) {
+            memcpy(result->metadata, tensor->metadata, sizeof(Meta));
+            result->metadata->grad = NULL;
+            result->metadata->grad_fn = NULL;
+        }
+    }
+
+    return result;
+
+cleanup:
+    if (temp_buffer) free(temp_buffer);
+    if (result->data) free(result->data);
+    if (result->strides) free(result->strides);
+    if (result->shape) free(result->shape);
+    free(result);
+    return NULL;
