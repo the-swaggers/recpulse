@@ -63,6 +63,52 @@ Tensor* tensor_copy(Tensor* tensor) {
     return NULL;
 }
 
+Tensor* tensor_to(Tensor* src, DeviceType target_device, int target_device_id, DType target_dtype, bool inplace) {
+    if (!src) return NULL;
+
+    if (!validate_device_id(target_device, target_device_id)) {
+        fprintf(stderr, "Error: Invalid device_id %d for device type %d\n", target_device_id, target_device);
+        return NULL;
+    }
+
+    bool same_device_type = (src->device == target_device);
+    bool same_device_id = (src->device_id == target_device_id);
+    bool same_dtype = (src->dtype == target_dtype);
+
+    if (same_device_type && same_device_id && same_dtype) {
+        if (inplace) {
+            return src;
+        } else {
+            return tensor_copy(src);
+        }
+    }
+
+    Tensor* result = NULL;
+
+    if (src->device == HOST && target_device == HOST) {
+        result = tensor_copy_host(src, target_dtype);
+    } else if (src->device == DEVICE && target_device == DEVICE) {
+        result = tensor_copy_device(src, target_device_id, target_dtype);
+    } else if (src->device == HOST && target_device == DEVICE) {
+        result = move_host_to_device(src, target_device_id, target_dtype);
+    } else if (src->device == DEVICE && target_device == HOST) {
+        result = move_device_to_host(src, target_dtype);
+    } else {
+        fprintf(stderr, "Error: Invalid device type combination in tensor_to\n");
+        return NULL;
+    }
+
+    if (!result) {
+        return NULL;
+    }
+
+    if (inplace) {
+        free_tensor(src);
+    }
+
+    return result;
+}
+
 void free_tensor(Tensor* tensor){
     if (!tensor) return;
     if (tensor->device == HOST) return free_tensor_host(tensor);
