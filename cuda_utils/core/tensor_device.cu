@@ -258,3 +258,97 @@ void free_tensor_device(Tensor* tensor){
 
     free(tensor);
 };
+
+Tensor* move_device_to_device(Tensor* tensor, int device_id, DType target_dtype) {
+    if (tensor->device != DEVICE) return NULL;
+
+    Tensor* copy = (Tensor*)malloc(sizeof(Tensor));
+    if (!copy) return NULL;
+
+    copy->shape = NULL;
+    copy->strides = NULL;
+    copy->data = NULL;
+    copy->metadata = NULL;
+    void* temp_buffer = NULL;
+
+    copy->shape = (int*)malloc(tensor->ndim * sizeof(int));
+    if (!copy->shape) goto cleanup;
+    memcpy(copy->shape, tensor->shape, tensor->ndim * sizeof(int));
+
+    copy->strides = (int*)malloc(tensor->ndim * sizeof(int));
+    if (!copy->strides) goto cleanup;
+    memcpy(copy->strides, tensor->strides, tensor->ndim * sizeof(int));
+
+    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = tensor->size * target_dtype_size;
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
+    if (!check_cuda_call(cudaMalloc(&copy->data, data_size), "cudaMalloc")) goto cleanup;
+
+    bool same_gpu = (tensor->device_id == device_id);
+    size_t threads_per_block = 256;
+    size_t num_blocks = (tensor->size + threads_per_block - 1) / threads_per_block;
+
+    if (same_gpu) {
+        if (tensor->dtype == target_dtype) {
+            if (!check_cuda_call(cudaMemcpy(copy->data, tensor->data, data_size, cudaMemcpyDeviceToDevice), "cudaMemcpy")) goto cleanup;
+        } else if (tensor->dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
+            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)copy->data, (float*)tensor->data, tensor->size);
+            if (!check_cuda_kernel()) goto cleanup;
+        } else if (tensor->dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
+            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)copy->data, (double*)tensor->data, tensor->size);
+            if (!check_cuda_kernel()) goto cleanup;
+        }
+    } else {
+        cudaError_t p2p_err = cudaDeviceEnablePeerAccess(tensor->device_id, 0);
+        if (p2p_err != cudaSuccess && p2p_err != cudaErrorPeerAccessAlreadyEnabled) {
+            cudaGetLastError();
+        }
+
+        if (tensor->dtype == target_dtype) {
+            if (!check_cuda_call(cudaMemcpyPeer(copy->data, device_id, tensor->data, tensor->device_id, data_size), "cudaMemcpyPeer")) goto cleanup;
+        } else {
+            size_t src_dtype_size = (tensor->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+            size_t src_data_size = tensor->size * src_dtype_size;
+
+            if (!check_cuda_call(cudaMalloc(&temp_buffer, src_data_size), "cudaMalloc temp")) goto cleanup;
+            if (!check_cuda_call(cudaMemcpyPeer(temp_buffer, device_id, tensor->data, tensor->device_id, src_data_size), "cudaMemcpyPeer")) goto cleanup;
+
+            if (tensor->dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
+                copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)copy->data, (float*)temp_buffer, tensor->size);
+            } else if (tensor->dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
+                copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)copy->data, (double*)temp_buffer, tensor->size);
+            }
+
+            if (!check_cuda_kernel()) goto cleanup;
+
+            cudaFree(temp_buffer);
+            temp_buffer = NULL;
+        }
+    }
+
+    copy->dtype = target_dtype;
+    copy->ndim = tensor->ndim;
+    copy->size = tensor->size;
+    copy->device = DEVICE;
+    copy->device_id = device_id;
+    copy->owns_data = true;
+
+    if (tensor->metadata) {
+        copy->metadata = (Meta*)malloc(sizeof(Meta));
+        if (copy->metadata) {
+            memcpy(copy->metadata, tensor->metadata, sizeof(Meta));
+            copy->metadata->grad = NULL;
+            copy->metadata->grad_fn = NULL;
+        }
+    }
+
+    return copy;
+
+cleanup:
+    if (temp_buffer) cudaFree(temp_buffer);
+    if (copy->data) cudaFree(copy->data);
+    if (copy->strides) free(copy->strides);
+    if (copy->shape) free(copy->shape);
+    free(copy);
+    return NULL;
