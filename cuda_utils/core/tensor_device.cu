@@ -19,6 +19,11 @@ Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Me
     tensor->data = NULL;
     tensor->metadata = metadata;
 
+    // Declare variables before any goto statements
+    int stride = 1;
+    size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = total_elements * dtype_size;
+
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) goto cleanup;
     memcpy(tensor->shape, shape, ndim * sizeof(int));
@@ -26,14 +31,10 @@ Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Me
     tensor->strides = (int*)malloc(ndim * sizeof(int));
     if (!tensor->strides) goto cleanup;
 
-    int stride = 1;
     for (int i = ndim - 1; i >= 0; i--) {
         tensor->strides[i] = stride;
         stride *= shape[i];
     }
-
-    size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = total_elements * dtype_size;
 
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
     if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) goto cleanup;
@@ -109,6 +110,11 @@ Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Met
     tensor->data = NULL;
     tensor->metadata = metadata;
 
+    // Declare variables before any goto statements
+    int stride = 1;
+    size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = total_elements * dtype_size;
+
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) goto cleanup;
     memcpy(tensor->shape, shape, ndim * sizeof(int));
@@ -116,14 +122,10 @@ Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Met
     tensor->strides = (int*)malloc(ndim * sizeof(int));
     if (!tensor->strides) goto cleanup;
 
-    int stride = 1;
     for (int i = ndim - 1; i >= 0; i--) {
         tensor->strides[i] = stride;
         stride *= shape[i];
     }
-
-    size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = total_elements * dtype_size;
 
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
     if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) goto cleanup;
@@ -162,6 +164,14 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     tensor->metadata = metadata;
     void* device_src = NULL;
 
+    // Declare variables before any goto statements
+    int stride = 1;
+    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t vals_dtype_size = (vals_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = total_elements * target_dtype_size;
+    size_t threads_per_block = 256;
+    size_t num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
+
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) goto cleanup;
     memcpy(tensor->shape, shape, ndim * sizeof(int));
@@ -169,15 +179,10 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     tensor->strides = (int*)malloc(ndim * sizeof(int));
     if (!tensor->strides) goto cleanup;
 
-    int stride = 1;
     for (int i = ndim - 1; i >= 0; i--) {
         tensor->strides[i] = stride;
         stride *= shape[i];
     }
-
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t vals_dtype_size = (vals_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = total_elements * target_dtype_size;
 
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
     if (!check_cuda_call(cudaMalloc(&tensor->data, data_size), "cudaMalloc")) goto cleanup;
@@ -188,9 +193,6 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     tensor->device = DEVICE;
     tensor->device_id = device_id;
     tensor->owns_data = true;
-
-    size_t threads_per_block = 256;
-    size_t num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
 
     if (source_device == HOST) {
         if (vals_dtype == target_dtype) {
@@ -271,6 +273,13 @@ Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype) {
     copy->metadata = NULL;
     void* temp_buffer = NULL;
 
+    // Declare variables before any goto statements
+    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = tensor->size * target_dtype_size;
+    bool same_gpu = (tensor->device_id == device_id);
+    size_t threads_per_block = 256;
+    size_t num_blocks = (tensor->size + threads_per_block - 1) / threads_per_block;
+
     copy->shape = (int*)malloc(tensor->ndim * sizeof(int));
     if (!copy->shape) goto cleanup;
     memcpy(copy->shape, tensor->shape, tensor->ndim * sizeof(int));
@@ -279,15 +288,8 @@ Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype) {
     if (!copy->strides) goto cleanup;
     memcpy(copy->strides, tensor->strides, tensor->ndim * sizeof(int));
 
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = tensor->size * target_dtype_size;
-
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
     if (!check_cuda_call(cudaMalloc(&copy->data, data_size), "cudaMalloc")) goto cleanup;
-
-    bool same_gpu = (tensor->device_id == device_id);
-    size_t threads_per_block = 256;
-    size_t num_blocks = (tensor->size + threads_per_block - 1) / threads_per_block;
 
     if (same_gpu) {
         if (tensor->dtype == target_dtype) {
@@ -366,6 +368,12 @@ Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype) {
     result->metadata = NULL;
     void* temp_buffer = NULL;
 
+    // Declare variables before any goto statements
+    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = tensor->size * target_dtype_size;
+    size_t threads_per_block = 256;
+    size_t num_blocks = (tensor->size + threads_per_block - 1) / threads_per_block;
+
     result->shape = (int*)malloc(tensor->ndim * sizeof(int));
     if (!result->shape) goto cleanup;
     memcpy(result->shape, tensor->shape, tensor->ndim * sizeof(int));
@@ -374,14 +382,8 @@ Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype) {
     if (!result->strides) goto cleanup;
     memcpy(result->strides, tensor->strides, tensor->ndim * sizeof(int));
 
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = tensor->size * target_dtype_size;
-
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) goto cleanup;
     if (!check_cuda_call(cudaMalloc(&result->data, data_size), "cudaMalloc")) goto cleanup;
-
-    size_t threads_per_block = 256;
-    size_t num_blocks = (tensor->size + threads_per_block - 1) / threads_per_block;
 
     if (tensor->dtype == target_dtype) {
         if (!check_cuda_call(cudaMemcpy(result->data, tensor->data, data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
@@ -443,6 +445,10 @@ Tensor* move_device_to_host(Tensor* tensor, DType target_dtype) {
     result->metadata = NULL;
     void* temp_buffer = NULL;
 
+    // Declare variables before any goto statements
+    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = tensor->size * target_dtype_size;
+
     result->shape = (int*)malloc(tensor->ndim * sizeof(int));
     if (!result->shape) goto cleanup;
     memcpy(result->shape, tensor->shape, tensor->ndim * sizeof(int));
@@ -450,9 +456,6 @@ Tensor* move_device_to_host(Tensor* tensor, DType target_dtype) {
     result->strides = (int*)malloc(tensor->ndim * sizeof(int));
     if (!result->strides) goto cleanup;
     memcpy(result->strides, tensor->strides, tensor->ndim * sizeof(int));
-
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = tensor->size * target_dtype_size;
 
     result->data = malloc(data_size);
     if (!result->data) goto cleanup;
@@ -513,3 +516,4 @@ cleanup:
     if (result->shape) free(result->shape);
     free(result);
     return NULL;
+}

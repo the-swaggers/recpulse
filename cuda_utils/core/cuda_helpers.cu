@@ -1,6 +1,7 @@
 #include "cuda_helpers.h"
 #include <stdio.h>
 #include <limits.h>
+#include <stdint.h>
 
 bool check_cuda_call(cudaError_t err, const char* operation) {
     if (err != cudaSuccess) {

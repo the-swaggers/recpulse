@@ -38,9 +38,13 @@ struct Tensor {
     DeviceType device;
     int device_id;
     bool owns_data;
-    
+
     Meta* metadata;
-}; 
+};
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 Tensor* zeros_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
 Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata);
@@ -71,5 +75,9 @@ void free_tensor(Tensor* tensor);
 
 void free_tensor_host(Tensor* tensor);
 void free_tensor_device(Tensor* tensor);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
