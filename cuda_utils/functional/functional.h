@@ -30,6 +30,15 @@ int exp(void* out, const void* a, size_t size, DType dtype, int device_id);
 int log(void* out, const void* a, size_t size, DType dtype, int device_id);
 int sqrt(void* out, const void* a, size_t size, DType dtype, int device_id);
 int abs(void* out, const void* a, size_t size, DType dtype, int device_id);
+int sin(void* out, const void* a, size_t size, DType dtype, int device_id);
+int cos(void* out, const void* a, size_t size, DType dtype, int device_id);
+int tan(void* out, const void* a, size_t size, DType dtype, int device_id);
+int asin(void* out, const void* a, size_t size, DType dtype, int device_id);
+int acos(void* out, const void* a, size_t size, DType dtype, int device_id);
+int atan(void* out, const void* a, size_t size, DType dtype, int device_id);
+int sinh(void* out, const void* a, size_t size, DType dtype, int device_id);
+int cosh(void* out, const void* a, size_t size, DType dtype, int device_id);
+int tanh(void* out, const void* a, size_t size, DType dtype, int device_id);
 
 int add_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
 int sub_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
@@ -75,6 +84,24 @@ int sqrt_kernel_host_f32(float* out, const float* a, size_t size);
 int sqrt_kernel_host_f64(double* out, const double* a, size_t size);
 int abs_kernel_host_f32(float* out, const float* a, size_t size);
 int abs_kernel_host_f64(double* out, const double* a, size_t size);
+int sin_kernel_host_f32(float* out, const float* a, size_t size);
+int sin_kernel_host_f64(double* out, const double* a, size_t size);
+int cos_kernel_host_f32(float* out, const float* a, size_t size);
+int cos_kernel_host_f64(double* out, const double* a, size_t size);
+int tan_kernel_host_f32(float* out, const float* a, size_t size);
+int tan_kernel_host_f64(double* out, const double* a, size_t size);
+int asin_kernel_host_f32(float* out, const float* a, size_t size);
+int asin_kernel_host_f64(double* out, const double* a, size_t size);
+int acos_kernel_host_f32(float* out, const float* a, size_t size);
+int acos_kernel_host_f64(double* out, const double* a, size_t size);
+int atan_kernel_host_f32(float* out, const float* a, size_t size);
+int atan_kernel_host_f64(double* out, const double* a, size_t size);
+int sinh_kernel_host_f32(float* out, const float* a, size_t size);
+int sinh_kernel_host_f64(double* out, const double* a, size_t size);
+int cosh_kernel_host_f32(float* out, const float* a, size_t size);
+int cosh_kernel_host_f64(double* out, const double* a, size_t size);
+int tanh_kernel_host_f32(float* out, const float* a, size_t size);
+int tanh_kernel_host_f64(double* out, const double* a, size_t size);
 
 int add_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
 int sub_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
@@ -98,6 +125,15 @@ int exp_kernel_device(void* out, const void* a, size_t size, DType dtype);
 int log_kernel_device(void* out, const void* a, size_t size, DType dtype);
 int sqrt_kernel_device(void* out, const void* a, size_t size, DType dtype);
 int abs_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int sin_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int cos_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int tan_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int asin_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int acos_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int atan_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int sinh_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int cosh_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int tanh_kernel_device(void* out, const void* a, size_t size, DType dtype);
 
 #ifdef __cplusplus
 }
