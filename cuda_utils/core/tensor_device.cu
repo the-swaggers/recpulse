@@ -43,7 +43,6 @@ Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Me
     tensor->dtype = dtype;
     tensor->ndim = ndim;
     tensor->size = total_elements;
-    tensor->device = DEVICE;
     tensor->device_id = device_id;
     tensor->owns_data = true;
 
@@ -133,7 +132,6 @@ Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Met
     tensor->dtype = dtype;
     tensor->ndim = ndim;
     tensor->size = total_elements;
-    tensor->device = DEVICE;
     tensor->device_id = device_id;
     tensor->owns_data = true;
 
@@ -149,7 +147,7 @@ cleanup:
     return NULL;
 }
 
-Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, DeviceType source_device, int ndim, int* shape, int device_id, Meta* metadata) {
+Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, int source_device_id, int ndim, int* shape, int device_id, Meta* metadata) {
     if (!check_shape_valid(ndim, shape)) return NULL;
 
     size_t total_elements;
@@ -190,11 +188,10 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, D
     tensor->dtype = target_dtype;
     tensor->ndim = ndim;
     tensor->size = total_elements;
-    tensor->device = DEVICE;
     tensor->device_id = device_id;
     tensor->owns_data = true;
 
-    if (source_device == HOST) {
+    if (source_device_id == -1) {
         if (vals_dtype == target_dtype) {
             if (!check_cuda_call(cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
         } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
@@ -242,7 +239,7 @@ cleanup:
 void free_tensor_device(Tensor* tensor){
     
     if (!tensor) return;
-    if (tensor->device != DEVICE) return;
+    if (tensor->device_id < 0) return;
     if (tensor->metadata){
         if (tensor->metadata->grad){
             free_tensor(tensor->metadata->grad);
@@ -262,7 +259,7 @@ void free_tensor_device(Tensor* tensor){
 };
 
 Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype) {
-    if (tensor->device != DEVICE) return NULL;
+    if (tensor->device_id < 0) return NULL;
 
     Tensor* copy = (Tensor*)malloc(sizeof(Tensor));
     if (!copy) return NULL;
@@ -332,7 +329,6 @@ Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype) {
     copy->dtype = target_dtype;
     copy->ndim = tensor->ndim;
     copy->size = tensor->size;
-    copy->device = DEVICE;
     copy->device_id = device_id;
     copy->owns_data = true;
 
@@ -357,7 +353,7 @@ cleanup:
 }
 
 Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype) {
-    if (tensor->device != HOST) return NULL;
+    if (tensor->device_id != -1) return NULL;
 
     Tensor* result = (Tensor*)malloc(sizeof(Tensor));
     if (!result) return NULL;
@@ -409,7 +405,6 @@ Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype) {
     result->dtype = target_dtype;
     result->ndim = tensor->ndim;
     result->size = tensor->size;
-    result->device = DEVICE;
     result->device_id = device_id;
     result->owns_data = true;
 
@@ -434,7 +429,7 @@ cleanup:
 }
 
 Tensor* move_device_to_host(Tensor* tensor, DType target_dtype) {
-    if (tensor->device != DEVICE) return NULL;
+    if (tensor->device_id < 0) return NULL;
 
     Tensor* result = (Tensor*)malloc(sizeof(Tensor));
     if (!result) return NULL;
@@ -494,8 +489,7 @@ Tensor* move_device_to_host(Tensor* tensor, DType target_dtype) {
     result->dtype = target_dtype;
     result->ndim = tensor->ndim;
     result->size = tensor->size;
-    result->device = HOST;
-    result->device_id = 0;
+    result->device_id = -1;
     result->owns_data = true;
 
     if (tensor->metadata) {

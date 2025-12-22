@@ -37,8 +37,7 @@ Tensor* zeros_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     tensor->dtype = dtype;
     tensor->ndim = ndim;
     tensor->size = total_elements;
-    tensor->device = HOST;
-    tensor->device_id = 0;
+    tensor->device_id = -1;
     tensor->owns_data = true;
 
     return tensor;
@@ -97,8 +96,7 @@ Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     tensor->dtype = dtype;
     tensor->ndim = ndim;
     tensor->size = total_elements;
-    tensor->device = HOST;
-    tensor->device_id = 0;
+    tensor->device_id = -1;
     tensor->owns_data = true;
 
     return tensor;
@@ -163,8 +161,7 @@ Tensor* values_host_tensor(void* vals, DType vals_dtype, DType target_dtype, int
     tensor->dtype = target_dtype;
     tensor->ndim = ndim;
     tensor->size = total_elements;
-    tensor->device = HOST;
-    tensor->device_id = 0;
+    tensor->device_id = -1;
     tensor->owns_data = true;
 
     return tensor;
@@ -178,7 +175,7 @@ cleanup:
 }
 
 Tensor* tensor_copy_host(Tensor* tensor, DType target_dtype) {
-    if (tensor->device != HOST) return NULL;
+    if (tensor->device_id != -1) return NULL;
 
     Tensor* copy = (Tensor*)malloc(sizeof(Tensor));
     if (!copy) return NULL;
@@ -221,8 +218,7 @@ Tensor* tensor_copy_host(Tensor* tensor, DType target_dtype) {
     copy->dtype = target_dtype;
     copy->ndim = tensor->ndim;
     copy->size = tensor->size;
-    copy->device = HOST;
-    copy->device_id = 0;
+    copy->device_id = -1;
     copy->owns_data = true;
 
     if (tensor->metadata) {
@@ -246,7 +242,7 @@ cleanup:
 
 void free_tensor_host(Tensor* tensor) {
     if (!tensor) return;
-    if (tensor->device != HOST) return;
+    if (tensor->device_id != -1) return;
 
     if (tensor->owns_data && tensor->data) {
         free(tensor->data);
