@@ -42,7 +42,7 @@ __global__ void pow_kernel(T* out, const T* a, const T* b, size_t size) {
     }
 }
 
-int add_kernel_cuda(void* out, const void* a, const void* b, size_t size, DType dtype) {
+int add_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
     if (!out || !a || !b || size == 0) return -1;
 
     size_t threads = 256;
@@ -59,7 +59,7 @@ int add_kernel_cuda(void* out, const void* a, const void* b, size_t size, DType 
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int sub_kernel_cuda(void* out, const void* a, const void* b, size_t size, DType dtype) {
+int sub_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
     if (!out || !a || !b || size == 0) return -1;
 
     size_t threads = 256;
@@ -76,7 +76,7 @@ int sub_kernel_cuda(void* out, const void* a, const void* b, size_t size, DType 
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int mul_kernel_cuda(void* out, const void* a, const void* b, size_t size, DType dtype) {
+int mul_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
     if (!out || !a || !b || size == 0) return -1;
 
     size_t threads = 256;
@@ -93,7 +93,7 @@ int mul_kernel_cuda(void* out, const void* a, const void* b, size_t size, DType 
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int div_kernel_cuda(void* out, const void* a, const void* b, size_t size, DType dtype) {
+int div_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
     if (!out || !a || !b || size == 0) return -1;
 
     size_t threads = 256;
@@ -110,7 +110,7 @@ int div_kernel_cuda(void* out, const void* a, const void* b, size_t size, DType 
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int pow_kernel_cuda(void* out, const void* a, const void* b, size_t size, DType dtype) {
+int pow_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
     if (!out || !a || !b || size == 0) return -1;
 
     size_t threads = 256;
