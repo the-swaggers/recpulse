@@ -226,6 +226,38 @@ int rpow_scalar(void* out, const void* scalar, const void* a, size_t size, DType
     return rpow_scalar_kernel_device(out, scalar, a, size, dtype);
 }
 
+int logb_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
+    if (!out || !a || !scalar || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return logb_scalar_kernel_host_f32((float*)out, (const float*)a, *(const float*)scalar, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return logb_scalar_kernel_host_f64((double*)out, (const double*)a, *(const double*)scalar, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return logb_scalar_kernel_device(out, a, scalar, size, dtype);
+}
+
+int rlogb_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id) {
+    if (!out || !a || !scalar || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return rlogb_scalar_kernel_host_f32((float*)out, *(const float*)scalar, (const float*)a, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return rlogb_scalar_kernel_host_f64((double*)out, *(const double*)scalar, (const double*)a, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return rlogb_scalar_kernel_device(out, scalar, a, size, dtype);
+}
+
 int exp(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 

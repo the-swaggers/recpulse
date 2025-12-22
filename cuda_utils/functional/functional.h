@@ -23,6 +23,8 @@ int pow_scalar(void* out, const void* a, const void* scalar, size_t size, DType 
 int rsub_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
 int rdiv_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
 int rpow_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
+int logb_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
+int rlogb_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
 
 int exp(void* out, const void* a, size_t size, DType dtype, int device_id);
 int log(void* out, const void* a, size_t size, DType dtype, int device_id);
@@ -51,6 +53,8 @@ int pow_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t 
 int rsub_scalar_kernel_host_f32(float* out, float scalar, const float* a, size_t size);
 int rdiv_scalar_kernel_host_f32(float* out, float scalar, const float* a, size_t size);
 int rpow_scalar_kernel_host_f32(float* out, float scalar, const float* a, size_t size);
+int logb_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t size);
+int rlogb_scalar_kernel_host_f32(float* out, float scalar, const float* a, size_t size);
 
 int add_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size);
 int sub_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size);
@@ -60,6 +64,8 @@ int pow_scalar_kernel_host_f64(double* out, const double* a, double scalar, size
 int rsub_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size);
 int rdiv_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size);
 int rpow_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size);
+int logb_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size);
+int rlogb_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size);
 
 int exp_kernel_host_f32(float* out, const float* a, size_t size);
 int exp_kernel_host_f64(double* out, const double* a, size_t size);
@@ -85,6 +91,8 @@ int pow_scalar_kernel_device(void* out, const void* a, const void* scalar, size_
 int rsub_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype);
 int rdiv_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype);
 int rpow_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype);
+int logb_scalar_kernel_device(void* out, const void* a, const void* scalar, size_t size, DType dtype);
+int rlogb_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype);
 
 int exp_kernel_device(void* out, const void* a, size_t size, DType dtype);
 int log_kernel_device(void* out, const void* a, size_t size, DType dtype);

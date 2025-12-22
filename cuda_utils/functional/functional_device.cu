@@ -114,6 +114,22 @@ __global__ void rpow_scalar_kernel(T* out, T scalar, const T* a, size_t size) {
     }
 }
 
+template<typename T>
+__global__ void logb_scalar_kernel(T* out, const T* a, T scalar, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        out[idx] = log(a[idx]) / log(scalar);
+    }
+}
+
+template<typename T>
+__global__ void rlogb_scalar_kernel(T* out, T scalar, const T* a, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        out[idx] = log(scalar) / log(a[idx]);
+    }
+}
+
 int add_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
     if (!out || !a || !b || size == 0) return -1;
 
@@ -361,6 +377,44 @@ int rpow_scalar_kernel_device(void* out, const void* scalar, const void* a, size
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
         rpow_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)a, size);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}
+
+int logb_scalar_kernel_device(void* out, const void* a, const void* scalar, size_t size, DType dtype) {
+    if (!out || !a || !scalar || size == 0) return -1;
+
+    size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        float scalar_val = *(const float*)scalar;
+        logb_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, scalar_val, size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        double scalar_val = *(const double*)scalar;
+        logb_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, scalar_val, size);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}
+
+int rlogb_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype) {
+    if (!out || !a || !scalar || size == 0) return -1;
+
+    size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        float scalar_val = *(const float*)scalar;
+        rlogb_scalar_kernel<float><<<blocks, threads>>>((float*)out, scalar_val, (const float*)a, size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        double scalar_val = *(const double*)scalar;
+        rlogb_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)a, size);
     } else {
         return -1;
     }

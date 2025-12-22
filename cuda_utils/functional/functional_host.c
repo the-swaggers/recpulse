@@ -225,6 +225,38 @@ int rpow_scalar_kernel_host_f64(double* out, double scalar, const double* a, siz
     return 0;
 }
 
+int logb_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = logf(a[i]) / logf(scalar);
+    }
+    return 0;
+}
+
+int logb_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = log(a[i]) / log(scalar);
+    }
+    return 0;
+}
+
+int rlogb_scalar_kernel_host_f32(float* out, float scalar, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = logf(scalar) / logf(a[i]);
+    }
+    return 0;
+}
+
+int rlogb_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = log(scalar) / log(a[i]);
+    }
+    return 0;
+}
+
 int exp_kernel_host_f32(float* out, const float* a, size_t size) {
     if (!out || !a || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
