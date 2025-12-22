@@ -82,6 +82,22 @@ int power(void* out, const void* a, const void* b, size_t size, DType dtype, int
     return pow_kernel_device(out, a, b, size, dtype);
 }
 
+int logb(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
+    if (!out || !a || !b || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return logb_kernel_host_f32((float*)out, (const float*)a, (const float*)b, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return logb_kernel_host_f64((double*)out, (const double*)a, (const double*)b, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return logb_kernel_device(out, a, b, size, dtype);
+}
+
 int add_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 

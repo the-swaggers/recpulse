@@ -81,6 +81,22 @@ int pow_kernel_host_f64(double* out, const double* a, const double* b, size_t si
     return 0;
 }
 
+int logb_kernel_host_f32(float* out, const float* a, const float* b, size_t size) {
+    if (!out || !a || !b || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = logf(a[i]) / logf(b[i]);
+    }
+    return 0;
+}
+
+int logb_kernel_host_f64(double* out, const double* a, const double* b, size_t size) {
+    if (!out || !a || !b || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = log(a[i]) / log(b[i]);
+    }
+    return 0;
+}
+
 int add_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t size) {
     if (!out || !a || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
