@@ -24,6 +24,11 @@ int rsub_scalar(void* out, const void* scalar, const void* a, size_t size, DType
 int rdiv_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
 int rpow_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
 
+int exp(void* out, const void* a, size_t size, DType dtype, int device_id);
+int log(void* out, const void* a, size_t size, DType dtype, int device_id);
+int sqrt(void* out, const void* a, size_t size, DType dtype, int device_id);
+int abs(void* out, const void* a, size_t size, DType dtype, int device_id);
+
 int add_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
 int sub_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
 int mul_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
@@ -56,6 +61,15 @@ int rsub_scalar_kernel_host_f64(double* out, double scalar, const double* a, siz
 int rdiv_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size);
 int rpow_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size);
 
+int exp_kernel_host_f32(float* out, const float* a, size_t size);
+int exp_kernel_host_f64(double* out, const double* a, size_t size);
+int log_kernel_host_f32(float* out, const float* a, size_t size);
+int log_kernel_host_f64(double* out, const double* a, size_t size);
+int sqrt_kernel_host_f32(float* out, const float* a, size_t size);
+int sqrt_kernel_host_f64(double* out, const double* a, size_t size);
+int abs_kernel_host_f32(float* out, const float* a, size_t size);
+int abs_kernel_host_f64(double* out, const double* a, size_t size);
+
 int add_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
 int sub_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
 int mul_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
@@ -71,6 +85,11 @@ int pow_scalar_kernel_device(void* out, const void* a, const void* scalar, size_
 int rsub_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype);
 int rdiv_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype);
 int rpow_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype);
+
+int exp_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int log_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int sqrt_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int abs_kernel_device(void* out, const void* a, size_t size, DType dtype);
 
 #ifdef __cplusplus
 }

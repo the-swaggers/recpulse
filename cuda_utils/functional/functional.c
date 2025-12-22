@@ -225,3 +225,67 @@ int rpow_scalar(void* out, const void* scalar, const void* a, size_t size, DType
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
     return rpow_scalar_kernel_device(out, scalar, a, size, dtype);
 }
+
+int exp(void* out, const void* a, size_t size, DType dtype, int device_id) {
+    if (!out || !a || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return exp_kernel_host_f32((float*)out, (const float*)a, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return exp_kernel_host_f64((double*)out, (const double*)a, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return exp_kernel_device(out, a, size, dtype);
+}
+
+int log(void* out, const void* a, size_t size, DType dtype, int device_id) {
+    if (!out || !a || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return log_kernel_host_f32((float*)out, (const float*)a, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return log_kernel_host_f64((double*)out, (const double*)a, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return log_kernel_device(out, a, size, dtype);
+}
+
+int sqrt(void* out, const void* a, size_t size, DType dtype, int device_id) {
+    if (!out || !a || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return sqrt_kernel_host_f32((float*)out, (const float*)a, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return sqrt_kernel_host_f64((double*)out, (const double*)a, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return sqrt_kernel_device(out, a, size, dtype);
+}
+
+int abs(void* out, const void* a, size_t size, DType dtype, int device_id) {
+    if (!out || !a || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return abs_kernel_host_f32((float*)out, (const float*)a, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return abs_kernel_host_f64((double*)out, (const double*)a, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return abs_kernel_device(out, a, size, dtype);
+}

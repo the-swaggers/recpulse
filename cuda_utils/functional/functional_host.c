@@ -224,3 +224,67 @@ int rpow_scalar_kernel_host_f64(double* out, double scalar, const double* a, siz
     }
     return 0;
 }
+
+int exp_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = expf(a[i]);
+    }
+    return 0;
+}
+
+int exp_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = exp(a[i]);
+    }
+    return 0;
+}
+
+int log_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = logf(a[i]);
+    }
+    return 0;
+}
+
+int log_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = log(a[i]);
+    }
+    return 0;
+}
+
+int sqrt_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = sqrtf(a[i]);
+    }
+    return 0;
+}
+
+int sqrt_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = sqrt(a[i]);
+    }
+    return 0;
+}
+
+int abs_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = fabsf(a[i]);
+    }
+    return 0;
+}
+
+int abs_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = fabs(a[i]);
+    }
+    return 0;
+}
