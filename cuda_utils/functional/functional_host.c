@@ -320,3 +320,147 @@ int abs_kernel_host_f64(double* out, const double* a, size_t size) {
     }
     return 0;
 }
+
+int sin_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = sinf(a[i]);
+    }
+    return 0;
+}
+
+int sin_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = sin(a[i]);
+    }
+    return 0;
+}
+
+int cos_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = cosf(a[i]);
+    }
+    return 0;
+}
+
+int cos_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = cos(a[i]);
+    }
+    return 0;
+}
+
+int tan_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = tanf(a[i]);
+    }
+    return 0;
+}
+
+int tan_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = tan(a[i]);
+    }
+    return 0;
+}
+
+int asin_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = asinf(a[i]);
+    }
+    return 0;
+}
+
+int asin_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = asin(a[i]);
+    }
+    return 0;
+}
+
+int acos_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = acosf(a[i]);
+    }
+    return 0;
+}
+
+int acos_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = acos(a[i]);
+    }
+    return 0;
+}
+
+int atan_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = atanf(a[i]);
+    }
+    return 0;
+}
+
+int atan_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = atan(a[i]);
+    }
+    return 0;
+}
+
+int sinh_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = sinhf(a[i]);
+    }
+    return 0;
+}
+
+int sinh_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = sinh(a[i]);
+    }
+    return 0;
+}
+
+int cosh_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = coshf(a[i]);
+    }
+    return 0;
+}
+
+int cosh_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = cosh(a[i]);
+    }
+    return 0;
+}
+
+int tanh_kernel_host_f32(float* out, const float* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = tanhf(a[i]);
+    }
+    return 0;
+}
+
+int tanh_kernel_host_f64(double* out, const double* a, size_t size) {
+    if (!out || !a || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = tanh(a[i]);
+    }
+    return 0;
+}
