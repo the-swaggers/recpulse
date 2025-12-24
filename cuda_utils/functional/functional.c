@@ -2,7 +2,7 @@
 #include "../core/cuda_helpers.h"
 #include <cuda_runtime.h>
 
-int add(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
+int rp_add(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
     if (!out || !a || !b || size == 0) return -1;
 
     if (device_id == -1) {
@@ -18,7 +18,7 @@ int add(void* out, const void* a, const void* b, size_t size, DType dtype, int d
     return add_kernel_device(out, a, b, size, dtype);
 }
 
-int sub(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
+int rp_sub(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
     if (!out || !a || !b || size == 0) return -1;
 
     if (device_id == -1) {
@@ -34,7 +34,7 @@ int sub(void* out, const void* a, const void* b, size_t size, DType dtype, int d
     return sub_kernel_device(out, a, b, size, dtype);
 }
 
-int mul(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
+int rp_mul(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
     if (!out || !a || !b || size == 0) return -1;
 
     if (device_id == -1) {
@@ -50,7 +50,7 @@ int mul(void* out, const void* a, const void* b, size_t size, DType dtype, int d
     return mul_kernel_device(out, a, b, size, dtype);
 }
 
-int divide(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
+int rp_divide(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
     if (!out || !a || !b || size == 0) return -1;
 
     if (device_id == -1) {
@@ -66,7 +66,7 @@ int divide(void* out, const void* a, const void* b, size_t size, DType dtype, in
     return div_kernel_device(out, a, b, size, dtype);
 }
 
-int power(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
+int rp_power(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
     if (!out || !a || !b || size == 0) return -1;
 
     if (device_id == -1) {
@@ -82,7 +82,7 @@ int power(void* out, const void* a, const void* b, size_t size, DType dtype, int
     return pow_kernel_device(out, a, b, size, dtype);
 }
 
-int logb(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
+int rp_logb(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id) {
     if (!out || !a || !b || size == 0) return -1;
 
     if (device_id == -1) {
@@ -98,7 +98,7 @@ int logb(void* out, const void* a, const void* b, size_t size, DType dtype, int 
     return logb_kernel_device(out, a, b, size, dtype);
 }
 
-int add_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
+int rp_add_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -114,7 +114,7 @@ int add_scalar(void* out, const void* a, const void* scalar, size_t size, DType 
     return add_scalar_kernel_device(out, a, scalar, size, dtype);
 }
 
-int sub_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
+int rp_sub_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -130,7 +130,7 @@ int sub_scalar(void* out, const void* a, const void* scalar, size_t size, DType 
     return sub_scalar_kernel_device(out, a, scalar, size, dtype);
 }
 
-int mul_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
+int rp_mul_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -146,7 +146,7 @@ int mul_scalar(void* out, const void* a, const void* scalar, size_t size, DType 
     return mul_scalar_kernel_device(out, a, scalar, size, dtype);
 }
 
-int div_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
+int rp_div_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -162,7 +162,7 @@ int div_scalar(void* out, const void* a, const void* scalar, size_t size, DType 
     return div_scalar_kernel_device(out, a, scalar, size, dtype);
 }
 
-int pow_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
+int rp_pow_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -178,7 +178,7 @@ int pow_scalar(void* out, const void* a, const void* scalar, size_t size, DType 
     return pow_scalar_kernel_device(out, a, scalar, size, dtype);
 }
 
-int rsub_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id) {
+int rp_rsub_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -194,7 +194,7 @@ int rsub_scalar(void* out, const void* scalar, const void* a, size_t size, DType
     return rsub_scalar_kernel_device(out, scalar, a, size, dtype);
 }
 
-int rdiv_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id) {
+int rp_rdiv_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -210,7 +210,7 @@ int rdiv_scalar(void* out, const void* scalar, const void* a, size_t size, DType
     return rdiv_scalar_kernel_device(out, scalar, a, size, dtype);
 }
 
-int rpow_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id) {
+int rp_rpow_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -226,7 +226,7 @@ int rpow_scalar(void* out, const void* scalar, const void* a, size_t size, DType
     return rpow_scalar_kernel_device(out, scalar, a, size, dtype);
 }
 
-int logb_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
+int rp_logb_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -242,7 +242,7 @@ int logb_scalar(void* out, const void* a, const void* scalar, size_t size, DType
     return logb_scalar_kernel_device(out, a, scalar, size, dtype);
 }
 
-int rlogb_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id) {
+int rp_rlogb_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || !scalar || size == 0) return -1;
 
     if (device_id == -1) {
@@ -258,7 +258,7 @@ int rlogb_scalar(void* out, const void* scalar, const void* a, size_t size, DTyp
     return rlogb_scalar_kernel_device(out, scalar, a, size, dtype);
 }
 
-int exp(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_exp(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -274,7 +274,7 @@ int exp(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return exp_kernel_device(out, a, size, dtype);
 }
 
-int log(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_log(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -290,7 +290,7 @@ int log(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return log_kernel_device(out, a, size, dtype);
 }
 
-int sqrt(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_sqrt(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -306,7 +306,7 @@ int sqrt(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return sqrt_kernel_device(out, a, size, dtype);
 }
 
-int abs(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_abs(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -322,7 +322,7 @@ int abs(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return abs_kernel_device(out, a, size, dtype);
 }
 
-int sin(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_sin(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -338,7 +338,7 @@ int sin(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return sin_kernel_device(out, a, size, dtype);
 }
 
-int cos(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_cos(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -354,7 +354,7 @@ int cos(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return cos_kernel_device(out, a, size, dtype);
 }
 
-int tan(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_tan(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -370,7 +370,7 @@ int tan(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return tan_kernel_device(out, a, size, dtype);
 }
 
-int asin(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_asin(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -386,7 +386,7 @@ int asin(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return asin_kernel_device(out, a, size, dtype);
 }
 
-int acos(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_acos(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -402,7 +402,7 @@ int acos(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return acos_kernel_device(out, a, size, dtype);
 }
 
-int atan(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_atan(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -418,7 +418,7 @@ int atan(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return atan_kernel_device(out, a, size, dtype);
 }
 
-int sinh(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_sinh(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -434,7 +434,7 @@ int sinh(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return sinh_kernel_device(out, a, size, dtype);
 }
 
-int cosh(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_cosh(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -450,7 +450,7 @@ int cosh(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return cosh_kernel_device(out, a, size, dtype);
 }
 
-int tanh(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_tanh(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -466,7 +466,7 @@ int tanh(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return tanh_kernel_device(out, a, size, dtype);
 }
 
-int sum_all(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_sum_all(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {
@@ -486,7 +486,7 @@ int sum_all(void* out, const void* a, size_t size, DType dtype, int device_id) {
     return sum_all_kernel_device(out, a, size, dtype);
 }
 
-int mean_all(void* out, const void* a, size_t size, DType dtype, int device_id) {
+int rp_mean_all(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!out || !a || size == 0) return -1;
 
     if (device_id == -1) {

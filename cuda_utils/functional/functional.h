@@ -8,40 +8,40 @@
 extern "C" {
 #endif
 
-int add(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
-int sub(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
-int mul(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
-int divide(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
-int power(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
-int logb(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id); // out[i] = log_b(a) = log(a[i]) / log(b[i])
+int rp_add(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
+int rp_sub(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
+int rp_mul(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
+int rp_divide(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
+int rp_power(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id);
+int rp_logb(void* out, const void* a, const void* b, size_t size, DType dtype, int device_id); // out[i] = log_b(a) = log(a[i]) / log(b[i])
 
-int add_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
-int sub_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
-int mul_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
-int div_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
-int pow_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
-int rsub_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
-int rdiv_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
-int rpow_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
-int logb_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
-int rlogb_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
+int rp_add_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
+int rp_sub_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
+int rp_mul_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
+int rp_div_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
+int rp_pow_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
+int rp_rsub_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
+int rp_rdiv_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
+int rp_rpow_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
+int rp_logb_scalar(void* out, const void* a, const void* scalar, size_t size, DType dtype, int device_id);
+int rp_rlogb_scalar(void* out, const void* scalar, const void* a, size_t size, DType dtype, int device_id);
 
-int exp(void* out, const void* a, size_t size, DType dtype, int device_id);
-int log(void* out, const void* a, size_t size, DType dtype, int device_id);
-int sqrt(void* out, const void* a, size_t size, DType dtype, int device_id);
-int abs(void* out, const void* a, size_t size, DType dtype, int device_id);
-int sin(void* out, const void* a, size_t size, DType dtype, int device_id);
-int cos(void* out, const void* a, size_t size, DType dtype, int device_id);
-int tan(void* out, const void* a, size_t size, DType dtype, int device_id);
-int asin(void* out, const void* a, size_t size, DType dtype, int device_id);
-int acos(void* out, const void* a, size_t size, DType dtype, int device_id);
-int atan(void* out, const void* a, size_t size, DType dtype, int device_id);
-int sinh(void* out, const void* a, size_t size, DType dtype, int device_id);
-int cosh(void* out, const void* a, size_t size, DType dtype, int device_id);
-int tanh(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_exp(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_log(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_sqrt(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_abs(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_sin(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_cos(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_tan(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_asin(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_acos(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_atan(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_sinh(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_cosh(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_tanh(void* out, const void* a, size_t size, DType dtype, int device_id);
 
-int sum_all(void* out, const void* a, size_t size, DType dtype, int device_id);
-int mean_all(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_sum_all(void* out, const void* a, size_t size, DType dtype, int device_id);
+int rp_mean_all(void* out, const void* a, size_t size, DType dtype, int device_id);
 
 int add_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
 int sub_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
