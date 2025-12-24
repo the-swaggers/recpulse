@@ -465,3 +465,43 @@ int tanh(void* out, const void* a, size_t size, DType dtype, int device_id) {
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
     return tanh_kernel_device(out, a, size, dtype);
 }
+
+int sum_all(void* out, const void* a, size_t size, DType dtype, int device_id) {
+    if (!out || !a || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            float result = sum_all_kernel_host_f32((const float*)a, size);
+            *((float*)out) = result;
+            return 0;
+        } else if (dtype == DTYPE_FLOAT64) {
+            double result = sum_all_kernel_host_f64((const double*)a, size);
+            *((double*)out) = result;
+            return 0;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return sum_all_kernel_device(out, a, size, dtype);
+}
+
+int mean_all(void* out, const void* a, size_t size, DType dtype, int device_id) {
+    if (!out || !a || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            float result = mean_all_kernel_host_f32((const float*)a, size);
+            *((float*)out) = result;
+            return 0;
+        } else if (dtype == DTYPE_FLOAT64) {
+            double result = mean_all_kernel_host_f64((const double*)a, size);
+            *((double*)out) = result;
+            return 0;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return mean_all_kernel_device(out, a, size, dtype);
+}

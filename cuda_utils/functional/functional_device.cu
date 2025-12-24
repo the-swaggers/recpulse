@@ -746,3 +746,102 @@ int tanh_kernel_device(void* out, const void* a, size_t size, DType dtype) {
 
     return check_cuda_kernel() ? 0 : -1;
 }
+
+template<typename T>
+__global__ void sum_reduction_kernel(const T* input, T* output, size_t size) {
+    extern __shared__ char shared_mem[];
+    T* sdata = (T*)shared_mem;
+
+    size_t tid = threadIdx.x;
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < size) {
+        sdata[tid] = input[idx];
+    } else {
+        sdata[tid] = 0;
+    }
+    __syncthreads();
+    
+    for (int s = blockDim.x / 2; s > 0; s >>= 1){
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        output[blockIdx.x] = sdata[0];
+    }
+}
+
+int sum_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
+    if (!out || !a || size == 0) return -1;
+
+    size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+    size_t shared_mem_size = threads * (dtype == DTYPE_FLOAT32 ? sizeof(float) : sizeof(double));
+
+    if (dtype == DTYPE_FLOAT32) {
+        float* d_partial_sums;
+        cudaMalloc(&d_partial_sums, blocks * sizeof(float));
+
+        sum_reduction_kernel<float><<<blocks, threads, shared_mem_size>>>(
+            (const float*)a, d_partial_sums, size
+        );
+
+        if (blocks > 1) {
+            sum_reduction_kernel<float><<<1, threads, shared_mem_size>>>(
+                d_partial_sums, (float*)out, blocks
+            );
+        } else {
+            cudaMemcpy(out, d_partial_sums, sizeof(float), cudaMemcpyDeviceToDevice);
+        }
+
+        cudaFree(d_partial_sums);
+    } else if (dtype == DTYPE_FLOAT64) {
+        double* d_partial_sums;
+        cudaMalloc(&d_partial_sums, blocks * sizeof(double));
+
+        sum_reduction_kernel<double><<<blocks, threads, shared_mem_size>>>(
+            (const double*)a, d_partial_sums, size
+        );
+
+        if (blocks > 1) {
+            sum_reduction_kernel<double><<<1, threads, shared_mem_size>>>(
+                d_partial_sums, (double*)out, blocks
+            );
+        } else {
+            cudaMemcpy(out, d_partial_sums, sizeof(double), cudaMemcpyDeviceToDevice);
+        }
+
+        cudaFree(d_partial_sums);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}
+
+int mean_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
+    if (!out || !a || size == 0) return -1;
+
+    if (sum_all_kernel_device(out, a, size, dtype) != 0) {
+        return -1;
+    }
+
+    if (dtype == DTYPE_FLOAT32) {
+        float result;
+        cudaMemcpy(&result, out, sizeof(float), cudaMemcpyDeviceToHost);
+        result /= (float)size;
+        cudaMemcpy(out, &result, sizeof(float), cudaMemcpyHostToDevice);
+    } else if (dtype == DTYPE_FLOAT64) {
+        double result;
+        cudaMemcpy(&result, out, sizeof(double), cudaMemcpyDeviceToHost);
+        result /= (double)size;
+        cudaMemcpy(out, &result, sizeof(double), cudaMemcpyHostToDevice);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}

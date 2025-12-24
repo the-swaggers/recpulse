@@ -40,6 +40,9 @@ int sinh(void* out, const void* a, size_t size, DType dtype, int device_id);
 int cosh(void* out, const void* a, size_t size, DType dtype, int device_id);
 int tanh(void* out, const void* a, size_t size, DType dtype, int device_id);
 
+int sum_all(void* out, const void* a, size_t size, DType dtype, int device_id);
+int mean_all(void* out, const void* a, size_t size, DType dtype, int device_id);
+
 int add_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
 int sub_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
 int mul_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
@@ -103,6 +106,11 @@ int cosh_kernel_host_f64(double* out, const double* a, size_t size);
 int tanh_kernel_host_f32(float* out, const float* a, size_t size);
 int tanh_kernel_host_f64(double* out, const double* a, size_t size);
 
+float sum_all_kernel_host_f32(const float* a, size_t size);
+double sum_all_kernel_host_f64(const double* a, size_t size);
+float mean_all_kernel_host_f32(const float* a, size_t size);
+double mean_all_kernel_host_f64(const double* a, size_t size);
+
 int add_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
 int sub_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
 int mul_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
@@ -134,6 +142,9 @@ int atan_kernel_device(void* out, const void* a, size_t size, DType dtype);
 int sinh_kernel_device(void* out, const void* a, size_t size, DType dtype);
 int cosh_kernel_device(void* out, const void* a, size_t size, DType dtype);
 int tanh_kernel_device(void* out, const void* a, size_t size, DType dtype);
+
+int sum_all_kernel_device(void* out, const void* a, size_t size, DType dtype);
+int mean_all_kernel_device(void* out, const void* a, size_t size, DType dtype);
 
 #ifdef __cplusplus
 }

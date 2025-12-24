@@ -464,3 +464,31 @@ int tanh_kernel_host_f64(double* out, const double* a, size_t size) {
     }
     return 0;
 }
+
+float sum_all_kernel_host_f32(const float* a, size_t size) {
+    if (!a || size == 0) return 0.0f;
+    float sum = 0.0f;
+    for (size_t i = 0; i < size; i++) {
+        sum += a[i];
+    }
+    return sum;
+}
+
+double sum_all_kernel_host_f64(const double* a, size_t size) {
+    if (!a || size == 0) return 0.0;
+    double sum = 0.0;
+    for (size_t i = 0; i < size; i++) {
+        sum += a[i];
+    }
+    return sum;
+}
+
+float mean_all_kernel_host_f32(const float* a, size_t size) {
+    if (!a || size == 0) return 0.0f;
+    return sum_all_kernel_host_f32(a, size) / (float)size;
+}
+
+double mean_all_kernel_host_f64(const double* a, size_t size) {
+    if (!a || size == 0) return 0.0;
+    return sum_all_kernel_host_f64(a, size) / (double)size;
+}
