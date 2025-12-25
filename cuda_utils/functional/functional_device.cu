@@ -775,25 +775,54 @@ __global__ void sum_reduction_kernel(const T* input, T* output, size_t size) {
 }
 
 int sum_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
+    fprintf(stderr, "sum_all_kernel_device called: size=%zu, dtype=%d\n", size, dtype);
+    fflush(stderr);
+
     if (!out || !a || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
     size_t shared_mem_size = threads * (dtype == DTYPE_FLOAT32 ? sizeof(float) : sizeof(double));
 
+    fprintf(stderr, "Launching kernel: blocks=%zu, threads=%zu, shared_mem=%zu\n", blocks, threads, shared_mem_size);
+    fflush(stderr);
+
     if (dtype == DTYPE_FLOAT32) {
         float* d_partial_sums;
+        fprintf(stderr, "Allocating %zu bytes for partial sums\n", blocks * sizeof(float));
+        fflush(stderr);
         cudaMalloc(&d_partial_sums, blocks * sizeof(float));
 
         sum_reduction_kernel<float><<<blocks, threads, shared_mem_size>>>(
             (const float*)a, d_partial_sums, size
         );
 
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            fprintf(stderr, "CUDA error in first reduction: %s\n", cudaGetErrorString(err));
+            fflush(stderr);
+            cudaFree(d_partial_sums);
+            return -1;
+        }
+
         if (blocks > 1) {
-            sum_reduction_kernel<float><<<1, threads, shared_mem_size>>>(
+            size_t threads2 = (blocks < threads) ? blocks : threads;
+            size_t shared_mem_size2 = threads2 * sizeof(float);
+            fprintf(stderr, "Second reduction: blocks=%zu, threads2=%zu, shared_mem=%zu\n", blocks, threads2, shared_mem_size2);
+            fflush(stderr);
+            sum_reduction_kernel<float><<<1, threads2, shared_mem_size2>>>(
                 d_partial_sums, (float*)out, blocks
             );
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "CUDA error in second reduction: %s\n", cudaGetErrorString(err));
+                fflush(stderr);
+                cudaFree(d_partial_sums);
+                return -1;
+            }
         } else {
+            fprintf(stderr, "Using single block optimization\n");
+            fflush(stderr);
             cudaMemcpy(out, d_partial_sums, sizeof(float), cudaMemcpyDeviceToDevice);
         }
 
@@ -806,10 +835,25 @@ int sum_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
             (const double*)a, d_partial_sums, size
         );
 
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            printf("CUDA error in first reduction: %s\n", cudaGetErrorString(err));
+            cudaFree(d_partial_sums);
+            return -1;
+        }
+
         if (blocks > 1) {
-            sum_reduction_kernel<double><<<1, threads, shared_mem_size>>>(
+            size_t threads2 = (blocks < threads) ? blocks : threads;
+            size_t shared_mem_size2 = threads2 * sizeof(double);
+            sum_reduction_kernel<double><<<1, threads2, shared_mem_size2>>>(
                 d_partial_sums, (double*)out, blocks
             );
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                printf("CUDA error in second reduction: %s\n", cudaGetErrorString(err));
+                cudaFree(d_partial_sums);
+                return -1;
+            }
         } else {
             cudaMemcpy(out, d_partial_sums, sizeof(double), cudaMemcpyDeviceToDevice);
         }
