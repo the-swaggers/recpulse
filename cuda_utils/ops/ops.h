@@ -18,16 +18,16 @@ struct GradFn {
     void* saved_data;
 };
 
-Tensor* op_add(Tensor* a, Tensor* b);
+Tensor* op_add(Tensor* x1, Tensor* x2);
 
-int backwards_add_a(const void* grad_c, void* grad_a, size_t size, DType dtype, int device_id);
-int backwards_add_b(const void* grad_c, void* grad_b, size_t size, DType dtype, int device_id);
+int backwards_add_x1(const void* grad_c, void* grad_x1, size_t size, DType dtype, int device_id);
+int backwards_add_x2(const void* grad_c, void* grad_x2, size_t size, DType dtype, int device_id);
 
-int backwards_add_a_host(const void* grad_c, void* grad_a, size_t size, DType dtype);
-int backwards_add_b_host(const void* grad_c, void* grad_b, size_t size, DType dtype);
+int backwards_add_x1_host(const void* grad_c, void* grad_x1, size_t size, DType dtype);
+int backwards_add_x2_host(const void* grad_c, void* grad_x2, size_t size, DType dtype);
 
-int backwards_add_a_device(const void* grad_c, void* grad_a, size_t size, DType dtype);
-int backwards_add_b_device(const void* grad_c, void* grad_b, size_t size, DType dtype);
+int backwards_add_x1_device(const void* grad_c, void* grad_x1, size_t size, DType dtype);
+int backwards_add_x2_device(const void* grad_c, void* grad_x2, size_t size, DType dtype);
 
 void free_grad_fn(GradFn* grad_fn);
 

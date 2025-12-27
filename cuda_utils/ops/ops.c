@@ -3,82 +3,82 @@
 #include <stdlib.h>
 #include <string.h>
 
-int backwards_add_a(const void* grad_c, void* grad_a,
-                    size_t size, DType dtype, int device_id) {
-    if (!grad_c || !grad_a) return -1;
+int backwards_add_x1(const void* grad_c, void* grad_x1,
+                     size_t size, DType dtype, int device_id) {
+    if (!grad_c || !grad_x1) return -1;
 
     if (device_id == -1) {
-        return backwards_add_a_host(grad_c, grad_a, size, dtype);
+        return backwards_add_x1_host(grad_c, grad_x1, size, dtype);
     } else {
-        return backwards_add_a_device(grad_c, grad_a, size, dtype);
+        return backwards_add_x1_device(grad_c, grad_x1, size, dtype);
     }
 }
 
-int backwards_add_b(const void* grad_c, void* grad_b,
-                    size_t size, DType dtype, int device_id) {
-    if (!grad_c || !grad_b) return -1;
+int backwards_add_x2(const void* grad_c, void* grad_x2,
+                     size_t size, DType dtype, int device_id) {
+    if (!grad_c || !grad_x2) return -1;
 
     if (device_id == -1) {
-        return backwards_add_b_host(grad_c, grad_b, size, dtype);
+        return backwards_add_x2_host(grad_c, grad_x2, size, dtype);
     } else {
-        return backwards_add_b_device(grad_c, grad_b, size, dtype);
+        return backwards_add_x2_device(grad_c, grad_x2, size, dtype);
     }
 }
 
 void backward_add_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
-    Tensor* a = self->inputs[0];
-    Tensor* b = self->inputs[1];
+    Tensor* x1 = self->inputs[0];
+    Tensor* x2 = self->inputs[1];
 
-    if (a->metadata && a->metadata->requires_grad) {
-        if (!a->metadata->grad) {
-            a->metadata->grad = zeros_tensor(a->dtype, a->device_id, a->ndim, a->shape, NULL);
-            if (a->metadata->grad) {
-                backwards_add_a(grad_output->data, a->metadata->grad->data,
-                               grad_output->size, grad_output->dtype, grad_output->device_id);
+    if (x1->metadata && x1->metadata->requires_grad) {
+        if (!x1->metadata->grad) {
+            x1->metadata->grad = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
+            if (x1->metadata->grad) {
+                backwards_add_x1(grad_output->data, x1->metadata->grad->data,
+                                grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
-            rp_add(a->metadata->grad->data, a->metadata->grad->data, grad_output->data,
+            rp_add(x1->metadata->grad->data, x1->metadata->grad->data, grad_output->data,
                    grad_output->size, grad_output->dtype, grad_output->device_id);
         }
     }
 
-    if (b->metadata && b->metadata->requires_grad) {
-        if (!b->metadata->grad) {
-            b->metadata->grad = zeros_tensor(b->dtype, b->device_id, b->ndim, b->shape, NULL);
-            if (b->metadata->grad) {
-                backwards_add_b(grad_output->data, b->metadata->grad->data,
-                               grad_output->size, grad_output->dtype, grad_output->device_id);
+    if (x2->metadata && x2->metadata->requires_grad) {
+        if (!x2->metadata->grad) {
+            x2->metadata->grad = zeros_tensor(x2->dtype, x2->device_id, x2->ndim, x2->shape, NULL);
+            if (x2->metadata->grad) {
+                backwards_add_x2(grad_output->data, x2->metadata->grad->data,
+                                grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
-            rp_add(b->metadata->grad->data, b->metadata->grad->data, grad_output->data,
+            rp_add(x2->metadata->grad->data, x2->metadata->grad->data, grad_output->data,
                    grad_output->size, grad_output->dtype, grad_output->device_id);
         }
     }
 }
 
-Tensor* op_add(Tensor* a, Tensor* b) {
-    if (!a || !b) return NULL;
+Tensor* op_add(Tensor* x1, Tensor* x2) {
+    if (!x1 || !x2) return NULL;
 
-    if (a->ndim != b->ndim || a->size != b->size) return NULL;
-    for (int i = 0; i < a->ndim; i++) {
-        if (a->shape[i] != b->shape[i]) return NULL;
+    if (x1->ndim != x2->ndim || x1->size != x2->size) return NULL;
+    for (int i = 0; i < x1->ndim; i++) {
+        if (x1->shape[i] != x2->shape[i]) return NULL;
     }
 
-    if (a->dtype != b->dtype || a->device_id != b->device_id) return NULL;
+    if (x1->dtype != x2->dtype || x1->device_id != x2->device_id) return NULL;
 
-    Tensor* out = zeros_tensor(a->dtype, a->device_id, a->ndim, a->shape, NULL);
+    Tensor* out = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_add(out->data, a->data, b->data, a->size, a->dtype, a->device_id);
+    int result = rp_add(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
     if (result != 0) {
         free_tensor(out);
         return NULL;
     }
 
     bool requires_grad = false;
-    if ((a->metadata && a->metadata->requires_grad) || (b->metadata && b->metadata->requires_grad)) {
+    if ((x1->metadata && x1->metadata->requires_grad) || (x2->metadata && x2->metadata->requires_grad)) {
         requires_grad = true;
     }
 
@@ -107,8 +107,8 @@ Tensor* op_add(Tensor* a, Tensor* b) {
             free_tensor(out);
             return NULL;
         }
-        grad_fn->inputs[0] = a;
-        grad_fn->inputs[1] = b;
+        grad_fn->inputs[0] = x1;
+        grad_fn->inputs[1] = x2;
         grad_fn->saved_data = NULL;
 
         out->metadata->grad_fn = grad_fn;
