@@ -9,21 +9,26 @@ NVCC := nvcc
 
 CORE_DIR := core
 FUNCTIONAL_DIR := functional
+OPS_DIR := ops
 PYTHON_DIR := python
 BUILD_DIR := build
 
 TARGET := recpulse_cuda.so
 
 C_SOURCES := $(CORE_DIR)/tensor.c $(CORE_DIR)/tensor_host.c \
-             $(FUNCTIONAL_DIR)/functional.c $(FUNCTIONAL_DIR)/functional_host.c
+             $(FUNCTIONAL_DIR)/functional.c $(FUNCTIONAL_DIR)/functional_host.c \
+             $(OPS_DIR)/ops.c $(OPS_DIR)/grad_host.c
 CU_SOURCES := $(CORE_DIR)/tensor_device.cu $(CORE_DIR)/cuda_helpers.cu \
-              $(FUNCTIONAL_DIR)/functional_device.cu
+              $(FUNCTIONAL_DIR)/functional_device.cu \
+              $(OPS_DIR)/grad_device.cu
 PY_SOURCES := $(PYTHON_DIR)/tensor_python.c
 
 C_OBJECTS := $(patsubst $(CORE_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(CORE_DIR)/%.c,$(C_SOURCES))) \
-             $(patsubst $(FUNCTIONAL_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(FUNCTIONAL_DIR)/%.c,$(C_SOURCES)))
+             $(patsubst $(FUNCTIONAL_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(FUNCTIONAL_DIR)/%.c,$(C_SOURCES))) \
+             $(patsubst $(OPS_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(OPS_DIR)/%.c,$(C_SOURCES)))
 CU_OBJECTS := $(patsubst $(CORE_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(CORE_DIR)/%.cu,$(CU_SOURCES))) \
-              $(patsubst $(FUNCTIONAL_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(FUNCTIONAL_DIR)/%.cu,$(CU_SOURCES)))
+              $(patsubst $(FUNCTIONAL_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(FUNCTIONAL_DIR)/%.cu,$(CU_SOURCES))) \
+              $(patsubst $(OPS_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(OPS_DIR)/%.cu,$(CU_SOURCES)))
 PY_OBJECTS := $(patsubst $(PYTHON_DIR)/%.c,$(BUILD_DIR)/%.o,$(PY_SOURCES))
 
 ALL_OBJECTS := $(C_OBJECTS) $(CU_OBJECTS) $(PY_OBJECTS)
@@ -35,11 +40,11 @@ CUDA_ARCH := -gencode arch=compute_75,code=sm_75 \
              -gencode arch=compute_90,code=sm_90
 
 CFLAGS := -O3 -fPIC -std=c11 -Wall -Wextra
-CFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) $(PYTHON_INCLUDES)
+CFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) $(PYTHON_INCLUDES)
 CFLAGS += -I/opt/cuda/include
 
 NVCCFLAGS := -O3 --shared -Xcompiler -fPIC
-NVCCFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) $(PYTHON_INCLUDES)
+NVCCFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) $(PYTHON_INCLUDES)
 NVCCFLAGS += $(CUDA_ARCH)
 
 LDFLAGS := -shared
@@ -75,6 +80,14 @@ $(BUILD_DIR)/%.o: $(FUNCTIONAL_DIR)/%.cu | $(BUILD_DIR)
 $(BUILD_DIR)/%.o: $(FUNCTIONAL_DIR)/%.c | $(BUILD_DIR)
 	@echo "Compiling C: $<"
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%.o: $(OPS_DIR)/%.c | $(BUILD_DIR)
+	@echo "Compiling C: $<"
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%.o: $(OPS_DIR)/%.cu | $(BUILD_DIR)
+	@echo "Compiling CUDA: $<"
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.o: $(PYTHON_DIR)/%.c | $(BUILD_DIR)
 	@echo "Compiling Python binding: $<"
