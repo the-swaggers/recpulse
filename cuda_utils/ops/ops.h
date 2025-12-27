@@ -19,15 +19,45 @@ struct GradFn {
 };
 
 Tensor* op_add(Tensor* x1, Tensor* x2);
+Tensor* op_mul(Tensor* x1, Tensor* x2);
+Tensor* op_sub(Tensor* x1, Tensor* x2);
+Tensor* op_div(Tensor* x1, Tensor* x2);
 
 int backwards_add_x1(const void* grad_c, void* grad_x1, size_t size, DType dtype, int device_id);
 int backwards_add_x2(const void* grad_c, void* grad_x2, size_t size, DType dtype, int device_id);
 
+int backwards_mul_x1(const void* grad_c, const void* x2, void* grad_x1, size_t size, DType dtype, int device_id);
+int backwards_mul_x2(const void* grad_c, const void* x1, void* grad_x2, size_t size, DType dtype, int device_id);
+
+int backwards_sub_x1(const void* grad_c, void* grad_x1, size_t size, DType dtype, int device_id);
+int backwards_sub_x2(const void* grad_c, void* grad_x2, size_t size, DType dtype, int device_id);
+
+int backwards_div_x1(const void* grad_c, const void* x2, void* grad_x1, size_t size, DType dtype, int device_id);
+int backwards_div_x2(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype, int device_id);
+
 int backwards_add_x1_host(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_host(const void* grad_c, void* grad_x2, size_t size, DType dtype);
 
+int backwards_mul_x1_host(const void* grad_c, const void* x2, void* grad_x1, size_t size, DType dtype);
+int backwards_mul_x2_host(const void* grad_c, const void* x1, void* grad_x2, size_t size, DType dtype);
+
+int backwards_sub_x1_host(const void* grad_c, void* grad_x1, size_t size, DType dtype);
+int backwards_sub_x2_host(const void* grad_c, void* grad_x2, size_t size, DType dtype);
+
+int backwards_div_x1_host(const void* grad_c, const void* x2, void* grad_x1, size_t size, DType dtype);
+int backwards_div_x2_host(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype);
+
 int backwards_add_x1_device(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_device(const void* grad_c, void* grad_x2, size_t size, DType dtype);
+
+int backwards_mul_x1_device(const void* grad_c, const void* x2, void* grad_x1, size_t size, DType dtype);
+int backwards_mul_x2_device(const void* grad_c, const void* x1, void* grad_x2, size_t size, DType dtype);
+
+int backwards_sub_x1_device(const void* grad_c, void* grad_x1, size_t size, DType dtype);
+int backwards_sub_x2_device(const void* grad_c, void* grad_x2, size_t size, DType dtype);
+
+int backwards_div_x1_device(const void* grad_c, const void* x2, void* grad_x1, size_t size, DType dtype);
+int backwards_div_x2_device(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype);
 
 void free_grad_fn(GradFn* grad_fn);
 
