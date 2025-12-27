@@ -43,7 +43,7 @@ NVCCFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) $(PYTHON_INCLUDES)
 NVCCFLAGS += $(CUDA_ARCH)
 
 LDFLAGS := -shared
-LDFLAGS += -L/opt/cuda/lib64 -lcudart
+LDFLAGS += -L/opt/cuda/lib64 -lcudart -lcublas
 LDFLAGS += $(PYTHON_LDFLAGS)
 
 .PHONY: all clean help test test_functional install config

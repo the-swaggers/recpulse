@@ -2,6 +2,7 @@
 #include "../core/cuda_helpers.h"
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#include <stdio.h>
 
 template<typename T>
 __global__ void add_kernel(T* out, const T* a, const T* b, size_t size) {
