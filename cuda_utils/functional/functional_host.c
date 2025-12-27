@@ -1,496 +1,496 @@
 #include "functional.h"
 #include <math.h>
 
-int add_kernel_host_f32(float* out, const float* a, const float* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] + b[i];
+        out[i] = x1[i] + x2[i];
     }
     return 0;
 }
 
-int add_kernel_host_f64(double* out, const double* a, const double* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int add_kernel_host_f64(double* out, const double* x1, const double* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] + b[i];
+        out[i] = x1[i] + x2[i];
     }
     return 0;
 }
 
-int sub_kernel_host_f32(float* out, const float* a, const float* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int sub_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] - b[i];
+        out[i] = x1[i] - x2[i];
     }
     return 0;
 }
 
-int sub_kernel_host_f64(double* out, const double* a, const double* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int sub_kernel_host_f64(double* out, const double* x1, const double* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] - b[i];
+        out[i] = x1[i] - x2[i];
     }
     return 0;
 }
 
-int mul_kernel_host_f32(float* out, const float* a, const float* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int mul_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] * b[i];
+        out[i] = x1[i] * x2[i];
     }
     return 0;
 }
 
-int mul_kernel_host_f64(double* out, const double* a, const double* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int mul_kernel_host_f64(double* out, const double* x1, const double* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] * b[i];
+        out[i] = x1[i] * x2[i];
     }
     return 0;
 }
 
-int div_kernel_host_f32(float* out, const float* a, const float* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int div_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] / b[i];
+        out[i] = x1[i] / x2[i];
     }
     return 0;
 }
 
-int div_kernel_host_f64(double* out, const double* a, const double* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int div_kernel_host_f64(double* out, const double* x1, const double* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] / b[i];
+        out[i] = x1[i] / x2[i];
     }
     return 0;
 }
 
-int pow_kernel_host_f32(float* out, const float* a, const float* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int pow_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = powf(a[i], b[i]);
+        out[i] = powf(x1[i], x2[i]);
     }
     return 0;
 }
 
-int pow_kernel_host_f64(double* out, const double* a, const double* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int pow_kernel_host_f64(double* out, const double* x1, const double* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = pow(a[i], b[i]);
+        out[i] = pow(x1[i], x2[i]);
     }
     return 0;
 }
 
-int logb_kernel_host_f32(float* out, const float* a, const float* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int logb_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = logf(a[i]) / logf(b[i]);
+        out[i] = logf(x1[i]) / logf(x2[i]);
     }
     return 0;
 }
 
-int logb_kernel_host_f64(double* out, const double* a, const double* b, size_t size) {
-    if (!out || !a || !b || size == 0) return -1;
+int logb_kernel_host_f64(double* out, const double* x1, const double* x2, size_t size) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = log(a[i]) / log(b[i]);
+        out[i] = log(x1[i]) / log(x2[i]);
     }
     return 0;
 }
 
-int add_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int add_scalar_kernel_host_f32(float* out, const float* x, float scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] + scalar;
+        out[i] = x[i] + scalar;
     }
     return 0;
 }
 
-int add_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int add_scalar_kernel_host_f64(double* out, const double* x, double scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] + scalar;
+        out[i] = x[i] + scalar;
     }
     return 0;
 }
 
-int sub_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int sub_scalar_kernel_host_f32(float* out, const float* x, float scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] - scalar;
+        out[i] = x[i] - scalar;
     }
     return 0;
 }
 
-int sub_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int sub_scalar_kernel_host_f64(double* out, const double* x, double scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] - scalar;
+        out[i] = x[i] - scalar;
     }
     return 0;
 }
 
-int mul_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int mul_scalar_kernel_host_f32(float* out, const float* x, float scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] * scalar;
+        out[i] = x[i] * scalar;
     }
     return 0;
 }
 
-int mul_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int mul_scalar_kernel_host_f64(double* out, const double* x, double scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] * scalar;
+        out[i] = x[i] * scalar;
     }
     return 0;
 }
 
-int div_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int div_scalar_kernel_host_f32(float* out, const float* x, float scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] / scalar;
+        out[i] = x[i] / scalar;
     }
     return 0;
 }
 
-int div_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int div_scalar_kernel_host_f64(double* out, const double* x, double scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = a[i] / scalar;
+        out[i] = x[i] / scalar;
     }
     return 0;
 }
 
-int pow_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int pow_scalar_kernel_host_f32(float* out, const float* x, float scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = powf(a[i], scalar);
+        out[i] = powf(x[i], scalar);
     }
     return 0;
 }
 
-int pow_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int pow_scalar_kernel_host_f64(double* out, const double* x, double scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = pow(a[i], scalar);
+        out[i] = pow(x[i], scalar);
     }
     return 0;
 }
 
-int rsub_scalar_kernel_host_f32(float* out, float scalar, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int rsub_scalar_kernel_host_f32(float* out, float scalar, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = scalar - a[i];
+        out[i] = scalar - x[i];
     }
     return 0;
 }
 
-int rsub_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int rsub_scalar_kernel_host_f64(double* out, double scalar, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = scalar - a[i];
+        out[i] = scalar - x[i];
     }
     return 0;
 }
 
-int rdiv_scalar_kernel_host_f32(float* out, float scalar, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int rdiv_scalar_kernel_host_f32(float* out, float scalar, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = scalar / a[i];
+        out[i] = scalar / x[i];
     }
     return 0;
 }
 
-int rdiv_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int rdiv_scalar_kernel_host_f64(double* out, double scalar, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = scalar / a[i];
+        out[i] = scalar / x[i];
     }
     return 0;
 }
 
-int rpow_scalar_kernel_host_f32(float* out, float scalar, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int rpow_scalar_kernel_host_f32(float* out, float scalar, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = powf(scalar, a[i]);
+        out[i] = powf(scalar, x[i]);
     }
     return 0;
 }
 
-int rpow_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int rpow_scalar_kernel_host_f64(double* out, double scalar, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = pow(scalar, a[i]);
+        out[i] = pow(scalar, x[i]);
     }
     return 0;
 }
 
-int logb_scalar_kernel_host_f32(float* out, const float* a, float scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int logb_scalar_kernel_host_f32(float* out, const float* x, float scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = logf(a[i]) / logf(scalar);
+        out[i] = logf(x[i]) / logf(scalar);
     }
     return 0;
 }
 
-int logb_scalar_kernel_host_f64(double* out, const double* a, double scalar, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int logb_scalar_kernel_host_f64(double* out, const double* x, double scalar, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = log(a[i]) / log(scalar);
+        out[i] = log(x[i]) / log(scalar);
     }
     return 0;
 }
 
-int rlogb_scalar_kernel_host_f32(float* out, float scalar, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int rlogb_scalar_kernel_host_f32(float* out, float scalar, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = logf(scalar) / logf(a[i]);
+        out[i] = logf(scalar) / logf(x[i]);
     }
     return 0;
 }
 
-int rlogb_scalar_kernel_host_f64(double* out, double scalar, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int rlogb_scalar_kernel_host_f64(double* out, double scalar, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = log(scalar) / log(a[i]);
+        out[i] = log(scalar) / log(x[i]);
     }
     return 0;
 }
 
-int exp_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int exp_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = expf(a[i]);
+        out[i] = expf(x[i]);
     }
     return 0;
 }
 
-int exp_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int exp_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = exp(a[i]);
+        out[i] = exp(x[i]);
     }
     return 0;
 }
 
-int log_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int log_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = logf(a[i]);
+        out[i] = logf(x[i]);
     }
     return 0;
 }
 
-int log_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int log_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = log(a[i]);
+        out[i] = log(x[i]);
     }
     return 0;
 }
 
-int sqrt_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int sqrt_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = sqrtf(a[i]);
+        out[i] = sqrtf(x[i]);
     }
     return 0;
 }
 
-int sqrt_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int sqrt_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = sqrt(a[i]);
+        out[i] = sqrt(x[i]);
     }
     return 0;
 }
 
-int abs_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int abs_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = fabsf(a[i]);
+        out[i] = fabsf(x[i]);
     }
     return 0;
 }
 
-int abs_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int abs_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = fabs(a[i]);
+        out[i] = fabs(x[i]);
     }
     return 0;
 }
 
-int sin_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int sin_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = sinf(a[i]);
+        out[i] = sinf(x[i]);
     }
     return 0;
 }
 
-int sin_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int sin_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = sin(a[i]);
+        out[i] = sin(x[i]);
     }
     return 0;
 }
 
-int cos_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int cos_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = cosf(a[i]);
+        out[i] = cosf(x[i]);
     }
     return 0;
 }
 
-int cos_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int cos_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = cos(a[i]);
+        out[i] = cos(x[i]);
     }
     return 0;
 }
 
-int tan_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int tan_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = tanf(a[i]);
+        out[i] = tanf(x[i]);
     }
     return 0;
 }
 
-int tan_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int tan_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = tan(a[i]);
+        out[i] = tan(x[i]);
     }
     return 0;
 }
 
-int asin_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int asin_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = asinf(a[i]);
+        out[i] = asinf(x[i]);
     }
     return 0;
 }
 
-int asin_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int asin_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = asin(a[i]);
+        out[i] = asin(x[i]);
     }
     return 0;
 }
 
-int acos_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int acos_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = acosf(a[i]);
+        out[i] = acosf(x[i]);
     }
     return 0;
 }
 
-int acos_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int acos_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = acos(a[i]);
+        out[i] = acos(x[i]);
     }
     return 0;
 }
 
-int atan_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int atan_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = atanf(a[i]);
+        out[i] = atanf(x[i]);
     }
     return 0;
 }
 
-int atan_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int atan_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = atan(a[i]);
+        out[i] = atan(x[i]);
     }
     return 0;
 }
 
-int sinh_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int sinh_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = sinhf(a[i]);
+        out[i] = sinhf(x[i]);
     }
     return 0;
 }
 
-int sinh_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int sinh_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = sinh(a[i]);
+        out[i] = sinh(x[i]);
     }
     return 0;
 }
 
-int cosh_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int cosh_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = coshf(a[i]);
+        out[i] = coshf(x[i]);
     }
     return 0;
 }
 
-int cosh_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int cosh_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = cosh(a[i]);
+        out[i] = cosh(x[i]);
     }
     return 0;
 }
 
-int tanh_kernel_host_f32(float* out, const float* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int tanh_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = tanhf(a[i]);
+        out[i] = tanhf(x[i]);
     }
     return 0;
 }
 
-int tanh_kernel_host_f64(double* out, const double* a, size_t size) {
-    if (!out || !a || size == 0) return -1;
+int tanh_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {
-        out[i] = tanh(a[i]);
+        out[i] = tanh(x[i]);
     }
     return 0;
 }
 
-float sum_all_kernel_host_f32(const float* a, size_t size) {
-    if (!a || size == 0) return 0.0f;
+float sum_all_kernel_host_f32(const float* x, size_t size) {
+    if (!x || size == 0) return 0.0f;
     float sum = 0.0f;
     for (size_t i = 0; i < size; i++) {
-        sum += a[i];
+        sum += x[i];
     }
     return sum;
 }
 
-double sum_all_kernel_host_f64(const double* a, size_t size) {
-    if (!a || size == 0) return 0.0;
+double sum_all_kernel_host_f64(const double* x, size_t size) {
+    if (!x || size == 0) return 0.0;
     double sum = 0.0;
     for (size_t i = 0; i < size; i++) {
-        sum += a[i];
+        sum += x[i];
     }
     return sum;
 }
 
-float mean_all_kernel_host_f32(const float* a, size_t size) {
-    if (!a || size == 0) return 0.0f;
-    return sum_all_kernel_host_f32(a, size) / (float)size;
+float mean_all_kernel_host_f32(const float* x, size_t size) {
+    if (!x || size == 0) return 0.0f;
+    return sum_all_kernel_host_f32(x, size) / (float)size;
 }
 
-double mean_all_kernel_host_f64(const double* a, size_t size) {
-    if (!a || size == 0) return 0.0;
-    return sum_all_kernel_host_f64(a, size) / (double)size;
+double mean_all_kernel_host_f64(const double* x, size_t size) {
+    if (!x || size == 0) return 0.0;
+    return sum_all_kernel_host_f64(x, size) / (double)size;
 }
 
 int matmul_kernel_host_f32(float* C, const float* A, const float* B, int m, int k, int n) {

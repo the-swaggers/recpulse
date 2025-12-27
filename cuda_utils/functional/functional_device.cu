@@ -132,16 +132,16 @@ __global__ void rlogb_scalar_kernel(T* out, T scalar, const T* a, size_t size) {
     }
 }
 
-int add_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
-    if (!out || !a || !b || size == 0) return -1;
+int add_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        add_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, (const float*)b, size);
+        add_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x1, (const float*)x2, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        add_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, (const double*)b, size);
+        add_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x1, (const double*)x2, size);
     } else {
         return -1;
     }
@@ -149,16 +149,16 @@ int add_kernel_device(void* out, const void* a, const void* b, size_t size, DTyp
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int sub_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
-    if (!out || !a || !b || size == 0) return -1;
+int sub_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        sub_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, (const float*)b, size);
+        sub_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x1, (const float*)x2, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        sub_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, (const double*)b, size);
+        sub_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x1, (const double*)x2, size);
     } else {
         return -1;
     }
@@ -166,16 +166,16 @@ int sub_kernel_device(void* out, const void* a, const void* b, size_t size, DTyp
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int mul_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
-    if (!out || !a || !b || size == 0) return -1;
+int mul_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        mul_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, (const float*)b, size);
+        mul_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x1, (const float*)x2, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        mul_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, (const double*)b, size);
+        mul_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x1, (const double*)x2, size);
     } else {
         return -1;
     }
@@ -183,16 +183,16 @@ int mul_kernel_device(void* out, const void* a, const void* b, size_t size, DTyp
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int div_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
-    if (!out || !a || !b || size == 0) return -1;
+int div_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        div_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, (const float*)b, size);
+        div_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x1, (const float*)x2, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        div_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, (const double*)b, size);
+        div_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x1, (const double*)x2, size);
     } else {
         return -1;
     }
@@ -200,16 +200,16 @@ int div_kernel_device(void* out, const void* a, const void* b, size_t size, DTyp
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int pow_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
-    if (!out || !a || !b || size == 0) return -1;
+int pow_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        pow_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, (const float*)b, size);
+        pow_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x1, (const float*)x2, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        pow_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, (const double*)b, size);
+        pow_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x1, (const double*)x2, size);
     } else {
         return -1;
     }
@@ -217,16 +217,16 @@ int pow_kernel_device(void* out, const void* a, const void* b, size_t size, DTyp
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int logb_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype) {
-    if (!out || !a || !b || size == 0) return -1;
+int logb_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype) {
+    if (!out || !x1 || !x2 || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        logb_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, (const float*)b, size);
+        logb_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x1, (const float*)x2, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        logb_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, (const double*)b, size);
+        logb_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x1, (const double*)x2, size);
     } else {
         return -1;
     }
@@ -234,18 +234,18 @@ int logb_kernel_device(void* out, const void* a, const void* b, size_t size, DTy
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int add_scalar_kernel_device(void* out, const void* a, const void* scalar, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int add_scalar_kernel_device(void* out, const void* x, const void* scalar, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        add_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, scalar_val, size);
+        add_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, scalar_val, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        add_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, scalar_val, size);
+        add_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, scalar_val, size);
     } else {
         return -1;
     }
@@ -253,18 +253,18 @@ int add_scalar_kernel_device(void* out, const void* a, const void* scalar, size_
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int sub_scalar_kernel_device(void* out, const void* a, const void* scalar, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int sub_scalar_kernel_device(void* out, const void* x, const void* scalar, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        sub_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, scalar_val, size);
+        sub_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, scalar_val, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        sub_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, scalar_val, size);
+        sub_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, scalar_val, size);
     } else {
         return -1;
     }
@@ -272,18 +272,18 @@ int sub_scalar_kernel_device(void* out, const void* a, const void* scalar, size_
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int mul_scalar_kernel_device(void* out, const void* a, const void* scalar, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int mul_scalar_kernel_device(void* out, const void* x, const void* scalar, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        mul_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, scalar_val, size);
+        mul_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, scalar_val, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        mul_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, scalar_val, size);
+        mul_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, scalar_val, size);
     } else {
         return -1;
     }
@@ -291,18 +291,18 @@ int mul_scalar_kernel_device(void* out, const void* a, const void* scalar, size_
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int div_scalar_kernel_device(void* out, const void* a, const void* scalar, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int div_scalar_kernel_device(void* out, const void* x, const void* scalar, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        div_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, scalar_val, size);
+        div_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, scalar_val, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        div_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, scalar_val, size);
+        div_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, scalar_val, size);
     } else {
         return -1;
     }
@@ -310,18 +310,18 @@ int div_scalar_kernel_device(void* out, const void* a, const void* scalar, size_
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int pow_scalar_kernel_device(void* out, const void* a, const void* scalar, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int pow_scalar_kernel_device(void* out, const void* x, const void* scalar, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        pow_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, scalar_val, size);
+        pow_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, scalar_val, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        pow_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, scalar_val, size);
+        pow_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, scalar_val, size);
     } else {
         return -1;
     }
@@ -329,18 +329,18 @@ int pow_scalar_kernel_device(void* out, const void* a, const void* scalar, size_
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int rsub_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int rsub_scalar_kernel_device(void* out, const void* scalar, const void* x, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        rsub_scalar_kernel<float><<<blocks, threads>>>((float*)out, scalar_val, (const float*)a, size);
+        rsub_scalar_kernel<float><<<blocks, threads>>>((float*)out, scalar_val, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        rsub_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)a, size);
+        rsub_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)x, size);
     } else {
         return -1;
     }
@@ -348,18 +348,18 @@ int rsub_scalar_kernel_device(void* out, const void* scalar, const void* a, size
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int rdiv_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int rdiv_scalar_kernel_device(void* out, const void* scalar, const void* x, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        rdiv_scalar_kernel<float><<<blocks, threads>>>((float*)out, scalar_val, (const float*)a, size);
+        rdiv_scalar_kernel<float><<<blocks, threads>>>((float*)out, scalar_val, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        rdiv_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)a, size);
+        rdiv_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)x, size);
     } else {
         return -1;
     }
@@ -367,18 +367,18 @@ int rdiv_scalar_kernel_device(void* out, const void* scalar, const void* a, size
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int rpow_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int rpow_scalar_kernel_device(void* out, const void* scalar, const void* x, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        rpow_scalar_kernel<float><<<blocks, threads>>>((float*)out, scalar_val, (const float*)a, size);
+        rpow_scalar_kernel<float><<<blocks, threads>>>((float*)out, scalar_val, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        rpow_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)a, size);
+        rpow_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)x, size);
     } else {
         return -1;
     }
@@ -386,18 +386,18 @@ int rpow_scalar_kernel_device(void* out, const void* scalar, const void* a, size
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int logb_scalar_kernel_device(void* out, const void* a, const void* scalar, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int logb_scalar_kernel_device(void* out, const void* x, const void* scalar, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        logb_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, scalar_val, size);
+        logb_scalar_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, scalar_val, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        logb_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, scalar_val, size);
+        logb_scalar_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, scalar_val, size);
     } else {
         return -1;
     }
@@ -405,18 +405,18 @@ int logb_scalar_kernel_device(void* out, const void* a, const void* scalar, size
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int rlogb_scalar_kernel_device(void* out, const void* scalar, const void* a, size_t size, DType dtype) {
-    if (!out || !a || !scalar || size == 0) return -1;
+int rlogb_scalar_kernel_device(void* out, const void* scalar, const void* x, size_t size, DType dtype) {
+    if (!out || !x || !scalar || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
         float scalar_val = *(const float*)scalar;
-        rlogb_scalar_kernel<float><<<blocks, threads>>>((float*)out, scalar_val, (const float*)a, size);
+        rlogb_scalar_kernel<float><<<blocks, threads>>>((float*)out, scalar_val, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
         double scalar_val = *(const double*)scalar;
-        rlogb_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)a, size);
+        rlogb_scalar_kernel<double><<<blocks, threads>>>((double*)out, scalar_val, (const double*)x, size);
     } else {
         return -1;
     }
@@ -528,16 +528,16 @@ __global__ void tanh_kernel(T* out, const T* a, size_t size) {
     }
 }
 
-int exp_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int exp_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        exp_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        exp_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        exp_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        exp_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -545,16 +545,16 @@ int exp_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int log_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int log_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        log_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        log_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        log_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        log_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -562,16 +562,16 @@ int log_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int sqrt_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int sqrt_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        sqrt_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        sqrt_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        sqrt_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        sqrt_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -579,16 +579,16 @@ int sqrt_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int abs_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int abs_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        abs_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        abs_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        abs_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        abs_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -596,16 +596,16 @@ int abs_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int sin_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int sin_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        sin_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        sin_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        sin_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        sin_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -613,16 +613,16 @@ int sin_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int cos_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int cos_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        cos_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        cos_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        cos_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        cos_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -630,16 +630,16 @@ int cos_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int tan_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int tan_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        tan_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        tan_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        tan_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        tan_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -647,16 +647,16 @@ int tan_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int asin_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int asin_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        asin_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        asin_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        asin_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        asin_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -664,16 +664,16 @@ int asin_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int acos_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int acos_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        acos_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        acos_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        acos_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        acos_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -681,16 +681,16 @@ int acos_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int atan_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int atan_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        atan_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        atan_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        atan_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        atan_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -698,16 +698,16 @@ int atan_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int sinh_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int sinh_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        sinh_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        sinh_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        sinh_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        sinh_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -715,16 +715,16 @@ int sinh_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int cosh_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int cosh_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        cosh_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        cosh_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        cosh_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        cosh_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -732,16 +732,16 @@ int cosh_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int tanh_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int tanh_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
 
     if (dtype == DTYPE_FLOAT32) {
-        tanh_kernel<float><<<blocks, threads>>>((float*)out, (const float*)a, size);
+        tanh_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
-        tanh_kernel<double><<<blocks, threads>>>((double*)out, (const double*)a, size);
+        tanh_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
@@ -776,11 +776,11 @@ __global__ void sum_reduction_kernel(const T* input, T* output, size_t size) {
     }
 }
 
-int sum_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
+int sum_all_kernel_device(void* out, const void* x, size_t size, DType dtype) {
     fprintf(stderr, "sum_all_kernel_device called: size=%zu, dtype=%d\n", size, dtype);
     fflush(stderr);
 
-    if (!out || !a || size == 0) return -1;
+    if (!out || !x || size == 0) return -1;
 
     size_t threads = 256;
     size_t blocks = (size + threads - 1) / threads;
@@ -796,7 +796,7 @@ int sum_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
         cudaMalloc(&d_partial_sums, blocks * sizeof(float));
 
         sum_reduction_kernel<float><<<blocks, threads, shared_mem_size>>>(
-            (const float*)a, d_partial_sums, size
+            (const float*)x, d_partial_sums, size
         );
 
         cudaError_t err = cudaGetLastError();
@@ -834,7 +834,7 @@ int sum_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
         cudaMalloc(&d_partial_sums, blocks * sizeof(double));
 
         sum_reduction_kernel<double><<<blocks, threads, shared_mem_size>>>(
-            (const double*)a, d_partial_sums, size
+            (const double*)x, d_partial_sums, size
         );
 
         cudaError_t err = cudaGetLastError();
@@ -868,10 +868,10 @@ int sum_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     return check_cuda_kernel() ? 0 : -1;
 }
 
-int mean_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
-    if (!out || !a || size == 0) return -1;
+int mean_all_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
 
-    if (sum_all_kernel_device(out, a, size, dtype) != 0) {
+    if (sum_all_kernel_device(out, x, size, dtype) != 0) {
         return -1;
     }
 
