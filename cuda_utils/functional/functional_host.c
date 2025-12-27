@@ -492,3 +492,31 @@ double mean_all_kernel_host_f64(const double* a, size_t size) {
     if (!a || size == 0) return 0.0;
     return sum_all_kernel_host_f64(a, size) / (double)size;
 }
+
+int matmul_kernel_host_f32(float* C, const float* A, const float* B, int m, int k, int n) {
+    if (!C || !A || !B || m <= 0 || k <= 0 || n <= 0) return -1;
+
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            C[i * n + j] = 0.0f;
+            for (int l = 0; l < k; l++) {
+                C[i * n + j] += A[i * k + l] * B[l * n + j];
+            }
+        }
+    }
+    return 0;
+}
+
+int matmul_kernel_host_f64(double* C, const double* A, const double* B, int m, int k, int n) {
+    if (!C || !A || !B || m <= 0 || k <= 0 || n <= 0) return -1;
+
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            C[i * n + j] = 0.0;
+            for (int l = 0; l < k; l++) {
+                C[i * n + j] += A[i * k + l] * B[l * n + j];
+            }
+        }
+    }
+    return 0;
+}

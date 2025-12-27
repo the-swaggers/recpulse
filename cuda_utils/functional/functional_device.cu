@@ -1,6 +1,7 @@
 #include "functional.h"
 #include "../core/cuda_helpers.h"
 #include <cuda_runtime.h>
+#include <cublas_v2.h>
 
 template<typename T>
 __global__ void add_kernel(T* out, const T* a, const T* b, size_t size) {
@@ -888,4 +889,57 @@ int mean_all_kernel_device(void* out, const void* a, size_t size, DType dtype) {
     }
 
     return check_cuda_kernel() ? 0 : -1;
+}
+
+int matmul_kernel_device(void* C, const void* A, const void* B, int m, int k, int n, DType dtype) {
+    if (!C || !A || !B || m <= 0 || k <= 0 || n <= 0) return -1;
+
+    cublasHandle_t handle;
+    cublasStatus_t status = cublasCreate(&handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf("cuBLAS initialization failed\n");
+        return -1;
+    }
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float alpha = 1.0f;
+        const float beta = 0.0f;
+
+        status = cublasSgemm(
+            handle,
+            CUBLAS_OP_N, CUBLAS_OP_N,
+            n, m, k,
+            &alpha,
+            (const float*)B, n,
+            (const float*)A, k,
+            &beta,
+            (float*)C, n
+        );
+    } else if (dtype == DTYPE_FLOAT64) {
+        const double alpha = 1.0;
+        const double beta = 0.0;
+
+        status = cublasDgemm(
+            handle,
+            CUBLAS_OP_N, CUBLAS_OP_N,
+            n, m, k,
+            &alpha,
+            (const double*)B, n,
+            (const double*)A, k,
+            &beta,
+            (double*)C, n
+        );
+    } else {
+        cublasDestroy(handle);
+        return -1;
+    }
+
+    cublasDestroy(handle);
+
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf("cuBLAS matmul failed with error code: %d\n", status);
+        return -1;
+    }
+
+    return 0;
 }

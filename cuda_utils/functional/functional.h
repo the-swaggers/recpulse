@@ -43,6 +43,8 @@ int rp_tanh(void* out, const void* a, size_t size, DType dtype, int device_id);
 int rp_sum_all(void* out, const void* a, size_t size, DType dtype, int device_id);
 int rp_mean_all(void* out, const void* a, size_t size, DType dtype, int device_id);
 
+int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id);
+
 int add_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
 int sub_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
 int mul_kernel_host_f32(float* out, const float* a, const float* b, size_t size);
@@ -111,6 +113,9 @@ double sum_all_kernel_host_f64(const double* a, size_t size);
 float mean_all_kernel_host_f32(const float* a, size_t size);
 double mean_all_kernel_host_f64(const double* a, size_t size);
 
+int matmul_kernel_host_f32(float* C, const float* A, const float* B, int m, int k, int n);
+int matmul_kernel_host_f64(double* C, const double* A, const double* B, int m, int k, int n);
+
 int add_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
 int sub_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
 int mul_kernel_device(void* out, const void* a, const void* b, size_t size, DType dtype);
@@ -145,6 +150,8 @@ int tanh_kernel_device(void* out, const void* a, size_t size, DType dtype);
 
 int sum_all_kernel_device(void* out, const void* a, size_t size, DType dtype);
 int mean_all_kernel_device(void* out, const void* a, size_t size, DType dtype);
+
+int matmul_kernel_device(void* C, const void* A, const void* B, int m, int k, int n, DType dtype);
 
 #ifdef __cplusplus
 }

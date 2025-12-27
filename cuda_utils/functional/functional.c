@@ -505,3 +505,19 @@ int rp_mean_all(void* out, const void* a, size_t size, DType dtype, int device_i
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
     return mean_all_kernel_device(out, a, size, dtype);
 }
+
+int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id) {
+    if (!C || !A || !B || m <= 0 || k <= 0 || n <= 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return matmul_kernel_host_f32((float*)C, (const float*)A, (const float*)B, m, k, n);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return matmul_kernel_host_f64((double*)C, (const double*)A, (const double*)B, m, k, n);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return matmul_kernel_device(C, A, B, m, k, n, dtype);
+}
