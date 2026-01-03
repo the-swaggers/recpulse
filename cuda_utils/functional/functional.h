@@ -39,6 +39,9 @@ int rp_atan(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_sinh(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_cosh(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_tanh(void* out, const void* x, size_t size, DType dtype, int device_id);
+int rp_relu(void* out, const void* x, size_t size, DType dtype, int device_id);
+int rp_sigmoid(void* out, const void* x, size_t size, DType dtype, int device_id);
+int rp_leaky_relu(void* out, const void* x, const void* alpha, size_t size, DType dtype, int device_id);
 
 int rp_sum_all(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_mean_all(void* out, const void* x, size_t size, DType dtype, int device_id);
@@ -107,6 +110,12 @@ int cosh_kernel_host_f32(float* out, const float* x, size_t size);
 int cosh_kernel_host_f64(double* out, const double* x, size_t size);
 int tanh_kernel_host_f32(float* out, const float* x, size_t size);
 int tanh_kernel_host_f64(double* out, const double* x, size_t size);
+int relu_kernel_host_f32(float* out, const float* x, size_t size);
+int relu_kernel_host_f64(double* out, const double* x, size_t size);
+int sigmoid_kernel_host_f32(float* out, const float* x, size_t size);
+int sigmoid_kernel_host_f64(double* out, const double* x, size_t size);
+int leaky_relu_kernel_host_f32(float* out, const float* x, float alpha, size_t size);
+int leaky_relu_kernel_host_f64(double* out, const double* x, double alpha, size_t size);
 
 float sum_all_kernel_host_f32(const float* x, size_t size);
 double sum_all_kernel_host_f64(const double* x, size_t size);
@@ -147,6 +156,9 @@ int atan_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int sinh_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int cosh_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int tanh_kernel_device(void* out, const void* x, size_t size, DType dtype);
+int relu_kernel_device(void* out, const void* x, size_t size, DType dtype);
+int sigmoid_kernel_device(void* out, const void* x, size_t size, DType dtype);
+int leaky_relu_kernel_device(void* out, const void* x, const void* alpha, size_t size, DType dtype);
 
 int sum_all_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int mean_all_kernel_device(void* out, const void* x, size_t size, DType dtype);

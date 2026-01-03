@@ -465,6 +465,54 @@ int tanh_kernel_host_f64(double* out, const double* x, size_t size) {
     return 0;
 }
 
+int relu_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = (x[i] > 0.0f) ? x[i] : 0.0f;
+    }
+    return 0;
+}
+
+int relu_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = (x[i] > 0.0) ? x[i] : 0.0;
+    }
+    return 0;
+}
+
+int sigmoid_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = 1.0f / (1.0f + expf(-x[i]));
+    }
+    return 0;
+}
+
+int sigmoid_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = 1.0 / (1.0 + exp(-x[i]));
+    }
+    return 0;
+}
+
+int leaky_relu_kernel_host_f32(float* out, const float* x, float alpha, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = (x[i] > 0.0f) ? x[i] : alpha * x[i];
+    }
+    return 0;
+}
+
+int leaky_relu_kernel_host_f64(double* out, const double* x, double alpha, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = (x[i] > 0.0) ? x[i] : alpha * x[i];
+    }
+    return 0;
+}
+
 float sum_all_kernel_host_f32(const float* x, size_t size) {
     if (!x || size == 0) return 0.0f;
     float sum = 0.0f;

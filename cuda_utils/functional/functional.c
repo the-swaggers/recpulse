@@ -466,6 +466,54 @@ int rp_tanh(void* out, const void* x, size_t size, DType dtype, int device_id) {
     return tanh_kernel_device(out, x, size, dtype);
 }
 
+int rp_relu(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return relu_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return relu_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return relu_kernel_device(out, x, size, dtype);
+}
+
+int rp_sigmoid(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return sigmoid_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return sigmoid_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return sigmoid_kernel_device(out, x, size, dtype);
+}
+
+int rp_leaky_relu(void* out, const void* x, const void* alpha, size_t size, DType dtype, int device_id) {
+    if (!out || !x || !alpha || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return leaky_relu_kernel_host_f32((float*)out, (const float*)x, *(const float*)alpha, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return leaky_relu_kernel_host_f64((double*)out, (const double*)x, *(const double*)alpha, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return leaky_relu_kernel_device(out, x, alpha, size, dtype);
+}
+
 int rp_sum_all(void* out, const void* x, size_t size, DType dtype, int device_id) {
     if (!out || !x || size == 0) return -1;
 

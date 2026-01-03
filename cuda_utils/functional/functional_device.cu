@@ -528,6 +528,30 @@ __global__ void tanh_kernel(T* out, const T* a, size_t size) {
     }
 }
 
+template<typename T>
+__global__ void relu_kernel(T* out, const T* a, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        out[idx] = (a[idx] > (T)0) ? a[idx] : (T)0;
+    }
+}
+
+template<typename T>
+__global__ void sigmoid_kernel(T* out, const T* a, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        out[idx] = (T)1 / ((T)1 + exp(-a[idx]));
+    }
+}
+
+template<typename T>
+__global__ void leaky_relu_kernel(T* out, const T* a, T alpha, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        out[idx] = (a[idx] > (T)0) ? a[idx] : alpha * a[idx];
+    }
+}
+
 int exp_kernel_device(void* out, const void* x, size_t size, DType dtype) {
     if (!out || !x || size == 0) return -1;
 
@@ -742,6 +766,59 @@ int tanh_kernel_device(void* out, const void* x, size_t size, DType dtype) {
         tanh_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
         tanh_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}
+
+int relu_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
+
+    size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        relu_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        relu_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}
+
+int sigmoid_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
+
+    size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        sigmoid_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        sigmoid_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}
+
+int leaky_relu_kernel_device(void* out, const void* x, const void* alpha, size_t size, DType dtype) {
+    if (!out || !x || !alpha || size == 0) return -1;
+
+    size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        float alpha_val = *(const float*)alpha;
+        leaky_relu_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, alpha_val, size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        double alpha_val = *(const double*)alpha;
+        leaky_relu_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, alpha_val, size);
     } else {
         return -1;
     }
