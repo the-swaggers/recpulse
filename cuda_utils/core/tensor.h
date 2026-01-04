@@ -10,17 +10,14 @@ typedef enum {
     DTYPE_PRESERVE = -1,
 } DType;
 
-
-
-
-
 typedef struct Tensor Tensor;
+typedef struct GradFn GradFn;
 
 typedef struct {
     bool is_leaf;
     bool requires_grad;
     bool is_frozen;
-    void* grad_fn;
+    GradFn* grad_fn;
     Tensor* grad;
 } Meta;
 
@@ -66,6 +63,8 @@ Tensor* tensor_copy(Tensor* tensor);
 Tensor* tensor_to(Tensor* src, int target_device_id, DType target_dtype, bool inplace);
 
 bool validate_device_id(int device_id);
+
+int tensor_backward(Tensor* tensor);
 
 void free_tensor(Tensor* tensor);
 

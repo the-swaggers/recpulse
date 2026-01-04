@@ -1,4 +1,5 @@
 #include "tensor.h"
+#include "../ops/ops.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -109,6 +110,24 @@ Tensor* tensor_to(Tensor* src, int target_device_id, DType target_dtype, bool in
     }
 
     return result;
+}
+
+int tensor_backward(Tensor* tensor) {
+    if (!tensor) return -1;
+    if (!tensor->metadata || !tensor->metadata->requires_grad) return -1;
+
+    if (!tensor->metadata->grad) {
+        tensor->metadata->grad = ones_tensor(tensor->dtype, tensor->device_id, tensor->ndim, tensor->shape, NULL);
+        if (!tensor->metadata->grad) {
+            return -1;
+        }
+    }
+
+    if (tensor->metadata->grad_fn) {
+        tensor->metadata->grad_fn->backward(tensor->metadata->grad_fn, tensor->metadata->grad);
+    }
+
+    return 0;
 }
 
 void free_tensor(Tensor* tensor){
