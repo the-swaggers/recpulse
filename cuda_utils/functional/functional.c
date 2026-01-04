@@ -610,6 +610,38 @@ int rp_rsqrt(void* out, const void* x, size_t size, DType dtype, int device_id) 
     return rsqrt_kernel_device(out, x, size, dtype);
 }
 
+int rp_gelu(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return gelu_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return gelu_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return gelu_kernel_device(out, x, size, dtype);
+}
+
+int rp_silu(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return silu_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return silu_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return silu_kernel_device(out, x, size, dtype);
+}
+
 int rp_sum_all(void* out, const void* x, size_t size, DType dtype, int device_id) {
     if (!out || !x || size == 0) return -1;
 

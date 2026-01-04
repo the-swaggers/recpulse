@@ -48,6 +48,8 @@ int rp_floor(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_round(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_trunc(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_rsqrt(void* out, const void* x, size_t size, DType dtype, int device_id);
+int rp_gelu(void* out, const void* x, size_t size, DType dtype, int device_id);
+int rp_silu(void* out, const void* x, size_t size, DType dtype, int device_id);
 
 int rp_sum_all(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_mean_all(void* out, const void* x, size_t size, DType dtype, int device_id);
@@ -134,6 +136,10 @@ int trunc_kernel_host_f32(float* out, const float* x, size_t size);
 int trunc_kernel_host_f64(double* out, const double* x, size_t size);
 int rsqrt_kernel_host_f32(float* out, const float* x, size_t size);
 int rsqrt_kernel_host_f64(double* out, const double* x, size_t size);
+int gelu_kernel_host_f32(float* out, const float* x, size_t size);
+int gelu_kernel_host_f64(double* out, const double* x, size_t size);
+int silu_kernel_host_f32(float* out, const float* x, size_t size);
+int silu_kernel_host_f64(double* out, const double* x, size_t size);
 
 float sum_all_kernel_host_f32(const float* x, size_t size);
 double sum_all_kernel_host_f64(const double* x, size_t size);
@@ -183,6 +189,8 @@ int floor_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int round_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int trunc_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int rsqrt_kernel_device(void* out, const void* x, size_t size, DType dtype);
+int gelu_kernel_device(void* out, const void* x, size_t size, DType dtype);
+int silu_kernel_device(void* out, const void* x, size_t size, DType dtype);
 
 int sum_all_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int mean_all_kernel_device(void* out, const void* x, size_t size, DType dtype);

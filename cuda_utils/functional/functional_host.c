@@ -609,6 +609,48 @@ int rsqrt_kernel_host_f64(double* out, const double* x, size_t size) {
     return 0;
 }
 
+int gelu_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    const float sqrt_2_over_pi = 0.7978845608f;
+    const float coeff = 0.044715f;
+    for (size_t i = 0; i < size; i++) {
+        float x_val = x[i];
+        float x_cubed = x_val * x_val * x_val;
+        float inner = sqrt_2_over_pi * (x_val + coeff * x_cubed);
+        out[i] = 0.5f * x_val * (1.0f + tanhf(inner));
+    }
+    return 0;
+}
+
+int gelu_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    const double sqrt_2_over_pi = 0.7978845608;
+    const double coeff = 0.044715;
+    for (size_t i = 0; i < size; i++) {
+        double x_val = x[i];
+        double x_cubed = x_val * x_val * x_val;
+        double inner = sqrt_2_over_pi * (x_val + coeff * x_cubed);
+        out[i] = 0.5 * x_val * (1.0 + tanh(inner));
+    }
+    return 0;
+}
+
+int silu_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = x[i] / (1.0f + expf(-x[i]));
+    }
+    return 0;
+}
+
+int silu_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = x[i] / (1.0 + exp(-x[i]));
+    }
+    return 0;
+}
+
 float sum_all_kernel_host_f32(const float* x, size_t size) {
     if (!x || size == 0) return 0.0f;
     float sum = 0.0f;

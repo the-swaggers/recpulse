@@ -600,6 +600,28 @@ __global__ void rsqrt_kernel(T* out, const T* a, size_t size) {
     }
 }
 
+template<typename T>
+__global__ void gelu_kernel(T* out, const T* a, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        T x_val = a[idx];
+        T sqrt_2_over_pi = (T)0.7978845608;
+        T coeff = (T)0.044715;
+        T x_cubed = x_val * x_val * x_val;
+        T inner = sqrt_2_over_pi * (x_val + coeff * x_cubed);
+        out[idx] = (T)0.5 * x_val * ((T)1.0 + tanh(inner));
+    }
+}
+
+template<typename T>
+__global__ void silu_kernel(T* out, const T* a, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        T x_val = a[idx];
+        out[idx] = x_val / ((T)1.0 + exp(-x_val));
+    }
+}
+
 int exp_kernel_device(void* out, const void* x, size_t size, DType dtype) {
     if (!out || !x || size == 0) return -1;
 
@@ -969,6 +991,40 @@ int rsqrt_kernel_device(void* out, const void* x, size_t size, DType dtype) {
         rsqrt_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
     } else if (dtype == DTYPE_FLOAT64) {
         rsqrt_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}
+
+int gelu_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
+
+    size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        gelu_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        gelu_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}
+
+int silu_kernel_device(void* out, const void* x, size_t size, DType dtype) {
+    if (!out || !x || size == 0) return -1;
+
+    size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        silu_kernel<float><<<blocks, threads>>>((float*)out, (const float*)x, size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        silu_kernel<double><<<blocks, threads>>>((double*)out, (const double*)x, size);
     } else {
         return -1;
     }
