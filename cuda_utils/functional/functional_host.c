@@ -513,6 +513,102 @@ int leaky_relu_kernel_host_f64(double* out, const double* x, double alpha, size_
     return 0;
 }
 
+int square_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = x[i] * x[i];
+    }
+    return 0;
+}
+
+int square_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = x[i] * x[i];
+    }
+    return 0;
+}
+
+int ceil_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = ceilf(x[i]);
+    }
+    return 0;
+}
+
+int ceil_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = ceil(x[i]);
+    }
+    return 0;
+}
+
+int floor_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = floorf(x[i]);
+    }
+    return 0;
+}
+
+int floor_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = floor(x[i]);
+    }
+    return 0;
+}
+
+int round_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = roundf(x[i]);
+    }
+    return 0;
+}
+
+int round_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = round(x[i]);
+    }
+    return 0;
+}
+
+int trunc_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = truncf(x[i]);
+    }
+    return 0;
+}
+
+int trunc_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = trunc(x[i]);
+    }
+    return 0;
+}
+
+int rsqrt_kernel_host_f32(float* out, const float* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = 1.0f / sqrtf(x[i]);
+    }
+    return 0;
+}
+
+int rsqrt_kernel_host_f64(double* out, const double* x, size_t size) {
+    if (!out || !x || size == 0) return -1;
+    for (size_t i = 0; i < size; i++) {
+        out[i] = 1.0 / sqrt(x[i]);
+    }
+    return 0;
+}
+
 float sum_all_kernel_host_f32(const float* x, size_t size) {
     if (!x || size == 0) return 0.0f;
     float sum = 0.0f;

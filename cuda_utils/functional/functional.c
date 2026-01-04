@@ -514,6 +514,102 @@ int rp_leaky_relu(void* out, const void* x, const void* alpha, size_t size, DTyp
     return leaky_relu_kernel_device(out, x, alpha, size, dtype);
 }
 
+int rp_square(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return square_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return square_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return square_kernel_device(out, x, size, dtype);
+}
+
+int rp_ceil(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return ceil_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return ceil_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return ceil_kernel_device(out, x, size, dtype);
+}
+
+int rp_floor(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return floor_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return floor_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return floor_kernel_device(out, x, size, dtype);
+}
+
+int rp_round(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return round_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return round_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return round_kernel_device(out, x, size, dtype);
+}
+
+int rp_trunc(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return trunc_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return trunc_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return trunc_kernel_device(out, x, size, dtype);
+}
+
+int rp_rsqrt(void* out, const void* x, size_t size, DType dtype, int device_id) {
+    if (!out || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return rsqrt_kernel_host_f32((float*)out, (const float*)x, size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return rsqrt_kernel_host_f64((double*)out, (const double*)x, size);
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return rsqrt_kernel_device(out, x, size, dtype);
+}
+
 int rp_sum_all(void* out, const void* x, size_t size, DType dtype, int device_id) {
     if (!out || !x || size == 0) return -1;
 
