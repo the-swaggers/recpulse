@@ -697,3 +697,40 @@ int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType 
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
     return matmul_kernel_device(C, A, B, m, k, n, dtype);
 }
+
+Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim) {
+    if (!tensors || num_tensors <= 0) return NULL;
+
+    if (num_tensors == 1) {
+        return tensor_copy(tensors[0]);
+    }
+
+    Tensor* first = tensors[0];
+    if (!first) return NULL;
+
+    if (dim < 0 || dim >= first->ndim) return NULL;
+
+    int device_id = first->device_id;
+    DType dtype = first->dtype;
+    int ndim = first->ndim;
+
+    for (int i = 1; i < num_tensors; i++) {
+        if (!tensors[i]) return NULL;
+        if (tensors[i]->device_id != device_id) return NULL;
+        if (tensors[i]->dtype != dtype) return NULL;
+        if (tensors[i]->ndim != ndim) return NULL;
+
+        for (int d = 0; d < ndim; d++) {
+            if (d != dim && tensors[i]->shape[d] != first->shape[d]) {
+                return NULL;
+            }
+        }
+    }
+
+    if (device_id == -1) {
+        return cat_kernel_host(tensors, num_tensors, dim);
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return NULL;
+    return cat_kernel_device(tensors, num_tensors, dim);
+}

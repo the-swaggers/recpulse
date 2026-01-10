@@ -1227,3 +1227,107 @@ int matmul_kernel_device(void* C, const void* A, const void* B, int m, int k, in
 
     return 0;
 }
+
+template<typename T>
+__global__ void cat_copy_kernel(T* out, const T* src, int* out_shape, int* src_shape,
+                                 int ndim, int cat_dim, int offset_in_cat_dim, size_t src_size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= src_size) return;
+
+    int indices[8];
+    size_t temp = idx;
+    for (int d = ndim - 1; d >= 0; d--) {
+        indices[d] = temp % src_shape[d];
+        temp /= src_shape[d];
+    }
+
+    indices[cat_dim] += offset_in_cat_dim;
+
+    size_t out_idx = 0;
+    for (int d = 0; d < ndim; d++) {
+        out_idx = out_idx * out_shape[d] + indices[d];
+    }
+
+    out[out_idx] = src[idx];
+}
+
+Tensor* cat_kernel_device(Tensor** tensors, int num_tensors, int dim) {
+    if (!tensors || num_tensors <= 0 || !tensors[0]) return NULL;
+
+    Tensor* first = tensors[0];
+    int ndim = first->ndim;
+    DType dtype = first->dtype;
+    int device_id = first->device_id;
+
+    int* out_shape = (int*)malloc(ndim * sizeof(int));
+    if (!out_shape) return NULL;
+
+    for (int d = 0; d < ndim; d++) {
+        out_shape[d] = first->shape[d];
+    }
+
+    for (int i = 1; i < num_tensors; i++) {
+        out_shape[dim] += tensors[i]->shape[dim];
+    }
+
+    Tensor* out = zeros_tensor(dtype, device_id, ndim, out_shape, NULL);
+    if (!out) {
+        free(out_shape);
+        return NULL;
+    }
+
+    int offset_in_cat_dim = 0;
+    size_t elem_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+
+    for (int t = 0; t < num_tensors; t++) {
+        Tensor* src = tensors[t];
+
+        if (ndim == 1) {
+            void* dst_ptr = (char*)out->data + offset_in_cat_dim * elem_size;
+            cudaError_t err = cudaMemcpy(dst_ptr, src->data, src->size * elem_size, cudaMemcpyDeviceToDevice);
+            if (err != cudaSuccess) {
+                free_tensor(out);
+                free(out_shape);
+                return NULL;
+            }
+        } else {
+            int* d_out_shape;
+            int* d_src_shape;
+            cudaMalloc(&d_out_shape, ndim * sizeof(int));
+            cudaMalloc(&d_src_shape, ndim * sizeof(int));
+            cudaMemcpy(d_out_shape, out_shape, ndim * sizeof(int), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_src_shape, src->shape, ndim * sizeof(int), cudaMemcpyHostToDevice);
+
+            size_t threads = 256;
+            size_t blocks = (src->size + threads - 1) / threads;
+
+            if (dtype == DTYPE_FLOAT32) {
+                cat_copy_kernel<float><<<blocks, threads>>>(
+                    (float*)out->data, (const float*)src->data,
+                    d_out_shape, d_src_shape, ndim, dim, offset_in_cat_dim, src->size
+                );
+            } else {
+                cat_copy_kernel<double><<<blocks, threads>>>(
+                    (double*)out->data, (const double*)src->data,
+                    d_out_shape, d_src_shape, ndim, dim, offset_in_cat_dim, src->size
+                );
+            }
+
+            cudaError_t err = cudaGetLastError();
+            cudaFree(d_out_shape);
+            cudaFree(d_src_shape);
+
+            if (err != cudaSuccess) {
+                free_tensor(out);
+                free(out_shape);
+                return NULL;
+            }
+        }
+
+        offset_in_cat_dim += src->shape[dim];
+    }
+
+    free(out_shape);
+    cudaDeviceSynchronize();
+    return out;
+}

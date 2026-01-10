@@ -56,6 +56,8 @@ int rp_mean_all(void* out, const void* x, size_t size, DType dtype, int device_i
 
 int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id);
 
+Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim);
+
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
 int sub_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
 int mul_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
@@ -149,6 +151,8 @@ double mean_all_kernel_host_f64(const double* x, size_t size);
 int matmul_kernel_host_f32(float* C, const float* A, const float* B, int m, int k, int n);
 int matmul_kernel_host_f64(double* C, const double* A, const double* B, int m, int k, int n);
 
+Tensor* cat_kernel_host(Tensor** tensors, int num_tensors, int dim);
+
 int add_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
 int sub_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
 int mul_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
@@ -196,6 +200,8 @@ int sum_all_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int mean_all_kernel_device(void* out, const void* x, size_t size, DType dtype);
 
 int matmul_kernel_device(void* C, const void* A, const void* B, int m, int k, int n, DType dtype);
+
+Tensor* cat_kernel_device(Tensor** tensors, int num_tensors, int dim);
 
 #ifdef __cplusplus
 }

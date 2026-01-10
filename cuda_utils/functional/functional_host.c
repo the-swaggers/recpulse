@@ -1,5 +1,7 @@
 #include "functional.h"
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size) {
     if (!out || !x1 || !x2 || size == 0) return -1;
@@ -705,4 +707,78 @@ int matmul_kernel_host_f64(double* C, const double* A, const double* B, int m, i
         }
     }
     return 0;
+}
+
+Tensor* cat_kernel_host(Tensor** tensors, int num_tensors, int dim) {
+    if (!tensors || num_tensors <= 0 || !tensors[0]) return NULL;
+
+    Tensor* first = tensors[0];
+    int ndim = first->ndim;
+    DType dtype = first->dtype;
+
+    int* out_shape = (int*)malloc(ndim * sizeof(int));
+    if (!out_shape) return NULL;
+
+    for (int d = 0; d < ndim; d++) {
+        out_shape[d] = first->shape[d];
+    }
+
+    for (int i = 1; i < num_tensors; i++) {
+        out_shape[dim] += tensors[i]->shape[dim];
+    }
+
+    Tensor* out = zeros_tensor(dtype, -1, ndim, out_shape, NULL);
+    if (!out) {
+        free(out_shape);
+        return NULL;
+    }
+
+    int offset_in_cat_dim = 0;
+
+    for (int t = 0; t < num_tensors; t++) {
+        Tensor* src = tensors[t];
+        size_t elem_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+
+        if (ndim == 1) {
+            void* dst_ptr = (char*)out->data + offset_in_cat_dim * elem_size;
+            memcpy(dst_ptr, src->data, src->size * elem_size);
+        } else {
+            int* indices = (int*)calloc(ndim, sizeof(int));
+            if (!indices) {
+                free_tensor(out);
+                free(out_shape);
+                return NULL;
+            }
+
+            for (size_t i = 0; i < src->size; i++) {
+                size_t temp = i;
+                for (int d = ndim - 1; d >= 0; d--) {
+                    indices[d] = temp % src->shape[d];
+                    temp /= src->shape[d];
+                }
+
+                indices[dim] += offset_in_cat_dim;
+
+                size_t out_idx = 0;
+                for (int d = 0; d < ndim; d++) {
+                    out_idx = out_idx * out_shape[d] + indices[d];
+                }
+
+                indices[dim] -= offset_in_cat_dim;
+
+                if (dtype == DTYPE_FLOAT32) {
+                    ((float*)out->data)[out_idx] = ((float*)src->data)[i];
+                } else {
+                    ((double*)out->data)[out_idx] = ((double*)src->data)[i];
+                }
+            }
+
+            free(indices);
+        }
+
+        offset_in_cat_dim += src->shape[dim];
+    }
+
+    free(out_shape);
+    return out;
 }
