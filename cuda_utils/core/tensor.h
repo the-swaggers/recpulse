@@ -32,6 +32,9 @@ struct Tensor {
     int device_id;
     bool owns_data;
 
+    Tensor* base_tensor;
+    size_t data_offset;
+
     Meta* metadata;
 };
 

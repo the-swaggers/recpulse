@@ -57,6 +57,7 @@ int rp_mean_all(void* out, const void* x, size_t size, DType dtype, int device_i
 int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id);
 
 Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim);
+Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step);
 
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
 int sub_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);

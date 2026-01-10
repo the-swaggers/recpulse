@@ -1,6 +1,8 @@
 #include "functional.h"
 #include "../core/cuda_helpers.h"
 #include <cuda_runtime.h>
+#include <stdlib.h>
+#include <limits.h>
 
 int rp_add(void* out, const void* x1, const void* x2, size_t size, DType dtype, int device_id) {
     if (!out || !x1 || !x2 || size == 0) return -1;
@@ -733,4 +735,74 @@ Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim) {
 
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return NULL;
     return cat_kernel_device(tensors, num_tensors, dim);
+}
+
+Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step) {
+    if (!src) return NULL;
+
+    int ndim = src->ndim;
+    int* new_shape = (int*)malloc(ndim * sizeof(int));
+    int* new_strides = (int*)malloc(ndim * sizeof(int));
+
+    if (!new_shape || !new_strides) {
+        if (new_shape) free(new_shape);
+        if (new_strides) free(new_strides);
+        return NULL;
+    }
+
+    size_t offset = 0;
+    size_t elem_size = (src->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+
+    for (int i = 0; i < ndim; i++) {
+        int dim_size = src->shape[i];
+
+        int s = (start && start[i] != INT_MIN) ? start[i] : 0;
+        int e = (stop && stop[i] != INT_MIN) ? stop[i] : dim_size;
+        int st = (step && step[i] != 0) ? step[i] : 1;
+
+        if (s < 0) s += dim_size;
+        if (e < 0) e += dim_size;
+
+        if (s < 0) s = 0;
+        if (s > dim_size) s = dim_size;
+        if (e < 0) e = 0;
+        if (e > dim_size) e = dim_size;
+
+        if (s > e) {
+            int tmp = s;
+            s = e;
+            e = tmp;
+        }
+
+        new_shape[i] = (e - s + st - 1) / st;
+        new_strides[i] = src->strides[i] * st;
+
+        offset += s * src->strides[i];
+    }
+
+    size_t new_size = 1;
+    for (int i = 0; i < ndim; i++) {
+        new_size *= new_shape[i];
+    }
+
+    Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+    if (!view) {
+        free(new_shape);
+        free(new_strides);
+        return NULL;
+    }
+
+    view->dtype = src->dtype;
+    view->data = (char*)src->data + offset * elem_size;
+    view->ndim = ndim;
+    view->size = new_size;
+    view->shape = new_shape;
+    view->strides = new_strides;
+    view->device_id = src->device_id;
+    view->owns_data = false;
+    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->data_offset = src->data_offset + offset * elem_size;
+    view->metadata = NULL;
+
+    return view;
 }

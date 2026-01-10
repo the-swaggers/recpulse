@@ -39,6 +39,8 @@ Tensor* zeros_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     tensor->size = total_elements;
     tensor->device_id = -1;
     tensor->owns_data = true;
+    tensor->base_tensor = NULL;
+    tensor->data_offset = 0;
 
     return tensor;
 
@@ -98,6 +100,8 @@ Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
     tensor->size = total_elements;
     tensor->device_id = -1;
     tensor->owns_data = true;
+    tensor->base_tensor = NULL;
+    tensor->data_offset = 0;
 
     return tensor;
 

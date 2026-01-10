@@ -28,6 +28,9 @@ Tensor* op_log(Tensor* x);
 Tensor* op_sqrt(Tensor* x);
 Tensor* op_tanh(Tensor* x);
 
+Tensor* op_cat(Tensor** tensors, int num_tensors, int dim);
+Tensor* op_slice(Tensor* src, int* start, int* stop, int* step);
+
 int backwards_add_x1(const void* grad_c, void* grad_x1, size_t size, DType dtype, int device_id);
 int backwards_add_x2(const void* grad_c, void* grad_x2, size_t size, DType dtype, int device_id);
 

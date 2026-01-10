@@ -45,6 +45,8 @@ Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Me
     tensor->size = total_elements;
     tensor->device_id = device_id;
     tensor->owns_data = true;
+    tensor->base_tensor = NULL;
+    tensor->data_offset = 0;
 
     return tensor;
 
