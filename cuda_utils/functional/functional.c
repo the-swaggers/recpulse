@@ -2,6 +2,7 @@
 #include "../core/cuda_helpers.h"
 #include <cuda_runtime.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <limits.h>
 
 int rp_add(void* out, const void* x1, const void* x2, size_t size, DType dtype, int device_id) {
@@ -801,7 +802,108 @@ Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step) {
     view->device_id = src->device_id;
     view->owns_data = false;
     view->base_tensor = src->base_tensor ? src->base_tensor : src;
-    view->data_offset = src->data_offset + offset * elem_size;
+    view->data_offset = offset * elem_size;
+    view->metadata = NULL;
+
+    return view;
+}
+
+bool rp_is_contiguous(Tensor* tensor) {
+    if (!tensor) return false;
+
+    int expected_stride = 1;
+    for (int i = tensor->ndim - 1; i >= 0; i--) {
+        if (tensor->strides[i] != expected_stride) {
+            return false;
+        }
+        expected_stride *= tensor->shape[i];
+    }
+    return true;
+}
+
+Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape) {
+    if (!src || !new_shape) return NULL;
+
+    int infer_dim = -1;
+    size_t explicit_size = 1;
+
+    for (int i = 0; i < ndim; i++) {
+        if (new_shape[i] == -1) {
+            if (infer_dim != -1) {
+                fprintf(stderr, "Error: Can only infer one dimension in reshape\n");
+                return NULL;
+            }
+            infer_dim = i;
+        } else if (new_shape[i] <= 0) {
+            fprintf(stderr, "Error: Invalid shape dimension %d at index %d\n", new_shape[i], i);
+            return NULL;
+        } else {
+            explicit_size *= new_shape[i];
+        }
+    }
+
+    int* final_shape = (int*)malloc(ndim * sizeof(int));
+    if (!final_shape) return NULL;
+
+    for (int i = 0; i < ndim; i++) {
+        if (i == infer_dim) {
+            if (src->size % explicit_size != 0) {
+                fprintf(stderr, "Error: Cannot infer dimension, size mismatch\n");
+                free(final_shape);
+                return NULL;
+            }
+            final_shape[i] = src->size / explicit_size;
+        } else {
+            final_shape[i] = new_shape[i];
+        }
+    }
+
+    size_t final_size = 1;
+    for (int i = 0; i < ndim; i++) {
+        final_size *= final_shape[i];
+    }
+
+    if (final_size != src->size) {
+        fprintf(stderr, "Error: Reshape size mismatch. Source: %zu, Target: %zu\n",
+                src->size, final_size);
+        free(final_shape);
+        return NULL;
+    }
+
+    if (!rp_is_contiguous(src)) {
+        fprintf(stderr, "Error: reshape requires contiguous tensor\n");
+        free(final_shape);
+        return NULL;
+    }
+
+    int* new_strides = (int*)malloc(ndim * sizeof(int));
+    if (!new_strides) {
+        free(final_shape);
+        return NULL;
+    }
+
+    new_strides[ndim - 1] = 1;
+    for (int i = ndim - 2; i >= 0; i--) {
+        new_strides[i] = new_strides[i + 1] * final_shape[i + 1];
+    }
+
+    Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+    if (!view) {
+        free(final_shape);
+        free(new_strides);
+        return NULL;
+    }
+
+    view->dtype = src->dtype;
+    view->data = src->data;
+    view->ndim = ndim;
+    view->size = final_size;
+    view->shape = final_shape;
+    view->strides = new_strides;
+    view->device_id = src->device_id;
+    view->owns_data = false;
+    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->data_offset = src->data_offset;
     view->metadata = NULL;
 
     return view;

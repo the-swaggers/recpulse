@@ -59,6 +59,9 @@ int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType 
 Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim);
 Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step);
 
+bool rp_is_contiguous(Tensor* tensor);
+Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape);
+
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
 int sub_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
 int mul_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
