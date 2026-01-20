@@ -61,6 +61,7 @@ Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step);
 
 bool rp_is_contiguous(Tensor* tensor);
 Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape);
+Tensor* rp_transpose(Tensor* src, int dim0, int dim1);
 
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
 int sub_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);

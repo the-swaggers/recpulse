@@ -908,3 +908,98 @@ Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape) {
 
     return view;
 }
+
+Tensor* rp_transpose(Tensor* src, int dim0, int dim1) {
+    if (!src) return NULL;
+
+    if (src->ndim < 2) {
+        fprintf(stderr, "Error: transpose requires at least 2 dimensions\n");
+        return NULL;
+    }
+
+    if (dim0 < 0) dim0 += src->ndim;
+    if (dim1 < 0) dim1 += src->ndim;
+
+    if (dim0 < 0 || dim0 >= src->ndim || dim1 < 0 || dim1 >= src->ndim) {
+        fprintf(stderr, "Error: dimension out of bounds for transpose\n");
+        return NULL;
+    }
+
+    if (dim0 == dim1) {
+        int* new_shape = (int*)malloc(src->ndim * sizeof(int));
+        int* new_strides = (int*)malloc(src->ndim * sizeof(int));
+        if (!new_shape || !new_strides) {
+            if (new_shape) free(new_shape);
+            if (new_strides) free(new_strides);
+            return NULL;
+        }
+
+        for (int i = 0; i < src->ndim; i++) {
+            new_shape[i] = src->shape[i];
+            new_strides[i] = src->strides[i];
+        }
+
+        Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+        if (!view) {
+            free(new_shape);
+            free(new_strides);
+            return NULL;
+        }
+
+        view->dtype = src->dtype;
+        view->data = src->data;
+        view->ndim = src->ndim;
+        view->size = src->size;
+        view->shape = new_shape;
+        view->strides = new_strides;
+        view->device_id = src->device_id;
+        view->owns_data = false;
+        view->base_tensor = src->base_tensor ? src->base_tensor : src;
+        view->data_offset = src->data_offset;
+        view->metadata = NULL;
+
+        return view;
+    }
+
+    int* new_shape = (int*)malloc(src->ndim * sizeof(int));
+    int* new_strides = (int*)malloc(src->ndim * sizeof(int));
+    if (!new_shape || !new_strides) {
+        if (new_shape) free(new_shape);
+        if (new_strides) free(new_strides);
+        return NULL;
+    }
+
+    for (int i = 0; i < src->ndim; i++) {
+        new_shape[i] = src->shape[i];
+        new_strides[i] = src->strides[i];
+    }
+
+    int tmp_shape = new_shape[dim0];
+    new_shape[dim0] = new_shape[dim1];
+    new_shape[dim1] = tmp_shape;
+
+    int tmp_stride = new_strides[dim0];
+    new_strides[dim0] = new_strides[dim1];
+    new_strides[dim1] = tmp_stride;
+
+    Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+    if (!view) {
+        free(new_shape);
+        free(new_strides);
+        return NULL;
+    }
+
+    view->dtype = src->dtype;
+    view->data = src->data;
+    view->ndim = src->ndim;
+    view->size = src->size;
+    view->shape = new_shape;
+    view->strides = new_strides;
+    view->device_id = src->device_id;
+    view->owns_data = false;
+    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->data_offset = src->data_offset;
+    view->metadata = NULL;
+
+    return view;
+}

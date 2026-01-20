@@ -850,9 +850,15 @@ typedef struct {
     int* original_shape;
 } ReshapeSavedData;
 
+typedef struct {
+    int dim0;
+    int dim1;
+} TransposeSavedData;
+
 void backward_cat_fn(GradFn* self, Tensor* grad_output);
 void backward_slice_fn(GradFn* self, Tensor* grad_output);
 void backward_reshape_fn(GradFn* self, Tensor* grad_output);
+void backward_transpose_fn(GradFn* self, Tensor* grad_output);
 
 void free_grad_fn(GradFn* grad_fn) {
     if (!grad_fn) return;
@@ -1258,6 +1264,83 @@ Tensor* op_reshape(Tensor* src, int ndim, int* new_shape) {
         for (int i = 0; i < src->ndim; i++) {
             saved->original_shape[i] = src->shape[i];
         }
+
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+void backward_transpose_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    TransposeSavedData* saved = (TransposeSavedData*)self->saved_data;
+    if (!saved || self->num_inputs != 1) return;
+
+    Tensor* input = self->inputs[0];
+    if (!input || !input->metadata || !input->metadata->requires_grad) return;
+
+    Tensor* grad_transposed = rp_transpose(grad_output, saved->dim0, saved->dim1);
+    if (!grad_transposed) return;
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = grad_transposed;
+    } else {
+        rp_add(input->metadata->grad->data, input->metadata->grad->data,
+               grad_transposed->data, input->size, input->dtype, input->device_id);
+        free_tensor(grad_transposed);
+    }
+}
+
+Tensor* op_transpose(Tensor* src, int dim0, int dim1) {
+    if (!src) return NULL;
+
+    Tensor* out = rp_transpose(src, dim0, dim1);
+    if (!out) return NULL;
+
+    bool requires_grad = (src->metadata && src->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_transpose_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = src;
+
+        TransposeSavedData* saved = (TransposeSavedData*)malloc(sizeof(TransposeSavedData));
+        if (!saved) {
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+
+        if (dim0 < 0) dim0 += src->ndim;
+        if (dim1 < 0) dim1 += src->ndim;
+
+        saved->dim0 = dim0;
+        saved->dim1 = dim1;
 
         grad_fn->saved_data = saved;
         out->metadata->grad_fn = grad_fn;
