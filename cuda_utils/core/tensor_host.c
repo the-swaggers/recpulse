@@ -286,3 +286,61 @@ Tensor* fill_value_host_tensor(double value, Tensor* tensor){
     }
     return tensor;
 }
+
+Tensor* tensor_reshape_host(Tensor* tensor, int new_ndim, int* new_shape) {
+    if (tensor->device_id != -1) return NULL;
+
+    Tensor* reshaped = (Tensor*)malloc(sizeof(Tensor));
+    if (!reshaped) return NULL;
+
+    reshaped->shape = NULL;
+    reshaped->strides = NULL;
+    reshaped->data = NULL;
+    reshaped->metadata = NULL;
+
+    reshaped->shape = (int*)malloc(new_ndim * sizeof(int));
+    if (!reshaped->shape) goto cleanup;
+    memcpy(reshaped->shape, new_shape, new_ndim * sizeof(int));
+
+    reshaped->strides = (int*)malloc(new_ndim * sizeof(int));
+    if (!reshaped->strides) goto cleanup;
+
+    int stride = 1;
+    for (int i = new_ndim - 1; i >= 0; i--) {
+        reshaped->strides[i] = stride;
+        stride *= new_shape[i];
+    }
+
+    size_t dtype_size = (tensor->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t data_size = tensor->size * dtype_size;
+
+    reshaped->data = malloc(data_size);
+    if (!reshaped->data) goto cleanup;
+
+    memcpy(reshaped->data, tensor->data, data_size);
+
+    reshaped->dtype = tensor->dtype;
+    reshaped->ndim = new_ndim;
+    reshaped->size = tensor->size;
+    reshaped->device_id = -1;
+    reshaped->owns_data = true;
+    reshaped->base_tensor = NULL;
+
+    if (tensor->metadata) {
+        reshaped->metadata = (Meta*)malloc(sizeof(Meta));
+        if (reshaped->metadata) {
+            memcpy(reshaped->metadata, tensor->metadata, sizeof(Meta));
+            reshaped->metadata->grad = NULL;
+            reshaped->metadata->grad_fn = NULL;
+        }
+    }
+
+    return reshaped;
+
+cleanup:
+    if (reshaped->data) free(reshaped->data);
+    if (reshaped->strides) free(reshaped->strides);
+    if (reshaped->shape) free(reshaped->shape);
+    free(reshaped);
+    return NULL;
+}

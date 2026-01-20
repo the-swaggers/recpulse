@@ -65,6 +65,10 @@ Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype);
 Tensor* tensor_copy(Tensor* tensor);
 Tensor* tensor_to(Tensor* src, int target_device_id, DType target_dtype, bool inplace);
 
+Tensor* tensor_reshape(Tensor* tensor, int new_ndim, int* new_shape);
+Tensor* tensor_reshape_host(Tensor* tensor, int new_ndim, int* new_shape);
+Tensor* tensor_reshape_device(Tensor* tensor, int new_ndim, int* new_shape);
+
 bool validate_device_id(int device_id);
 
 int tensor_backward(Tensor* tensor);

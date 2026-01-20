@@ -112,6 +112,67 @@ Tensor* tensor_to(Tensor* src, int target_device_id, DType target_dtype, bool in
     return result;
 }
 
+Tensor* tensor_reshape(Tensor* tensor, int new_ndim, int* new_shape) {
+    if (!tensor || !new_shape || new_ndim <= 0) {
+        fprintf(stderr, "Error: Invalid arguments to tensor_reshape\n");
+        return NULL;
+    }
+
+    int* inferred_shape = (int*)malloc(new_ndim * sizeof(int));
+    if (!inferred_shape) {
+        fprintf(stderr, "Error: Failed to allocate memory for inferred_shape\n");
+        return NULL;
+    }
+
+    int infer_dim = -1;
+    size_t known_elements = 1;
+
+    for (int i = 0; i < new_ndim; i++) {
+        if (new_shape[i] == -1) {
+            if (infer_dim != -1) {
+                fprintf(stderr, "Error: Only one dimension can be -1\n");
+                free(inferred_shape);
+                return NULL;
+            }
+            infer_dim = i;
+            inferred_shape[i] = -1;
+        } else if (new_shape[i] <= 0) {
+            fprintf(stderr, "Error: Invalid dimension size %d\n", new_shape[i]);
+            free(inferred_shape);
+            return NULL;
+        } else {
+            inferred_shape[i] = new_shape[i];
+            known_elements *= new_shape[i];
+        }
+    }
+
+    if (infer_dim != -1) {
+        if (tensor->size % known_elements != 0) {
+            fprintf(stderr, "Error: Cannot infer dimension, size mismatch\n");
+            free(inferred_shape);
+            return NULL;
+        }
+        inferred_shape[infer_dim] = tensor->size / known_elements;
+    } else {
+        if (known_elements != tensor->size) {
+            fprintf(stderr, "Error: New shape has %zu elements but tensor has %zu\n",
+                    known_elements, tensor->size);
+            free(inferred_shape);
+            return NULL;
+        }
+    }
+
+    Tensor* result = NULL;
+    if (tensor->device_id == -1) {
+        result = tensor_reshape_host(tensor, new_ndim, inferred_shape);
+    } else {
+        result = tensor_reshape_device(tensor, new_ndim, inferred_shape);
+    }
+
+    free(inferred_shape);
+    return result;
+}
+
 int tensor_backward(Tensor* tensor) {
     if (!tensor) return -1;
     if (!tensor->metadata || !tensor->metadata->requires_grad) return -1;
