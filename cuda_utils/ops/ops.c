@@ -1348,3 +1348,49 @@ Tensor* op_transpose(Tensor* src, int dim0, int dim1) {
 
     return out;
 }
+
+Tensor* op_squeeze(Tensor* src, int dim) {
+    if (!src) return NULL;
+
+    Tensor* out = rp_squeeze(src, dim);
+    if (!out) return NULL;
+
+    bool requires_grad = (src->metadata && src->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+    }
+
+    return out;
+}
+
+Tensor* op_unsqueeze(Tensor* src, int dim) {
+    if (!src) return NULL;
+
+    Tensor* out = rp_unsqueeze(src, dim);
+    if (!out) return NULL;
+
+    bool requires_grad = (src->metadata && src->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+    }
+
+    return out;
+}

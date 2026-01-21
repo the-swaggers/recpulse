@@ -1003,3 +1003,216 @@ Tensor* rp_transpose(Tensor* src, int dim0, int dim1) {
 
     return view;
 }
+
+Tensor* rp_squeeze(Tensor* src, int dim) {
+    if (!src) return NULL;
+
+    if (dim < -1 || dim >= src->ndim) {
+        fprintf(stderr, "Error: dimension %d out of bounds for tensor with %d dimensions\n", dim, src->ndim);
+        return NULL;
+    }
+
+    if (dim >= 0 && dim < src->ndim) {
+        if (dim < 0) dim += src->ndim;
+
+        if (src->shape[dim] != 1) {
+            fprintf(stderr, "Error: cannot squeeze dimension %d with size %d (only size 1 can be squeezed)\n", dim, src->shape[dim]);
+            return NULL;
+        }
+
+        int new_ndim = src->ndim - 1;
+        if (new_ndim == 0) {
+            fprintf(stderr, "Error: cannot squeeze to 0 dimensions\n");
+            return NULL;
+        }
+
+        int* new_shape = (int*)malloc(new_ndim * sizeof(int));
+        int* new_strides = (int*)malloc(new_ndim * sizeof(int));
+        if (!new_shape || !new_strides) {
+            if (new_shape) free(new_shape);
+            if (new_strides) free(new_strides);
+            return NULL;
+        }
+
+        int j = 0;
+        for (int i = 0; i < src->ndim; i++) {
+            if (i != dim) {
+                new_shape[j] = src->shape[i];
+                new_strides[j] = src->strides[i];
+                j++;
+            }
+        }
+
+        Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+        if (!view) {
+            free(new_shape);
+            free(new_strides);
+            return NULL;
+        }
+
+        view->dtype = src->dtype;
+        view->data = src->data;
+        view->ndim = new_ndim;
+        view->size = src->size;
+        view->shape = new_shape;
+        view->strides = new_strides;
+        view->device_id = src->device_id;
+        view->owns_data = false;
+        view->base_tensor = src->base_tensor ? src->base_tensor : src;
+        view->data_offset = src->data_offset;
+        view->metadata = NULL;
+
+        return view;
+    }
+
+    int count_ones = 0;
+    for (int i = 0; i < src->ndim; i++) {
+        if (src->shape[i] == 1) {
+            count_ones++;
+        }
+    }
+
+    if (count_ones == 0) {
+        int* new_shape = (int*)malloc(src->ndim * sizeof(int));
+        int* new_strides = (int*)malloc(src->ndim * sizeof(int));
+        if (!new_shape || !new_strides) {
+            if (new_shape) free(new_shape);
+            if (new_strides) free(new_strides);
+            return NULL;
+        }
+
+        for (int i = 0; i < src->ndim; i++) {
+            new_shape[i] = src->shape[i];
+            new_strides[i] = src->strides[i];
+        }
+
+        Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+        if (!view) {
+            free(new_shape);
+            free(new_strides);
+            return NULL;
+        }
+
+        view->dtype = src->dtype;
+        view->data = src->data;
+        view->ndim = src->ndim;
+        view->size = src->size;
+        view->shape = new_shape;
+        view->strides = new_strides;
+        view->device_id = src->device_id;
+        view->owns_data = false;
+        view->base_tensor = src->base_tensor ? src->base_tensor : src;
+        view->data_offset = src->data_offset;
+        view->metadata = NULL;
+
+        return view;
+    }
+
+    int new_ndim = src->ndim - count_ones;
+    if (new_ndim == 0) {
+        fprintf(stderr, "Error: cannot squeeze to 0 dimensions\n");
+        return NULL;
+    }
+
+    int* new_shape = (int*)malloc(new_ndim * sizeof(int));
+    int* new_strides = (int*)malloc(new_ndim * sizeof(int));
+    if (!new_shape || !new_strides) {
+        if (new_shape) free(new_shape);
+        if (new_strides) free(new_strides);
+        return NULL;
+    }
+
+    int j = 0;
+    for (int i = 0; i < src->ndim; i++) {
+        if (src->shape[i] != 1) {
+            new_shape[j] = src->shape[i];
+            new_strides[j] = src->strides[i];
+            j++;
+        }
+    }
+
+    Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+    if (!view) {
+        free(new_shape);
+        free(new_strides);
+        return NULL;
+    }
+
+    view->dtype = src->dtype;
+    view->data = src->data;
+    view->ndim = new_ndim;
+    view->size = src->size;
+    view->shape = new_shape;
+    view->strides = new_strides;
+    view->device_id = src->device_id;
+    view->owns_data = false;
+    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->data_offset = src->data_offset;
+    view->metadata = NULL;
+
+    return view;
+}
+
+Tensor* rp_unsqueeze(Tensor* src, int dim) {
+    if (!src) return NULL;
+
+    int new_ndim = src->ndim + 1;
+
+    if (dim < 0) dim += new_ndim;
+
+    if (dim < 0 || dim >= new_ndim) {
+        fprintf(stderr, "Error: dimension %d out of bounds for unsqueeze (valid range: [-%d, %d))\n",
+                dim, new_ndim, new_ndim);
+        return NULL;
+    }
+
+    int* new_shape = (int*)malloc(new_ndim * sizeof(int));
+    int* new_strides = (int*)malloc(new_ndim * sizeof(int));
+    if (!new_shape || !new_strides) {
+        if (new_shape) free(new_shape);
+        if (new_strides) free(new_strides);
+        return NULL;
+    }
+
+    int stride_at_dim;
+    if (dim == new_ndim - 1) {
+        stride_at_dim = 1;
+    } else if (dim == 0) {
+        stride_at_dim = src->strides[0] * src->shape[0];
+    } else {
+        stride_at_dim = src->strides[dim];
+    }
+
+    int src_idx = 0;
+    for (int i = 0; i < new_ndim; i++) {
+        if (i == dim) {
+            new_shape[i] = 1;
+            new_strides[i] = stride_at_dim;
+        } else {
+            new_shape[i] = src->shape[src_idx];
+            new_strides[i] = src->strides[src_idx];
+            src_idx++;
+        }
+    }
+
+    Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+    if (!view) {
+        free(new_shape);
+        free(new_strides);
+        return NULL;
+    }
+
+    view->dtype = src->dtype;
+    view->data = src->data;
+    view->ndim = new_ndim;
+    view->size = src->size;
+    view->shape = new_shape;
+    view->strides = new_strides;
+    view->device_id = src->device_id;
+    view->owns_data = false;
+    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->data_offset = src->data_offset;
+    view->metadata = NULL;
+
+    return view;
+}
