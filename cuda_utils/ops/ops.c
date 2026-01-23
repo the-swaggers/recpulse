@@ -1530,3 +1530,36 @@ Tensor* op_permute(Tensor* src, int* dims) {
 
     return out;
 }
+
+Tensor** op_chunk(Tensor* src, int chunks, int dim) {
+    if (!src) return NULL;
+
+    Tensor** result = rp_chunk(src, chunks, dim);
+    if (!result) return NULL;
+
+    bool requires_grad = (src->metadata && src->metadata->requires_grad);
+
+    if (requires_grad) {
+        int actual_chunks = 0;
+        while (result[actual_chunks] != NULL) {
+            actual_chunks++;
+        }
+
+        for (int i = 0; i < actual_chunks; i++) {
+            if (!result[i]->metadata) {
+                result[i]->metadata = (Meta*)calloc(1, sizeof(Meta));
+                if (!result[i]->metadata) {
+                    for (int j = 0; j < actual_chunks; j++) {
+                        free_tensor(result[j]);
+                    }
+                    free(result);
+                    return NULL;
+                }
+            }
+            result[i]->metadata->requires_grad = true;
+            result[i]->metadata->is_leaf = false;
+        }
+    }
+
+    return result;
+}

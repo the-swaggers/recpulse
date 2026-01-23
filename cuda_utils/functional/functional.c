@@ -1543,3 +1543,57 @@ Tensor* rp_permute(Tensor* src, int* dims) {
 
     return view;
 }
+
+Tensor** rp_chunk(Tensor* src, int chunks, int dim) {
+    if (!src || chunks <= 0) return NULL;
+
+    if (dim < 0) dim += src->ndim;
+
+    if (dim < 0 || dim >= src->ndim) {
+        fprintf(stderr, "Error: dimension %d out of bounds for chunk (valid range: [-%d, %d))\n",
+                dim, src->ndim, src->ndim);
+        return NULL;
+    }
+
+    int dim_size = src->shape[dim];
+
+    if (chunks > dim_size) {
+        chunks = dim_size;
+    }
+
+    int chunk_size = (dim_size + chunks - 1) / chunks;
+
+    int* sizes = (int*)malloc(chunks * sizeof(int));
+    if (!sizes) return NULL;
+
+    int remaining = dim_size;
+    int actual_chunks = 0;
+    for (int i = 0; i < chunks; i++) {
+        if (remaining <= 0) break;
+        sizes[i] = (remaining < chunk_size) ? remaining : chunk_size;
+        remaining -= sizes[i];
+        actual_chunks++;
+    }
+
+    Tensor** split_result = rp_split(src, sizes, actual_chunks, dim);
+    free(sizes);
+
+    if (!split_result) return NULL;
+
+    Tensor** result = (Tensor**)malloc((actual_chunks + 1) * sizeof(Tensor*));
+    if (!result) {
+        for (int i = 0; i < actual_chunks; i++) {
+            free_tensor(split_result[i]);
+        }
+        free(split_result);
+        return NULL;
+    }
+
+    for (int i = 0; i < actual_chunks; i++) {
+        result[i] = split_result[i];
+    }
+    result[actual_chunks] = NULL;
+
+    free(split_result);
+    return result;
+}
