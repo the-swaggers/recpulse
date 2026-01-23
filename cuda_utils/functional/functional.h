@@ -72,6 +72,7 @@ Tensor* rp_flatten(Tensor* src, int start_dim, int end_dim);
 Tensor* rp_permute(Tensor* src, int* dims);
 Tensor** rp_chunk(Tensor* src, int chunks, int dim);
 Tensor* rp_expand(Tensor* src, int ndim, int* shape);
+Tensor* rp_repeat(Tensor* src, int* repeats);
 
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
 int sub_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
@@ -171,6 +172,9 @@ Tensor* cat_kernel_host(Tensor** tensors, int num_tensors, int dim);
 int contiguous_copy_kernel_host_f32(float* out, const float* in, int ndim, int* shape, int* strides);
 int contiguous_copy_kernel_host_f64(double* out, const double* in, int ndim, int* shape, int* strides);
 
+int repeat_kernel_host_f32(float* out, const float* in, int ndim, int* src_shape, int* repeats);
+int repeat_kernel_host_f64(double* out, const double* in, int ndim, int* src_shape, int* repeats);
+
 int add_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
 int sub_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
 int mul_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
@@ -220,6 +224,8 @@ int mean_all_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int matmul_kernel_device(void* C, const void* A, const void* B, int m, int k, int n, DType dtype);
 
 int contiguous_copy_kernel_device(void* out, const void* in, int ndim, int* shape, int* strides, size_t size, DType dtype);
+
+int repeat_kernel_device(void* out, const void* in, int ndim, int* src_shape, int* repeats, size_t out_size, DType dtype);
 
 Tensor* cat_kernel_device(Tensor** tensors, int num_tensors, int dim);
 

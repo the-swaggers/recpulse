@@ -1670,3 +1670,62 @@ Tensor* rp_expand(Tensor* src, int ndim, int* shape) {
 
     return view;
 }
+
+Tensor* rp_repeat(Tensor* src, int* repeats) {
+    if (!src || !repeats) {
+        return NULL;
+    }
+
+    for (int i = 0; i < src->ndim; i++) {
+        if (repeats[i] <= 0) {
+            fprintf(stderr, "Error: repeat count must be positive at dimension %d (got %d)\n", i, repeats[i]);
+            return NULL;
+        }
+    }
+
+    int* new_shape = (int*)malloc(src->ndim * sizeof(int));
+    if (!new_shape) {
+        return NULL;
+    }
+
+    size_t new_size = 1;
+    for (int i = 0; i < src->ndim; i++) {
+        new_shape[i] = src->shape[i] * repeats[i];
+        new_size *= new_shape[i];
+    }
+
+    Tensor* out = (src->device_id == -1)
+        ? zeros_host_tensor(src->dtype, src->ndim, new_shape, NULL)
+        : zeros_device_tensor(src->dtype, src->device_id, src->ndim, new_shape, NULL);
+
+    free(new_shape);
+
+    if (!out) {
+        return NULL;
+    }
+
+    int result;
+    if (src->device_id == -1) {
+        if (src->dtype == DTYPE_FLOAT32) {
+            result = repeat_kernel_host_f32((float*)out->data, (const float*)src->data,
+                                           src->ndim, src->shape, repeats);
+        } else if (src->dtype == DTYPE_FLOAT64) {
+            result = repeat_kernel_host_f64((double*)out->data, (const double*)src->data,
+                                            src->ndim, src->shape, repeats);
+        } else {
+            free_tensor(out);
+            return NULL;
+        }
+    } else {
+        cudaSetDevice(src->device_id);
+        result = repeat_kernel_device(out->data, src->data, src->ndim, src->shape, repeats,
+                                      new_size, src->dtype);
+    }
+
+    if (result != 0) {
+        free_tensor(out);
+        return NULL;
+    }
+
+    return out;
+}

@@ -846,3 +846,109 @@ int contiguous_copy_kernel_host_f64(double* out, const double* in, int ndim, int
     free(indices);
     return 0;
 }
+
+int repeat_kernel_host_f32(float* out, const float* in, int ndim, int* src_shape, int* repeats) {
+    if (!out || !in || !src_shape || !repeats || ndim <= 0) return -1;
+
+    size_t out_size = 1;
+    int* out_shape = (int*)malloc(ndim * sizeof(int));
+    int* src_strides = (int*)malloc(ndim * sizeof(int));
+    if (!out_shape || !src_strides) {
+        if (out_shape) free(out_shape);
+        if (src_strides) free(src_strides);
+        return -1;
+    }
+
+    for (int i = 0; i < ndim; i++) {
+        out_shape[i] = src_shape[i] * repeats[i];
+        out_size *= out_shape[i];
+    }
+
+    src_strides[ndim - 1] = 1;
+    for (int i = ndim - 2; i >= 0; i--) {
+        src_strides[i] = src_strides[i + 1] * src_shape[i + 1];
+    }
+
+    int* out_indices = (int*)calloc(ndim, sizeof(int));
+    if (!out_indices) {
+        free(out_shape);
+        free(src_strides);
+        return -1;
+    }
+
+    for (size_t out_idx = 0; out_idx < out_size; out_idx++) {
+        size_t src_idx = 0;
+        for (int d = 0; d < ndim; d++) {
+            int src_coord = out_indices[d] % src_shape[d];
+            src_idx += src_coord * src_strides[d];
+        }
+
+        out[out_idx] = in[src_idx];
+
+        for (int d = ndim - 1; d >= 0; d--) {
+            out_indices[d]++;
+            if (out_indices[d] < out_shape[d]) {
+                break;
+            }
+            out_indices[d] = 0;
+        }
+    }
+
+    free(out_shape);
+    free(src_strides);
+    free(out_indices);
+    return 0;
+}
+
+int repeat_kernel_host_f64(double* out, const double* in, int ndim, int* src_shape, int* repeats) {
+    if (!out || !in || !src_shape || !repeats || ndim <= 0) return -1;
+
+    size_t out_size = 1;
+    int* out_shape = (int*)malloc(ndim * sizeof(int));
+    int* src_strides = (int*)malloc(ndim * sizeof(int));
+    if (!out_shape || !src_strides) {
+        if (out_shape) free(out_shape);
+        if (src_strides) free(src_strides);
+        return -1;
+    }
+
+    for (int i = 0; i < ndim; i++) {
+        out_shape[i] = src_shape[i] * repeats[i];
+        out_size *= out_shape[i];
+    }
+
+    src_strides[ndim - 1] = 1;
+    for (int i = ndim - 2; i >= 0; i--) {
+        src_strides[i] = src_strides[i + 1] * src_shape[i + 1];
+    }
+
+    int* out_indices = (int*)calloc(ndim, sizeof(int));
+    if (!out_indices) {
+        free(out_shape);
+        free(src_strides);
+        return -1;
+    }
+
+    for (size_t out_idx = 0; out_idx < out_size; out_idx++) {
+        size_t src_idx = 0;
+        for (int d = 0; d < ndim; d++) {
+            int src_coord = out_indices[d] % src_shape[d];
+            src_idx += src_coord * src_strides[d];
+        }
+
+        out[out_idx] = in[src_idx];
+
+        for (int d = ndim - 1; d >= 0; d--) {
+            out_indices[d]++;
+            if (out_indices[d] < out_shape[d]) {
+                break;
+            }
+            out_indices[d] = 0;
+        }
+    }
+
+    free(out_shape);
+    free(src_strides);
+    free(out_indices);
+    return 0;
+}

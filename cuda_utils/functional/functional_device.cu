@@ -1396,3 +1396,73 @@ int contiguous_copy_kernel_device(void* out, const void* in, int ndim, int* shap
     cudaDeviceSynchronize();
     return 0;
 }
+
+template<typename T>
+__global__ void repeat_kernel(T* out, const T* in, int ndim, int* src_shape, int* repeats, size_t out_size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= out_size) return;
+
+    int temp_idx = idx;
+    int src_idx = 0;
+    int src_stride = 1;
+
+    for (int d = ndim - 1; d >= 0; d--) {
+        int out_shape_d = src_shape[d] * repeats[d];
+        int out_coord = temp_idx % out_shape_d;
+        int src_coord = out_coord % src_shape[d];
+
+        src_idx += src_coord * src_stride;
+        src_stride *= src_shape[d];
+        temp_idx /= out_shape_d;
+    }
+
+    out[idx] = in[src_idx];
+}
+
+int repeat_kernel_device(void* out, const void* in, int ndim, int* src_shape, int* repeats, size_t out_size, DType dtype) {
+    if (!out || !in || !src_shape || !repeats || ndim <= 0 || out_size == 0) return -1;
+
+    int* d_src_shape;
+    int* d_repeats;
+
+    cudaError_t err = cudaMalloc(&d_src_shape, ndim * sizeof(int));
+    if (err != cudaSuccess) return -1;
+
+    err = cudaMalloc(&d_repeats, ndim * sizeof(int));
+    if (err != cudaSuccess) {
+        cudaFree(d_src_shape);
+        return -1;
+    }
+
+    err = cudaMemcpy(d_src_shape, src_shape, ndim * sizeof(int), cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        cudaFree(d_src_shape);
+        cudaFree(d_repeats);
+        return -1;
+    }
+
+    err = cudaMemcpy(d_repeats, repeats, ndim * sizeof(int), cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        cudaFree(d_src_shape);
+        cudaFree(d_repeats);
+        return -1;
+    }
+
+    int threads = 256;
+    int blocks = (out_size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        repeat_kernel<float><<<blocks, threads>>>((float*)out, (const float*)in, ndim, d_src_shape, d_repeats, out_size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        repeat_kernel<double><<<blocks, threads>>>((double*)out, (const double*)in, ndim, d_src_shape, d_repeats, out_size);
+    }
+
+    err = cudaGetLastError();
+    cudaFree(d_src_shape);
+    cudaFree(d_repeats);
+
+    if (err != cudaSuccess) return -1;
+
+    cudaDeviceSynchronize();
+    return 0;
+}
