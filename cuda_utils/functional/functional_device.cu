@@ -1331,3 +1331,68 @@ Tensor* cat_kernel_device(Tensor** tensors, int num_tensors, int dim) {
     cudaDeviceSynchronize();
     return out;
 }
+
+template<typename T>
+__global__ void contiguous_copy_kernel(T* out, const T* in, int ndim, int* shape, int* strides, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= size) return;
+
+    int temp = idx;
+    size_t in_idx = 0;
+
+    for (int d = ndim - 1; d >= 0; d--) {
+        int coord = temp % shape[d];
+        temp /= shape[d];
+        in_idx += coord * strides[d];
+    }
+
+    out[idx] = in[in_idx];
+}
+
+int contiguous_copy_kernel_device(void* out, const void* in, int ndim, int* shape, int* strides, size_t size, DType dtype) {
+    if (!out || !in || !shape || !strides || ndim <= 0 || size == 0) return -1;
+
+    int* d_shape;
+    int* d_strides;
+
+    cudaError_t err = cudaMalloc(&d_shape, ndim * sizeof(int));
+    if (err != cudaSuccess) return -1;
+
+    err = cudaMalloc(&d_strides, ndim * sizeof(int));
+    if (err != cudaSuccess) {
+        cudaFree(d_shape);
+        return -1;
+    }
+
+    err = cudaMemcpy(d_shape, shape, ndim * sizeof(int), cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        cudaFree(d_shape);
+        cudaFree(d_strides);
+        return -1;
+    }
+
+    err = cudaMemcpy(d_strides, strides, ndim * sizeof(int), cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        cudaFree(d_shape);
+        cudaFree(d_strides);
+        return -1;
+    }
+
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        contiguous_copy_kernel<float><<<blocks, threads>>>((float*)out, (const float*)in, ndim, d_shape, d_strides, size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        contiguous_copy_kernel<double><<<blocks, threads>>>((double*)out, (const double*)in, ndim, d_shape, d_strides, size);
+    }
+
+    err = cudaGetLastError();
+    cudaFree(d_shape);
+    cudaFree(d_strides);
+
+    if (err != cudaSuccess) return -1;
+
+    cudaDeviceSynchronize();
+    return 0;
+}

@@ -821,7 +821,82 @@ bool rp_is_contiguous(Tensor* tensor) {
     return true;
 }
 
-Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape) {
+Tensor* rp_contiguous(Tensor* src) {
+    if (!src) return NULL;
+
+    if (rp_is_contiguous(src)) {
+        int* new_shape = (int*)malloc(src->ndim * sizeof(int));
+        int* new_strides = (int*)malloc(src->ndim * sizeof(int));
+        if (!new_shape || !new_strides) {
+            if (new_shape) free(new_shape);
+            if (new_strides) free(new_strides);
+            return NULL;
+        }
+
+        for (int i = 0; i < src->ndim; i++) {
+            new_shape[i] = src->shape[i];
+            new_strides[i] = src->strides[i];
+        }
+
+        Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+        if (!view) {
+            free(new_shape);
+            free(new_strides);
+            return NULL;
+        }
+
+        view->dtype = src->dtype;
+        view->data = src->data;
+        view->ndim = src->ndim;
+        view->size = src->size;
+        view->shape = new_shape;
+        view->strides = new_strides;
+        view->device_id = src->device_id;
+        view->owns_data = false;
+        view->base_tensor = src->base_tensor ? src->base_tensor : src;
+        view->data_offset = src->data_offset;
+        view->metadata = NULL;
+
+        return view;
+    }
+
+    Tensor* contiguous = (src->device_id == -1)
+        ? zeros_host_tensor(src->dtype, src->ndim, src->shape, NULL)
+        : zeros_device_tensor(src->dtype, src->device_id, src->ndim, src->shape, NULL);
+
+    if (!contiguous) return NULL;
+
+    if (src->device_id == -1) {
+        if (src->dtype == DTYPE_FLOAT32) {
+            if (contiguous_copy_kernel_host_f32((float*)contiguous->data, (const float*)src->data,
+                                               src->ndim, src->shape, src->strides) != 0) {
+                free_tensor(contiguous);
+                return NULL;
+            }
+        } else if (src->dtype == DTYPE_FLOAT64) {
+            if (contiguous_copy_kernel_host_f64((double*)contiguous->data, (const double*)src->data,
+                                               src->ndim, src->shape, src->strides) != 0) {
+                free_tensor(contiguous);
+                return NULL;
+            }
+        }
+    } else {
+        if (!check_cuda_call(cudaSetDevice(src->device_id), "cudaSetDevice")) {
+            free_tensor(contiguous);
+            return NULL;
+        }
+        if (contiguous_copy_kernel_device(contiguous->data, src->data,
+                                         src->ndim, src->shape, src->strides,
+                                         src->size, src->dtype) != 0) {
+            free_tensor(contiguous);
+            return NULL;
+        }
+    }
+
+    return contiguous;
+}
+
+Tensor* rp_view(Tensor* src, int ndim, int* new_shape) {
     if (!src || !new_shape) return NULL;
 
     int infer_dim = -1;
@@ -871,7 +946,7 @@ Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape) {
     }
 
     if (!rp_is_contiguous(src)) {
-        fprintf(stderr, "Error: reshape requires contiguous tensor\n");
+        fprintf(stderr, "Error: view requires contiguous tensor\n");
         free(final_shape);
         return NULL;
     }
@@ -907,6 +982,36 @@ Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape) {
     view->metadata = NULL;
 
     return view;
+}
+
+Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape) {
+    if (!src || !new_shape) return NULL;
+
+    Tensor* result = rp_view(src, ndim, new_shape);
+    if (result) {
+        return result;
+    }
+
+    Tensor* contiguous = rp_contiguous(src);
+    if (!contiguous) return NULL;
+
+    result = rp_view(contiguous, ndim, new_shape);
+
+    if (contiguous->owns_data) {
+        if (result) {
+            result->owns_data = true;
+            result->base_tensor = NULL;
+            free(contiguous->shape);
+            free(contiguous->strides);
+            free(contiguous);
+        } else {
+            free_tensor(contiguous);
+        }
+    } else {
+        free_tensor(contiguous);
+    }
+
+    return result;
 }
 
 Tensor* rp_transpose(Tensor* src, int dim0, int dim1) {

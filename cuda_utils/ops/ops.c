@@ -1182,6 +1182,32 @@ Tensor* op_slice(Tensor* src, int* start, int* stop, int* step) {
     return out;
 }
 
+void backward_view_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    ReshapeSavedData* saved = (ReshapeSavedData*)self->saved_data;
+    if (!saved || self->num_inputs != 1) return;
+
+    Tensor* input = self->inputs[0];
+    if (!input || !input->metadata || !input->metadata->requires_grad) return;
+
+    Tensor* grad_reshaped = rp_view(grad_output, saved->ndim, saved->original_shape);
+    if (!grad_reshaped) return;
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = grad_reshaped;
+    } else {
+        if (input->dtype == DTYPE_FLOAT32) {
+            rp_add(input->metadata->grad->data, input->metadata->grad->data,
+                   grad_reshaped->data, input->size, input->dtype, input->device_id);
+        } else {
+            rp_add(input->metadata->grad->data, input->metadata->grad->data,
+                   grad_reshaped->data, input->size, input->dtype, input->device_id);
+        }
+        free_tensor(grad_reshaped);
+    }
+}
+
 void backward_reshape_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
@@ -1206,6 +1232,70 @@ void backward_reshape_fn(GradFn* self, Tensor* grad_output) {
         }
         free_tensor(grad_reshaped);
     }
+}
+
+Tensor* op_view(Tensor* src, int ndim, int* new_shape) {
+    if (!src || !new_shape) return NULL;
+
+    Tensor* out = rp_view(src, ndim, new_shape);
+    if (!out) return NULL;
+
+    bool requires_grad = (src->metadata && src->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_view_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = src;
+
+        ReshapeSavedData* saved = (ReshapeSavedData*)malloc(sizeof(ReshapeSavedData));
+        if (!saved) {
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+
+        saved->ndim = src->ndim;
+        saved->original_shape = (int*)malloc(src->ndim * sizeof(int));
+        if (!saved->original_shape) {
+            free(saved);
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+
+        for (int i = 0; i < src->ndim; i++) {
+            saved->original_shape[i] = src->shape[i];
+        }
+
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
 }
 
 Tensor* op_reshape(Tensor* src, int ndim, int* new_shape) {

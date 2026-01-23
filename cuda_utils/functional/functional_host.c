@@ -782,3 +782,67 @@ Tensor* cat_kernel_host(Tensor** tensors, int num_tensors, int dim) {
     free(out_shape);
     return out;
 }
+
+int contiguous_copy_kernel_host_f32(float* out, const float* in, int ndim, int* shape, int* strides) {
+    if (!out || !in || !shape || !strides || ndim <= 0) return -1;
+
+    size_t total_size = 1;
+    for (int i = 0; i < ndim; i++) {
+        total_size *= shape[i];
+    }
+
+    int* indices = (int*)calloc(ndim, sizeof(int));
+    if (!indices) return -1;
+
+    for (size_t out_idx = 0; out_idx < total_size; out_idx++) {
+        size_t in_idx = 0;
+        for (int d = 0; d < ndim; d++) {
+            in_idx += indices[d] * strides[d];
+        }
+
+        out[out_idx] = in[in_idx];
+
+        for (int d = ndim - 1; d >= 0; d--) {
+            indices[d]++;
+            if (indices[d] < shape[d]) {
+                break;
+            }
+            indices[d] = 0;
+        }
+    }
+
+    free(indices);
+    return 0;
+}
+
+int contiguous_copy_kernel_host_f64(double* out, const double* in, int ndim, int* shape, int* strides) {
+    if (!out || !in || !shape || !strides || ndim <= 0) return -1;
+
+    size_t total_size = 1;
+    for (int i = 0; i < ndim; i++) {
+        total_size *= shape[i];
+    }
+
+    int* indices = (int*)calloc(ndim, sizeof(int));
+    if (!indices) return -1;
+
+    for (size_t out_idx = 0; out_idx < total_size; out_idx++) {
+        size_t in_idx = 0;
+        for (int d = 0; d < ndim; d++) {
+            in_idx += indices[d] * strides[d];
+        }
+
+        out[out_idx] = in[in_idx];
+
+        for (int d = ndim - 1; d >= 0; d--) {
+            indices[d]++;
+            if (indices[d] < shape[d]) {
+                break;
+            }
+            indices[d] = 0;
+        }
+    }
+
+    free(indices);
+    return 0;
+}

@@ -30,6 +30,7 @@ Tensor* op_tanh(Tensor* x);
 
 Tensor* op_cat(Tensor** tensors, int num_tensors, int dim);
 Tensor* op_slice(Tensor* src, int* start, int* stop, int* step);
+Tensor* op_view(Tensor* src, int ndim, int* new_shape);
 Tensor* op_reshape(Tensor* src, int ndim, int* new_shape);
 Tensor* op_transpose(Tensor* src, int dim0, int dim1);
 Tensor* op_squeeze(Tensor* src, int dim);

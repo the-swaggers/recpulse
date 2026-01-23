@@ -60,6 +60,8 @@ Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim);
 Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step);
 
 bool rp_is_contiguous(Tensor* tensor);
+Tensor* rp_contiguous(Tensor* src);
+Tensor* rp_view(Tensor* src, int ndim, int* new_shape);
 Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape);
 Tensor* rp_transpose(Tensor* src, int dim0, int dim1);
 Tensor* rp_squeeze(Tensor* src, int dim);
@@ -160,6 +162,9 @@ int matmul_kernel_host_f64(double* C, const double* A, const double* B, int m, i
 
 Tensor* cat_kernel_host(Tensor** tensors, int num_tensors, int dim);
 
+int contiguous_copy_kernel_host_f32(float* out, const float* in, int ndim, int* shape, int* strides);
+int contiguous_copy_kernel_host_f64(double* out, const double* in, int ndim, int* shape, int* strides);
+
 int add_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
 int sub_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
 int mul_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
@@ -207,6 +212,8 @@ int sum_all_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int mean_all_kernel_device(void* out, const void* x, size_t size, DType dtype);
 
 int matmul_kernel_device(void* C, const void* A, const void* B, int m, int k, int n, DType dtype);
+
+int contiguous_copy_kernel_device(void* out, const void* in, int ndim, int* shape, int* strides, size_t size, DType dtype);
 
 Tensor* cat_kernel_device(Tensor** tensors, int num_tensors, int dim);
 
