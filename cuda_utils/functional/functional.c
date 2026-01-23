@@ -1597,3 +1597,76 @@ Tensor** rp_chunk(Tensor* src, int chunks, int dim) {
     free(split_result);
     return result;
 }
+
+Tensor* rp_expand(Tensor* src, int ndim, int* shape) {
+    if (!src || !shape || ndim < src->ndim) {
+        if (ndim < src->ndim) {
+            fprintf(stderr, "Error: target ndim (%d) must be >= source ndim (%d)\n", ndim, src->ndim);
+        }
+        return NULL;
+    }
+
+    for (int i = 0; i < ndim; i++) {
+        if (shape[i] <= 0) {
+            fprintf(stderr, "Error: invalid target shape dimension %d at index %d\n", shape[i], i);
+            return NULL;
+        }
+    }
+
+    int* new_shape = (int*)malloc(ndim * sizeof(int));
+    int* new_strides = (int*)malloc(ndim * sizeof(int));
+    if (!new_shape || !new_strides) {
+        if (new_shape) free(new_shape);
+        if (new_strides) free(new_strides);
+        return NULL;
+    }
+
+    int src_offset = ndim - src->ndim;
+
+    for (int i = 0; i < ndim; i++) {
+        new_shape[i] = shape[i];
+
+        if (i < src_offset) {
+            new_strides[i] = 0;
+        } else {
+            int src_idx = i - src_offset;
+            if (src->shape[src_idx] == 1) {
+                new_strides[i] = 0;
+            } else if (src->shape[src_idx] == shape[i]) {
+                new_strides[i] = src->strides[src_idx];
+            } else {
+                fprintf(stderr, "Error: cannot expand dimension %d from size %d to %d (must be 1 or same size)\n",
+                        src_idx, src->shape[src_idx], shape[i]);
+                free(new_shape);
+                free(new_strides);
+                return NULL;
+            }
+        }
+    }
+
+    size_t new_size = 1;
+    for (int i = 0; i < ndim; i++) {
+        new_size *= new_shape[i];
+    }
+
+    Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+    if (!view) {
+        free(new_shape);
+        free(new_strides);
+        return NULL;
+    }
+
+    view->dtype = src->dtype;
+    view->data = src->data;
+    view->ndim = ndim;
+    view->size = new_size;
+    view->shape = new_shape;
+    view->strides = new_strides;
+    view->device_id = src->device_id;
+    view->owns_data = false;
+    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->data_offset = src->data_offset;
+    view->metadata = NULL;
+
+    return view;
+}
