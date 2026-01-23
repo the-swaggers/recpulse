@@ -1484,3 +1484,26 @@ Tensor* op_unsqueeze(Tensor* src, int dim) {
 
     return out;
 }
+
+Tensor* op_flatten(Tensor* src, int start_dim, int end_dim) {
+    if (!src) return NULL;
+
+    Tensor* out = rp_flatten(src, start_dim, end_dim);
+    if (!out) return NULL;
+
+    bool requires_grad = (src->metadata && src->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+    }
+
+    return out;
+}

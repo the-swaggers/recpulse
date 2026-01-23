@@ -1432,3 +1432,50 @@ Tensor** rp_split_equal(Tensor* src, int num_splits, int dim) {
 
     return result;
 }
+
+Tensor* rp_flatten(Tensor* src, int start_dim, int end_dim) {
+    if (!src) return NULL;
+
+    if (start_dim < 0) start_dim += src->ndim;
+    if (end_dim < 0) end_dim += src->ndim;
+
+    if (start_dim < 0 || start_dim >= src->ndim) {
+        fprintf(stderr, "Error: start_dim %d out of bounds for tensor with %d dimensions\n", start_dim, src->ndim);
+        return NULL;
+    }
+
+    if (end_dim < 0 || end_dim >= src->ndim) {
+        fprintf(stderr, "Error: end_dim %d out of bounds for tensor with %d dimensions\n", end_dim, src->ndim);
+        return NULL;
+    }
+
+    if (start_dim > end_dim) {
+        fprintf(stderr, "Error: start_dim %d must be <= end_dim %d\n", start_dim, end_dim);
+        return NULL;
+    }
+
+    int num_dims_to_flatten = end_dim - start_dim + 1;
+    int new_ndim = src->ndim - num_dims_to_flatten + 1;
+
+    int* new_shape = (int*)malloc(new_ndim * sizeof(int));
+    if (!new_shape) return NULL;
+
+    int flattened_size = 1;
+    for (int i = start_dim; i <= end_dim; i++) {
+        flattened_size *= src->shape[i];
+    }
+
+    int idx = 0;
+    for (int i = 0; i < start_dim; i++) {
+        new_shape[idx++] = src->shape[i];
+    }
+    new_shape[idx++] = flattened_size;
+    for (int i = end_dim + 1; i < src->ndim; i++) {
+        new_shape[idx++] = src->shape[i];
+    }
+
+    Tensor* result = rp_reshape(src, new_ndim, new_shape);
+    free(new_shape);
+
+    return result;
+}

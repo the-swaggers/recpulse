@@ -35,6 +35,7 @@ Tensor* op_reshape(Tensor* src, int ndim, int* new_shape);
 Tensor* op_transpose(Tensor* src, int dim0, int dim1);
 Tensor* op_squeeze(Tensor* src, int dim);
 Tensor* op_unsqueeze(Tensor* src, int dim);
+Tensor* op_flatten(Tensor* src, int start_dim, int end_dim);
 
 int backwards_add_x1(const void* grad_c, void* grad_x1, size_t size, DType dtype, int device_id);
 int backwards_add_x2(const void* grad_c, void* grad_x2, size_t size, DType dtype, int device_id);
