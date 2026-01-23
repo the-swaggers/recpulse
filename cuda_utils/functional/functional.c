@@ -1321,3 +1321,114 @@ Tensor* rp_unsqueeze(Tensor* src, int dim) {
 
     return view;
 }
+
+Tensor** rp_split(Tensor* src, int* sizes, int num_splits, int dim) {
+    if (!src || !sizes || num_splits <= 0) return NULL;
+
+    if (dim < 0) dim += src->ndim;
+
+    if (dim < 0 || dim >= src->ndim) {
+        fprintf(stderr, "Error: dimension %d out of bounds for split (valid range: [-%d, %d))\n",
+                dim, src->ndim, src->ndim);
+        return NULL;
+    }
+
+    int total_size = 0;
+    for (int i = 0; i < num_splits; i++) {
+        if (sizes[i] <= 0) {
+            fprintf(stderr, "Error: split size must be positive, got %d at index %d\n", sizes[i], i);
+            return NULL;
+        }
+        total_size += sizes[i];
+    }
+
+    if (total_size != src->shape[dim]) {
+        fprintf(stderr, "Error: sum of split sizes (%d) must equal dimension size (%d)\n",
+                total_size, src->shape[dim]);
+        return NULL;
+    }
+
+    Tensor** result = (Tensor**)malloc(num_splits * sizeof(Tensor*));
+    if (!result) return NULL;
+
+    int current_start = 0;
+    for (int i = 0; i < num_splits; i++) {
+        int* start = (int*)malloc(src->ndim * sizeof(int));
+        int* stop = (int*)malloc(src->ndim * sizeof(int));
+        int* step = (int*)malloc(src->ndim * sizeof(int));
+
+        if (!start || !stop || !step) {
+            if (start) free(start);
+            if (stop) free(stop);
+            if (step) free(step);
+            for (int j = 0; j < i; j++) {
+                free_tensor(result[j]);
+            }
+            free(result);
+            return NULL;
+        }
+
+        for (int d = 0; d < src->ndim; d++) {
+            if (d == dim) {
+                start[d] = current_start;
+                stop[d] = current_start + sizes[i];
+                step[d] = 1;
+            } else {
+                start[d] = 0;
+                stop[d] = src->shape[d];
+                step[d] = 1;
+            }
+        }
+
+        result[i] = rp_slice(src, start, stop, step);
+
+        free(start);
+        free(stop);
+        free(step);
+
+        if (!result[i]) {
+            for (int j = 0; j < i; j++) {
+                free_tensor(result[j]);
+            }
+            free(result);
+            return NULL;
+        }
+
+        current_start += sizes[i];
+    }
+
+    return result;
+}
+
+Tensor** rp_split_equal(Tensor* src, int num_splits, int dim) {
+    if (!src || num_splits <= 0) return NULL;
+
+    if (dim < 0) dim += src->ndim;
+
+    if (dim < 0 || dim >= src->ndim) {
+        fprintf(stderr, "Error: dimension %d out of bounds for split_equal (valid range: [-%d, %d))\n",
+                dim, src->ndim, src->ndim);
+        return NULL;
+    }
+
+    int dim_size = src->shape[dim];
+    if (dim_size % num_splits != 0) {
+        fprintf(stderr, "Error: dimension size %d is not divisible by num_splits %d\n",
+                dim_size, num_splits);
+        return NULL;
+    }
+
+    int split_size = dim_size / num_splits;
+
+    int* sizes = (int*)malloc(num_splits * sizeof(int));
+    if (!sizes) return NULL;
+
+    for (int i = 0; i < num_splits; i++) {
+        sizes[i] = split_size;
+    }
+
+    Tensor** result = rp_split(src, sizes, num_splits, dim);
+    free(sizes);
+
+    return result;
+}

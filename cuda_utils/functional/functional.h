@@ -66,6 +66,8 @@ Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape);
 Tensor* rp_transpose(Tensor* src, int dim0, int dim1);
 Tensor* rp_squeeze(Tensor* src, int dim);
 Tensor* rp_unsqueeze(Tensor* src, int dim);
+Tensor** rp_split(Tensor* src, int* sizes, int num_splits, int dim);
+Tensor** rp_split_equal(Tensor* src, int num_splits, int dim);
 
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
 int sub_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
