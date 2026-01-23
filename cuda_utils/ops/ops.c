@@ -1507,3 +1507,26 @@ Tensor* op_flatten(Tensor* src, int start_dim, int end_dim) {
 
     return out;
 }
+
+Tensor* op_permute(Tensor* src, int* dims) {
+    if (!src) return NULL;
+
+    Tensor* out = rp_permute(src, dims);
+    if (!out) return NULL;
+
+    bool requires_grad = (src->metadata && src->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+    }
+
+    return out;
+}

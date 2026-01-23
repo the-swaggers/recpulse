@@ -1479,3 +1479,67 @@ Tensor* rp_flatten(Tensor* src, int start_dim, int end_dim) {
 
     return result;
 }
+
+Tensor* rp_permute(Tensor* src, int* dims) {
+    if (!src || !dims) return NULL;
+
+    int ndim = src->ndim;
+
+    bool* seen = (bool*)calloc(ndim, sizeof(bool));
+    if (!seen) return NULL;
+
+    for (int i = 0; i < ndim; i++) {
+        int d = dims[i];
+        if (d < 0) d += ndim;
+
+        if (d < 0 || d >= ndim) {
+            fprintf(stderr, "Error: dimension %d out of bounds for tensor with %d dimensions\n", dims[i], ndim);
+            free(seen);
+            return NULL;
+        }
+
+        if (seen[d]) {
+            fprintf(stderr, "Error: dimension %d appears more than once in permutation\n", d);
+            free(seen);
+            return NULL;
+        }
+        seen[d] = true;
+    }
+    free(seen);
+
+    int* new_shape = (int*)malloc(ndim * sizeof(int));
+    int* new_strides = (int*)malloc(ndim * sizeof(int));
+    if (!new_shape || !new_strides) {
+        if (new_shape) free(new_shape);
+        if (new_strides) free(new_strides);
+        return NULL;
+    }
+
+    for (int i = 0; i < ndim; i++) {
+        int d = dims[i];
+        if (d < 0) d += ndim;
+        new_shape[i] = src->shape[d];
+        new_strides[i] = src->strides[d];
+    }
+
+    Tensor* view = (Tensor*)malloc(sizeof(Tensor));
+    if (!view) {
+        free(new_shape);
+        free(new_strides);
+        return NULL;
+    }
+
+    view->dtype = src->dtype;
+    view->data = src->data;
+    view->ndim = ndim;
+    view->size = src->size;
+    view->shape = new_shape;
+    view->strides = new_strides;
+    view->device_id = src->device_id;
+    view->owns_data = false;
+    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->data_offset = src->data_offset;
+    view->metadata = NULL;
+
+    return view;
+}
