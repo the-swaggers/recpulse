@@ -1,5 +1,6 @@
 #include "ops.h"
 #include <string.h>
+#include <math.h>
 
 int backwards_add_x1_host(const void* grad_c, void* grad_x1, size_t size, DType dtype) {
     if (!grad_c || !grad_x1) return -1;
@@ -241,6 +242,60 @@ int backwards_tanh_host(const void* grad_c, const void* fn_output, void* grad_x,
 
         for (size_t i = 0; i < size; i++) {
             grad_x_f64[i] = grad_c_f64[i] * (1 - fn_output_f64[i] * fn_output_f64[i]);
+        }
+    }
+
+    return 0;
+}
+
+int backwards_power_x1_host(const void* grad_c, const void* x1, const void* x2, const void* out, void* grad_x1, size_t size, DType dtype) {
+    if (!grad_c || !x1 || !x2 || !out || !grad_x1) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x1_f32 = (const float*)x1;
+        const float* x2_f32 = (const float*)x2;
+        const float* out_f32 = (const float*)out;
+        float* grad_x1_f32 = (float*)grad_x1;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x1_f32[i] = grad_c_f32[i] * x2_f32[i] * out_f32[i] / x1_f32[i];
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x1_f64 = (const double*)x1;
+        const double* x2_f64 = (const double*)x2;
+        const double* out_f64 = (const double*)out;
+        double* grad_x1_f64 = (double*)grad_x1;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x1_f64[i] = grad_c_f64[i] * x2_f64[i] * out_f64[i] / x1_f64[i];
+        }
+    }
+
+    return 0;
+}
+
+int backwards_power_x2_host(const void* grad_c, const void* x1, const void* out, void* grad_x2, size_t size, DType dtype) {
+    if (!grad_c || !x1 || !out || !grad_x2) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x1_f32 = (const float*)x1;
+        const float* out_f32 = (const float*)out;
+        float* grad_x2_f32 = (float*)grad_x2;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x2_f32[i] = grad_c_f32[i] * out_f32[i] * logf(x1_f32[i]);
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x1_f64 = (const double*)x1;
+        const double* out_f64 = (const double*)out;
+        double* grad_x2_f64 = (double*)grad_x2;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x2_f64[i] = grad_c_f64[i] * out_f64[i] * log(x1_f64[i]);
         }
     }
 
