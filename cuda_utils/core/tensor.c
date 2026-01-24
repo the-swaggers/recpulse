@@ -184,8 +184,34 @@ int tensor_backward(Tensor* tensor) {
         }
     }
 
-    if (tensor->metadata->grad_fn) {
-        tensor->metadata->grad_fn->backward(tensor->metadata->grad_fn, tensor->metadata->grad);
+    if (!tensor->metadata->grad_fn) return 0;
+
+    Tensor* queue[100];
+    int queue_size = 0;
+    queue[queue_size++] = tensor;
+
+    for (int idx = 0; idx < queue_size && idx < 100; idx++) {
+        Tensor* current = queue[idx];
+
+        if (current->metadata && current->metadata->grad_fn && current->metadata->grad) {
+            current->metadata->grad_fn->backward(current->metadata->grad_fn, current->metadata->grad);
+
+            for (int i = 0; i < current->metadata->grad_fn->num_inputs; i++) {
+                Tensor* input = current->metadata->grad_fn->inputs[i];
+                if (input && input->metadata && input->metadata->requires_grad && input->metadata->grad && input->metadata->grad_fn) {
+                    bool already_queued = false;
+                    for (int j = 0; j < queue_size; j++) {
+                        if (queue[j] == input) {
+                            already_queued = true;
+                            break;
+                        }
+                    }
+                    if (!already_queued && queue_size < 100) {
+                        queue[queue_size++] = input;
+                    }
+                }
+            }
+        }
     }
 
     return 0;
