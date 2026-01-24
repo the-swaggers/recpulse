@@ -29,6 +29,7 @@ Tensor* op_log(Tensor* x);
 Tensor* op_sqrt(Tensor* x);
 Tensor* op_tanh(Tensor* x);
 Tensor* op_relu(Tensor* x);
+Tensor* op_sigmoid(Tensor* x);
 
 Tensor* op_cat(Tensor** tensors, int num_tensors, int dim);
 Tensor* op_slice(Tensor* src, int* start, int* stop, int* step);
@@ -63,6 +64,7 @@ int backwards_log(const void* grad_c, const void* x, void* grad_x, size_t size, 
 int backwards_sqrt(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype, int device_id);
 int backwards_tanh(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype, int device_id);
 int backwards_relu(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
+int backwards_sigmoid(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype, int device_id);
 
 int backwards_add_x1_host(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_host(const void* grad_c, void* grad_x2, size_t size, DType dtype);
@@ -84,6 +86,7 @@ int backwards_log_host(const void* grad_c, const void* x, void* grad_x, size_t s
 int backwards_sqrt_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype);
 int backwards_tanh_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype);
 int backwards_relu_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_sigmoid_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype);
 
 int backwards_add_x1_device(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_device(const void* grad_c, void* grad_x2, size_t size, DType dtype);
@@ -105,6 +108,7 @@ int backwards_log_device(const void* grad_c, const void* x, void* grad_x, size_t
 int backwards_sqrt_device(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype);
 int backwards_tanh_device(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype);
 int backwards_relu_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_sigmoid_device(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype);
 
 void free_grad_fn(GradFn* grad_fn);
 

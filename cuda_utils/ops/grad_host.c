@@ -325,3 +325,27 @@ int backwards_relu_host(const void* grad_c, const void* x, void* grad_x, size_t 
 
     return 0;
 }
+
+int backwards_sigmoid_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !fn_output || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* fn_output_f32 = (const float*)fn_output;
+        float* grad_x_f32 = (float*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f32[i] = grad_c_f32[i] * fn_output_f32[i] * (1.0f - fn_output_f32[i]);
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* fn_output_f64 = (const double*)fn_output;
+        double* grad_x_f64 = (double*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f64[i] = grad_c_f64[i] * fn_output_f64[i] * (1.0 - fn_output_f64[i]);
+        }
+    }
+
+    return 0;
+}

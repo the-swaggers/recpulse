@@ -371,3 +371,31 @@ int backwards_relu_device(const void* grad_c, const void* x, void* grad_x, size_
 
     return 0;
 }
+
+template<typename T>
+__global__ void backwards_sigmoid_kernel(const T* grad_c, const T* fn_output, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        grad_x[idx] = grad_c[idx] * fn_output[idx] * (T(1) - fn_output[idx]);
+    }
+}
+
+int backwards_sigmoid_device(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !fn_output || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_sigmoid_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)fn_output, (float*)grad_x, size);
+    } else {
+        backwards_sigmoid_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)fn_output, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
