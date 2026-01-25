@@ -349,3 +349,63 @@ int backwards_sigmoid_host(const void* grad_c, const void* fn_output, void* grad
 
     return 0;
 }
+
+int backwards_square_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x_f32 = (const float*)x;
+        float* grad_x_f32 = (float*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f32[i] = grad_c_f32[i] * 2.0f * x_f32[i];
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x_f64 = (const double*)x;
+        double* grad_x_f64 = (double*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f64[i] = grad_c_f64[i] * 2.0 * x_f64[i];
+        }
+    }
+
+    return 0;
+}
+
+int backwards_abs_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x_f32 = (const float*)x;
+        float* grad_x_f32 = (float*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            if (x_f32[i] > 0.0f) {
+                grad_x_f32[i] = grad_c_f32[i];
+            } else if (x_f32[i] < 0.0f) {
+                grad_x_f32[i] = -grad_c_f32[i];
+            } else {
+                grad_x_f32[i] = 0.0f;
+            }
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x_f64 = (const double*)x;
+        double* grad_x_f64 = (double*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            if (x_f64[i] > 0.0) {
+                grad_x_f64[i] = grad_c_f64[i];
+            } else if (x_f64[i] < 0.0) {
+                grad_x_f64[i] = -grad_c_f64[i];
+            } else {
+                grad_x_f64[i] = 0.0;
+            }
+        }
+    }
+
+    return 0;
+}

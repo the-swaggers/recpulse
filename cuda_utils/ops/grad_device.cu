@@ -399,3 +399,65 @@ int backwards_sigmoid_device(const void* grad_c, const void* fn_output, void* gr
 
     return 0;
 }
+
+template<typename T>
+__global__ void backwards_square_kernel(const T* grad_c, const T* x, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        grad_x[idx] = grad_c[idx] * T(2) * x[idx];
+    }
+}
+
+int backwards_square_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_square_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)x, (float*)grad_x, size);
+    } else {
+        backwards_square_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)x, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
+
+template<typename T>
+__global__ void backwards_abs_kernel(const T* grad_c, const T* x, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        if (x[idx] > T(0)) {
+            grad_x[idx] = grad_c[idx];
+        } else if (x[idx] < T(0)) {
+            grad_x[idx] = -grad_c[idx];
+        } else {
+            grad_x[idx] = T(0);
+        }
+    }
+}
+
+int backwards_abs_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_abs_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)x, (float*)grad_x, size);
+    } else {
+        backwards_abs_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)x, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
