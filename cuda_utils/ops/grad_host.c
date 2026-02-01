@@ -409,3 +409,77 @@ int backwards_abs_host(const void* grad_c, const void* x, void* grad_x, size_t s
 
     return 0;
 }
+
+int backwards_sin_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x_f32 = (const float*)x;
+        float* grad_x_f32 = (float*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f32[i] = grad_c_f32[i] * cosf(x_f32[i]);
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x_f64 = (const double*)x;
+        double* grad_x_f64 = (double*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f64[i] = grad_c_f64[i] * cos(x_f64[i]);
+        }
+    }
+
+    return 0;
+}
+
+int backwards_cos_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x_f32 = (const float*)x;
+        float* grad_x_f32 = (float*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f32[i] = -grad_c_f32[i] * sinf(x_f32[i]);
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x_f64 = (const double*)x;
+        double* grad_x_f64 = (double*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f64[i] = -grad_c_f64[i] * sin(x_f64[i]);
+        }
+    }
+
+    return 0;
+}
+
+int backwards_tan_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x_f32 = (const float*)x;
+        float* grad_x_f32 = (float*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            float cos_x = cosf(x_f32[i]);
+            grad_x_f32[i] = grad_c_f32[i] / (cos_x * cos_x);
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x_f64 = (const double*)x;
+        double* grad_x_f64 = (double*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            double cos_x = cos(x_f64[i]);
+            grad_x_f64[i] = grad_c_f64[i] / (cos_x * cos_x);
+        }
+    }
+
+    return 0;
+}

@@ -461,3 +461,88 @@ int backwards_abs_device(const void* grad_c, const void* x, void* grad_x, size_t
 
     return 0;
 }
+
+template<typename T>
+__global__ void backwards_sin_kernel(const T* grad_c, const T* x, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        grad_x[idx] = grad_c[idx] * cos(x[idx]);
+    }
+}
+
+int backwards_sin_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_sin_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)x, (float*)grad_x, size);
+    } else {
+        backwards_sin_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)x, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
+
+template<typename T>
+__global__ void backwards_cos_kernel(const T* grad_c, const T* x, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        grad_x[idx] = -grad_c[idx] * sin(x[idx]);
+    }
+}
+
+int backwards_cos_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_cos_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)x, (float*)grad_x, size);
+    } else {
+        backwards_cos_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)x, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
+
+template<typename T>
+__global__ void backwards_tan_kernel(const T* grad_c, const T* x, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        T cos_x = cos(x[idx]);
+        grad_x[idx] = grad_c[idx] / (cos_x * cos_x);
+    }
+}
+
+int backwards_tan_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_tan_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)x, (float*)grad_x, size);
+    } else {
+        backwards_tan_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)x, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}

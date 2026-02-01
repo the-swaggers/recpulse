@@ -706,6 +706,39 @@ int backwards_square(const void* grad_c, const void* x, void* grad_x,
     }
 }
 
+int backwards_sin(const void* grad_c, const void* x, void* grad_x,
+                  size_t size, DType dtype, int device_id) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (device_id == -1) {
+        return backwards_sin_host(grad_c, x, grad_x, size, dtype);
+    } else {
+        return backwards_sin_device(grad_c, x, grad_x, size, dtype);
+    }
+}
+
+int backwards_cos(const void* grad_c, const void* x, void* grad_x,
+                  size_t size, DType dtype, int device_id) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (device_id == -1) {
+        return backwards_cos_host(grad_c, x, grad_x, size, dtype);
+    } else {
+        return backwards_cos_device(grad_c, x, grad_x, size, dtype);
+    }
+}
+
+int backwards_tan(const void* grad_c, const void* x, void* grad_x,
+                  size_t size, DType dtype, int device_id) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (device_id == -1) {
+        return backwards_tan_host(grad_c, x, grad_x, size, dtype);
+    } else {
+        return backwards_tan_device(grad_c, x, grad_x, size, dtype);
+    }
+}
+
 void backward_exp_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
@@ -902,6 +935,81 @@ void backward_square_fn(GradFn* self, Tensor* grad_output) {
             if (temp_grad) {
                 backwards_square(grad_output->data, x->data, temp_grad->data,
                                 grad_output->size, grad_output->dtype, grad_output->device_id);
+                rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
+                       grad_output->size, grad_output->dtype, grad_output->device_id);
+                free_tensor(temp_grad);
+            }
+        }
+    }
+}
+
+void backward_sin_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+
+    if (x->metadata && x->metadata->requires_grad) {
+        if (!x->metadata->grad) {
+            x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (x->metadata->grad) {
+                backwards_sin(grad_output->data, x->data, x->metadata->grad->data,
+                             grad_output->size, grad_output->dtype, grad_output->device_id);
+            }
+        } else {
+            Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (temp_grad) {
+                backwards_sin(grad_output->data, x->data, temp_grad->data,
+                             grad_output->size, grad_output->dtype, grad_output->device_id);
+                rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
+                       grad_output->size, grad_output->dtype, grad_output->device_id);
+                free_tensor(temp_grad);
+            }
+        }
+    }
+}
+
+void backward_cos_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+
+    if (x->metadata && x->metadata->requires_grad) {
+        if (!x->metadata->grad) {
+            x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (x->metadata->grad) {
+                backwards_cos(grad_output->data, x->data, x->metadata->grad->data,
+                             grad_output->size, grad_output->dtype, grad_output->device_id);
+            }
+        } else {
+            Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (temp_grad) {
+                backwards_cos(grad_output->data, x->data, temp_grad->data,
+                             grad_output->size, grad_output->dtype, grad_output->device_id);
+                rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
+                       grad_output->size, grad_output->dtype, grad_output->device_id);
+                free_tensor(temp_grad);
+            }
+        }
+    }
+}
+
+void backward_tan_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+
+    if (x->metadata && x->metadata->requires_grad) {
+        if (!x->metadata->grad) {
+            x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (x->metadata->grad) {
+                backwards_tan(grad_output->data, x->data, x->metadata->grad->data,
+                             grad_output->size, grad_output->dtype, grad_output->device_id);
+            }
+        } else {
+            Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (temp_grad) {
+                backwards_tan(grad_output->data, x->data, temp_grad->data,
+                             grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
                 free_tensor(temp_grad);
@@ -1282,6 +1390,150 @@ Tensor* op_square(Tensor* x) {
         }
 
         grad_fn->backward = backward_square_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = x;
+        grad_fn->saved_data = NULL;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+Tensor* op_sin(Tensor* x) {
+    if (!x) return NULL;
+
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!out) return NULL;
+
+    int result = rp_sin(out->data, x->data, x->size, x->dtype, x->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        return NULL;
+    }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_sin_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = x;
+        grad_fn->saved_data = NULL;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+Tensor* op_cos(Tensor* x) {
+    if (!x) return NULL;
+
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!out) return NULL;
+
+    int result = rp_cos(out->data, x->data, x->size, x->dtype, x->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        return NULL;
+    }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_cos_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = x;
+        grad_fn->saved_data = NULL;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+Tensor* op_tan(Tensor* x) {
+    if (!x) return NULL;
+
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!out) return NULL;
+
+    int result = rp_tan(out->data, x->data, x->size, x->dtype, x->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        return NULL;
+    }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_tan_fn;
         grad_fn->num_inputs = 1;
         grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
         if (!grad_fn->inputs) {
