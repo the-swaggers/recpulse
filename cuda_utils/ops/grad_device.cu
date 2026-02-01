@@ -686,3 +686,43 @@ int backwards_cosh_device(const void* grad_c, const void* x, void* grad_x, size_
 
     return 0;
 }
+
+template<typename T>
+__global__ void backwards_gelu_kernel(const T* grad_c, const T* x, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        T sqrt_2_over_pi = T(0.7978845608);
+        T coeff = T(0.044715);
+        T coeff3 = T(0.134145);
+
+        T x_val = x[idx];
+        T x_sq = x_val * x_val;
+        T x_cubed = x_sq * x_val;
+        T inner = sqrt_2_over_pi * (x_val + coeff * x_cubed);
+        T tanh_inner = tanh(inner);
+        T sech2_inner = T(1) - tanh_inner * tanh_inner;
+        T d_inner = sqrt_2_over_pi * (T(1) + coeff3 * x_sq);
+        T gelu_grad = T(0.5) * (T(1) + tanh_inner + x_val * sech2_inner * d_inner);
+        grad_x[idx] = grad_c[idx] * gelu_grad;
+    }
+}
+
+int backwards_gelu_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_gelu_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)x, (float*)grad_x, size);
+    } else {
+        backwards_gelu_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)x, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}

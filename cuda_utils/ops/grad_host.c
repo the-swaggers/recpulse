@@ -603,3 +603,51 @@ int backwards_cosh_host(const void* grad_c, const void* x, void* grad_x, size_t 
 
     return 0;
 }
+
+int backwards_gelu_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x_f32 = (const float*)x;
+        float* grad_x_f32 = (float*)grad_x;
+
+        const float sqrt_2_over_pi = 0.7978845608f;
+        const float coeff = 0.044715f;
+        const float coeff3 = 0.134145f;
+
+        for (size_t i = 0; i < size; i++) {
+            float x_val = x_f32[i];
+            float x_sq = x_val * x_val;
+            float x_cubed = x_sq * x_val;
+            float inner = sqrt_2_over_pi * (x_val + coeff * x_cubed);
+            float tanh_inner = tanhf(inner);
+            float sech2_inner = 1.0f - tanh_inner * tanh_inner;
+            float d_inner = sqrt_2_over_pi * (1.0f + coeff3 * x_sq);
+            float gelu_grad = 0.5f * (1.0f + tanh_inner + x_val * sech2_inner * d_inner);
+            grad_x_f32[i] = grad_c_f32[i] * gelu_grad;
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x_f64 = (const double*)x;
+        double* grad_x_f64 = (double*)grad_x;
+
+        const double sqrt_2_over_pi = 0.7978845608;
+        const double coeff = 0.044715;
+        const double coeff3 = 0.134145;
+
+        for (size_t i = 0; i < size; i++) {
+            double x_val = x_f64[i];
+            double x_sq = x_val * x_val;
+            double x_cubed = x_sq * x_val;
+            double inner = sqrt_2_over_pi * (x_val + coeff * x_cubed);
+            double tanh_inner = tanh(inner);
+            double sech2_inner = 1.0 - tanh_inner * tanh_inner;
+            double d_inner = sqrt_2_over_pi * (1.0 + coeff3 * x_sq);
+            double gelu_grad = 0.5 * (1.0 + tanh_inner + x_val * sech2_inner * d_inner);
+            grad_x_f64[i] = grad_c_f64[i] * gelu_grad;
+        }
+    }
+
+    return 0;
+}
