@@ -35,6 +35,9 @@ Tensor* op_square(Tensor* x);
 Tensor* op_sin(Tensor* x);
 Tensor* op_cos(Tensor* x);
 Tensor* op_tan(Tensor* x);
+Tensor* op_asin(Tensor* x);
+Tensor* op_acos(Tensor* x);
+Tensor* op_atan(Tensor* x);
 
 Tensor* op_cat(Tensor** tensors, int num_tensors, int dim);
 Tensor* op_slice(Tensor* src, int* start, int* stop, int* step);
@@ -75,6 +78,9 @@ int backwards_square(const void* grad_c, const void* x, void* grad_x, size_t siz
 int backwards_sin(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
 int backwards_cos(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
 int backwards_tan(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
+int backwards_asin(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
+int backwards_acos(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
+int backwards_atan(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
 
 int backwards_add_x1_host(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_host(const void* grad_c, void* grad_x2, size_t size, DType dtype);
@@ -102,6 +108,9 @@ int backwards_square_host(const void* grad_c, const void* x, void* grad_x, size_
 int backwards_sin_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_cos_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_tan_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_asin_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_acos_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_atan_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 
 int backwards_add_x1_device(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_device(const void* grad_c, void* grad_x2, size_t size, DType dtype);
@@ -129,6 +138,9 @@ int backwards_square_device(const void* grad_c, const void* x, void* grad_x, siz
 int backwards_sin_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_cos_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_tan_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_asin_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_acos_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_atan_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 
 void free_grad_fn(GradFn* grad_fn);
 
