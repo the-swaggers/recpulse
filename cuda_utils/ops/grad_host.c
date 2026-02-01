@@ -681,3 +681,29 @@ int backwards_silu_host(const void* grad_c, const void* x, void* grad_x, size_t 
 
     return 0;
 }
+
+int backwards_leaky_relu_host(const void* grad_c, const void* x, const void* alpha, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !alpha || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x_f32 = (const float*)x;
+        float alpha_val = *(const float*)alpha;
+        float* grad_x_f32 = (float*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f32[i] = grad_c_f32[i] * ((x_f32[i] > 0.0f) ? 1.0f : alpha_val);
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x_f64 = (const double*)x;
+        double alpha_val = *(const double*)alpha;
+        double* grad_x_f64 = (double*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f64[i] = grad_c_f64[i] * ((x_f64[i] > 0.0) ? 1.0 : alpha_val);
+        }
+    }
+
+    return 0;
+}
