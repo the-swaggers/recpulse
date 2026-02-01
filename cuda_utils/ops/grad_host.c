@@ -651,3 +651,33 @@ int backwards_gelu_host(const void* grad_c, const void* x, void* grad_x, size_t 
 
     return 0;
 }
+
+int backwards_silu_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x_f32 = (const float*)x;
+        float* grad_x_f32 = (float*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            float x_val = x_f32[i];
+            float sigmoid = 1.0f / (1.0f + expf(-x_val));
+            float silu_grad = sigmoid * (1.0f + x_val * (1.0f - sigmoid));
+            grad_x_f32[i] = grad_c_f32[i] * silu_grad;
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x_f64 = (const double*)x;
+        double* grad_x_f64 = (double*)grad_x;
+
+        for (size_t i = 0; i < size; i++) {
+            double x_val = x_f64[i];
+            double sigmoid = 1.0 / (1.0 + exp(-x_val));
+            double silu_grad = sigmoid * (1.0 + x_val * (1.0 - sigmoid));
+            grad_x_f64[i] = grad_c_f64[i] * silu_grad;
+        }
+    }
+
+    return 0;
+}

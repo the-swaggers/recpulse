@@ -41,6 +41,7 @@ Tensor* op_atan(Tensor* x);
 Tensor* op_sinh(Tensor* x);
 Tensor* op_cosh(Tensor* x);
 Tensor* op_gelu(Tensor* x);
+Tensor* op_silu(Tensor* x);
 
 Tensor* op_cat(Tensor** tensors, int num_tensors, int dim);
 Tensor* op_slice(Tensor* src, int* start, int* stop, int* step);
@@ -87,6 +88,7 @@ int backwards_atan(const void* grad_c, const void* x, void* grad_x, size_t size,
 int backwards_sinh(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
 int backwards_cosh(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
 int backwards_gelu(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
+int backwards_silu(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
 
 int backwards_add_x1_host(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_host(const void* grad_c, void* grad_x2, size_t size, DType dtype);
@@ -120,6 +122,7 @@ int backwards_atan_host(const void* grad_c, const void* x, void* grad_x, size_t 
 int backwards_sinh_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_cosh_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_gelu_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_silu_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 
 int backwards_add_x1_device(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_device(const void* grad_c, void* grad_x2, size_t size, DType dtype);
@@ -153,6 +156,7 @@ int backwards_atan_device(const void* grad_c, const void* x, void* grad_x, size_
 int backwards_sinh_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_cosh_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_gelu_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+int backwards_silu_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 
 void free_grad_fn(GradFn* grad_fn);
 
