@@ -787,3 +787,32 @@ int backwards_leaky_relu_device(const void* grad_c, const void* x, const void* a
 
     return 0;
 }
+
+template<typename T>
+__global__ void backwards_rsqrt_kernel(const T* grad_c, const T* x, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        T x_val = x[idx];
+        grad_x[idx] = grad_c[idx] * T(-0.5) / (x_val * sqrt(x_val));
+    }
+}
+
+int backwards_rsqrt_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !x || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_rsqrt_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)x, (float*)grad_x, size);
+    } else {
+        backwards_rsqrt_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)x, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
