@@ -2490,12 +2490,18 @@ typedef struct {
     int dim;
 } UnsqueezeSavedData;
 
+typedef struct {
+    int ndim;
+    int* original_shape;
+} FlattenSavedData;
+
 void backward_cat_fn(GradFn* self, Tensor* grad_output);
 void backward_slice_fn(GradFn* self, Tensor* grad_output);
 void backward_reshape_fn(GradFn* self, Tensor* grad_output);
 void backward_transpose_fn(GradFn* self, Tensor* grad_output);
 void backward_squeeze_fn(GradFn* self, Tensor* grad_output);
 void backward_unsqueeze_fn(GradFn* self, Tensor* grad_output);
+void backward_flatten_fn(GradFn* self, Tensor* grad_output);
 
 void free_grad_fn(GradFn* grad_fn) {
     if (!grad_fn) return;
@@ -2512,6 +2518,9 @@ void free_grad_fn(GradFn* grad_fn) {
             if (saved->step) free(saved->step);
         } else if (grad_fn->backward == backward_reshape_fn) {
             ReshapeSavedData* saved = (ReshapeSavedData*)grad_fn->saved_data;
+            if (saved->original_shape) free(saved->original_shape);
+        } else if (grad_fn->backward == backward_flatten_fn) {
+            FlattenSavedData* saved = (FlattenSavedData*)grad_fn->saved_data;
             if (saved->original_shape) free(saved->original_shape);
         }
         free(grad_fn->saved_data);
@@ -3062,6 +3071,27 @@ void backward_unsqueeze_fn(GradFn* self, Tensor* grad_output) {
     }
 }
 
+void backward_flatten_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    FlattenSavedData* saved = (FlattenSavedData*)self->saved_data;
+    if (!saved || self->num_inputs != 1) return;
+
+    Tensor* input = self->inputs[0];
+    if (!input || !input->metadata || !input->metadata->requires_grad) return;
+
+    Tensor* grad_reshaped = rp_reshape(grad_output, saved->ndim, saved->original_shape);
+    if (!grad_reshaped) return;
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = grad_reshaped;
+    } else {
+        rp_add(input->metadata->grad->data, input->metadata->grad->data,
+               grad_reshaped->data, input->size, input->dtype, input->device_id);
+        free_tensor(grad_reshaped);
+    }
+}
+
 Tensor* op_transpose(Tensor* src, int dim0, int dim1) {
     if (!src) return NULL;
 
@@ -3252,6 +3282,47 @@ Tensor* op_flatten(Tensor* src, int start_dim, int end_dim) {
         }
         out->metadata->requires_grad = true;
         out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_flatten_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = src;
+
+        FlattenSavedData* saved = (FlattenSavedData*)malloc(sizeof(FlattenSavedData));
+        if (!saved) {
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+
+        saved->ndim = src->ndim;
+        saved->original_shape = (int*)malloc(src->ndim * sizeof(int));
+        if (!saved->original_shape) {
+            free(saved);
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+
+        for (int i = 0; i < src->ndim; i++) {
+            saved->original_shape[i] = src->shape[i];
+        }
+
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
     }
 
     return out;
