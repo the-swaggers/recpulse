@@ -23,6 +23,7 @@ Tensor* op_mul(Tensor* x1, Tensor* x2);
 Tensor* op_sub(Tensor* x1, Tensor* x2);
 Tensor* op_div(Tensor* x1, Tensor* x2);
 Tensor* op_power(Tensor* x1, Tensor* x2);
+Tensor* op_logb(Tensor* x1, Tensor* x2);
 
 Tensor* op_exp(Tensor* x);
 Tensor* op_log(Tensor* x);
@@ -73,6 +74,9 @@ int backwards_div_x2(const void* grad_c, const void* x1, const void* x2, void* g
 int backwards_power_x1(const void* grad_c, const void* x1, const void* x2, const void* out, void* grad_x1, size_t size, DType dtype, int device_id);
 int backwards_power_x2(const void* grad_c, const void* x1, const void* out, void* grad_x2, size_t size, DType dtype, int device_id);
 
+int backwards_logb_x1(const void* grad_c, const void* x1, const void* x2, void* grad_x1, size_t size, DType dtype, int device_id);
+int backwards_logb_x2(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype, int device_id);
+
 int backwards_exp(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype, int device_id);
 int backwards_log(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype, int device_id);
 int backwards_sqrt(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype, int device_id);
@@ -109,6 +113,9 @@ int backwards_div_x2_host(const void* grad_c, const void* x1, const void* x2, vo
 int backwards_power_x1_host(const void* grad_c, const void* x1, const void* x2, const void* out, void* grad_x1, size_t size, DType dtype);
 int backwards_power_x2_host(const void* grad_c, const void* x1, const void* out, void* grad_x2, size_t size, DType dtype);
 
+int backwards_logb_x1_host(const void* grad_c, const void* x1, const void* x2, void* grad_x1, size_t size, DType dtype);
+int backwards_logb_x2_host(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype);
+
 int backwards_exp_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype);
 int backwards_log_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_sqrt_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype);
@@ -144,6 +151,9 @@ int backwards_div_x2_device(const void* grad_c, const void* x1, const void* x2, 
 
 int backwards_power_x1_device(const void* grad_c, const void* x1, const void* x2, const void* out, void* grad_x1, size_t size, DType dtype);
 int backwards_power_x2_device(const void* grad_c, const void* x1, const void* out, void* grad_x2, size_t size, DType dtype);
+
+int backwards_logb_x1_device(const void* grad_c, const void* x1, const void* x2, void* grad_x1, size_t size, DType dtype);
+int backwards_logb_x2_device(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype);
 
 int backwards_exp_device(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype);
 int backwards_log_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);

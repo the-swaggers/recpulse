@@ -302,6 +302,60 @@ int backwards_power_x2_host(const void* grad_c, const void* x1, const void* out,
     return 0;
 }
 
+int backwards_logb_x1_host(const void* grad_c, const void* x1, const void* x2, void* grad_x1, size_t size, DType dtype) {
+    if (!grad_c || !x1 || !x2 || !grad_x1) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x1_f32 = (const float*)x1;
+        const float* x2_f32 = (const float*)x2;
+        float* grad_x1_f32 = (float*)grad_x1;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x1_f32[i] = grad_c_f32[i] / (x1_f32[i] * logf(x2_f32[i]));
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x1_f64 = (const double*)x1;
+        const double* x2_f64 = (const double*)x2;
+        double* grad_x1_f64 = (double*)grad_x1;
+
+        for (size_t i = 0; i < size; i++) {
+            grad_x1_f64[i] = grad_c_f64[i] / (x1_f64[i] * log(x2_f64[i]));
+        }
+    }
+
+    return 0;
+}
+
+int backwards_logb_x2_host(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype) {
+    if (!grad_c || !x1 || !x2 || !grad_x2) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* grad_c_f32 = (const float*)grad_c;
+        const float* x1_f32 = (const float*)x1;
+        const float* x2_f32 = (const float*)x2;
+        float* grad_x2_f32 = (float*)grad_x2;
+
+        for (size_t i = 0; i < size; i++) {
+            float log_x2 = logf(x2_f32[i]);
+            grad_x2_f32[i] = -grad_c_f32[i] * logf(x1_f32[i]) / (x2_f32[i] * log_x2 * log_x2);
+        }
+    } else {
+        const double* grad_c_f64 = (const double*)grad_c;
+        const double* x1_f64 = (const double*)x1;
+        const double* x2_f64 = (const double*)x2;
+        double* grad_x2_f64 = (double*)grad_x2;
+
+        for (size_t i = 0; i < size; i++) {
+            double log_x2 = log(x2_f64[i]);
+            grad_x2_f64[i] = -grad_c_f64[i] * log(x1_f64[i]) / (x2_f64[i] * log_x2 * log_x2);
+        }
+    }
+
+    return 0;
+}
+
 int backwards_relu_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
 

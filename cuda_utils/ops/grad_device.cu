@@ -345,6 +345,63 @@ int backwards_power_x2_device(const void* grad_c, const void* x1, const void* ou
 }
 
 template<typename T>
+__global__ void backwards_logb_x1_kernel(const T* grad_c, const T* x1, const T* x2, T* grad_x1, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        grad_x1[idx] = grad_c[idx] / (x1[idx] * log(x2[idx]));
+    }
+}
+
+template<typename T>
+__global__ void backwards_logb_x2_kernel(const T* grad_c, const T* x1, const T* x2, T* grad_x2, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        T log_x2 = log(x2[idx]);
+        grad_x2[idx] = -grad_c[idx] * log(x1[idx]) / (x2[idx] * log_x2 * log_x2);
+    }
+}
+
+int backwards_logb_x1_device(const void* grad_c, const void* x1, const void* x2, void* grad_x1, size_t size, DType dtype) {
+    if (!grad_c || !x1 || !x2 || !grad_x1) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_logb_x1_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)x1, (const float*)x2, (float*)grad_x1, size);
+    } else {
+        backwards_logb_x1_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)x1, (const double*)x2, (double*)grad_x1, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
+
+int backwards_logb_x2_device(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype) {
+    if (!grad_c || !x1 || !x2 || !grad_x2) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_logb_x2_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (const float*)x1, (const float*)x2, (float*)grad_x2, size);
+    } else {
+        backwards_logb_x2_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (const double*)x1, (const double*)x2, (double*)grad_x2, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
+
+template<typename T>
 __global__ void backwards_relu_kernel(const T* grad_c, const T* x, T* grad_x, size_t size) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
