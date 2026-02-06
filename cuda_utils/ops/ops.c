@@ -2500,8 +2500,14 @@ typedef struct {
     int* dims;
 } PermuteSavedData;
 
+typedef struct {
+    int input_ndim;
+    int* input_shape;
+} ExpandSavedData;
+
 void backward_cat_fn(GradFn* self, Tensor* grad_output);
 void backward_permute_fn(GradFn* self, Tensor* grad_output);
+void backward_expand_fn(GradFn* self, Tensor* grad_output);
 void backward_slice_fn(GradFn* self, Tensor* grad_output);
 void backward_reshape_fn(GradFn* self, Tensor* grad_output);
 void backward_transpose_fn(GradFn* self, Tensor* grad_output);
@@ -2531,6 +2537,9 @@ void free_grad_fn(GradFn* grad_fn) {
         } else if (grad_fn->backward == backward_permute_fn) {
             PermuteSavedData* saved = (PermuteSavedData*)grad_fn->saved_data;
             if (saved->dims) free(saved->dims);
+        } else if (grad_fn->backward == backward_expand_fn) {
+            ExpandSavedData* saved = (ExpandSavedData*)grad_fn->saved_data;
+            if (saved->input_shape) free(saved->input_shape);
         }
         free(grad_fn->saved_data);
     }
@@ -3131,6 +3140,116 @@ void backward_permute_fn(GradFn* self, Tensor* grad_output) {
     }
 }
 
+void backward_expand_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    ExpandSavedData* saved = (ExpandSavedData*)self->saved_data;
+    if (!saved || self->num_inputs != 1) return;
+
+    Tensor* input = self->inputs[0];
+    if (!input || !input->metadata || !input->metadata->requires_grad) return;
+
+    int target_device = input->device_id;
+    Tensor* grad_out_host = grad_output;
+    bool need_free_grad_out = false;
+
+    if (grad_output->device_id != -1) {
+        grad_out_host = tensor_to(grad_output, -1, grad_output->dtype, false);
+        if (!grad_out_host) return;
+        need_free_grad_out = true;
+    }
+
+    Tensor* grad_input = zeros_tensor(input->dtype, -1,
+                                       saved->input_ndim, saved->input_shape, NULL);
+    if (!grad_input) {
+        if (need_free_grad_out) free_tensor(grad_out_host);
+        return;
+    }
+
+    int* input_strides = (int*)malloc(saved->input_ndim * sizeof(int));
+    if (!input_strides) {
+        free_tensor(grad_input);
+        if (need_free_grad_out) free_tensor(grad_out_host);
+        return;
+    }
+    input_strides[saved->input_ndim - 1] = 1;
+    for (int d = saved->input_ndim - 2; d >= 0; d--) {
+        input_strides[d] = input_strides[d + 1] * saved->input_shape[d + 1];
+    }
+
+    int* output_strides = (int*)malloc(grad_out_host->ndim * sizeof(int));
+    if (!output_strides) {
+        free(input_strides);
+        free_tensor(grad_input);
+        if (need_free_grad_out) free_tensor(grad_out_host);
+        return;
+    }
+    output_strides[grad_out_host->ndim - 1] = 1;
+    for (int d = grad_out_host->ndim - 2; d >= 0; d--) {
+        output_strides[d] = output_strides[d + 1] * grad_out_host->shape[d + 1];
+    }
+
+    size_t output_size = grad_out_host->size;
+    int ndim = grad_out_host->ndim;
+
+    if (input->dtype == DTYPE_FLOAT32) {
+        float* grad_in = (float*)grad_input->data;
+        const float* grad_out = (const float*)grad_out_host->data;
+
+        for (size_t i = 0; i < output_size; i++) {
+            size_t out_idx = i;
+            size_t in_idx = 0;
+
+            for (int d = 0; d < ndim; d++) {
+                int coord = out_idx / output_strides[d];
+                out_idx %= output_strides[d];
+
+                int in_coord = (saved->input_shape[d] == 1) ? 0 : coord;
+                in_idx += in_coord * input_strides[d];
+            }
+
+            grad_in[in_idx] += grad_out[i];
+        }
+    } else {
+        double* grad_in = (double*)grad_input->data;
+        const double* grad_out = (const double*)grad_out_host->data;
+
+        for (size_t i = 0; i < output_size; i++) {
+            size_t out_idx = i;
+            size_t in_idx = 0;
+
+            for (int d = 0; d < ndim; d++) {
+                int coord = out_idx / output_strides[d];
+                out_idx %= output_strides[d];
+
+                int in_coord = (saved->input_shape[d] == 1) ? 0 : coord;
+                in_idx += in_coord * input_strides[d];
+            }
+
+            grad_in[in_idx] += grad_out[i];
+        }
+    }
+
+    free(input_strides);
+    free(output_strides);
+    if (need_free_grad_out) free_tensor(grad_out_host);
+
+    if (target_device != -1) {
+        Tensor* grad_input_device = tensor_to(grad_input, target_device, grad_input->dtype, false);
+        free_tensor(grad_input);
+        if (!grad_input_device) return;
+        grad_input = grad_input_device;
+    }
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = grad_input;
+    } else {
+        rp_add(input->metadata->grad->data, input->metadata->grad->data,
+               grad_input->data, input->size, input->dtype, input->device_id);
+        free_tensor(grad_input);
+    }
+}
+
 Tensor* op_transpose(Tensor* src, int dim0, int dim1) {
     if (!src) return NULL;
 
@@ -3478,6 +3597,43 @@ Tensor* op_expand(Tensor* src, int ndim, int* shape) {
         }
         out->metadata->requires_grad = true;
         out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_expand_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = src;
+
+        ExpandSavedData* saved = (ExpandSavedData*)malloc(sizeof(ExpandSavedData));
+        if (!saved) {
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        saved->input_ndim = src->ndim;
+        saved->input_shape = (int*)malloc(src->ndim * sizeof(int));
+        if (!saved->input_shape) {
+            free(saved);
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        memcpy(saved->input_shape, src->shape, src->ndim * sizeof(int));
+        grad_fn->saved_data = saved;
+
+        out->metadata->grad_fn = grad_fn;
     }
 
     return out;
