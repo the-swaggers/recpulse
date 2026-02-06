@@ -873,3 +873,59 @@ int backwards_rsqrt_device(const void* grad_c, const void* x, void* grad_x, size
 
     return 0;
 }
+
+template<typename T>
+__global__ void backwards_sum_all_kernel(const T* grad_c, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        grad_x[idx] = grad_c[0];
+    }
+}
+
+int backwards_sum_all_device(const void* grad_c, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_sum_all_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (float*)grad_x, size);
+    } else {
+        backwards_sum_all_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
+
+template<typename T>
+__global__ void backwards_mean_all_kernel(const T* grad_c, T* grad_x, size_t size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        grad_x[idx] = grad_c[0] / T(size);
+    }
+}
+
+int backwards_mean_all_device(const void* grad_c, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !grad_x) return -1;
+
+    int block_size = 256;
+    int num_blocks = (size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        backwards_mean_all_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)grad_c, (float*)grad_x, size);
+    } else {
+        backwards_mean_all_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)grad_c, (double*)grad_x, size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}

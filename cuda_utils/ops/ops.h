@@ -59,6 +59,9 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim);
 Tensor* op_expand(Tensor* src, int ndim, int* shape);
 Tensor* op_repeat(Tensor* src, int* repeats);
 
+Tensor* op_sum_all(Tensor* x);
+Tensor* op_mean_all(Tensor* x);
+
 int backwards_add_x1(const void* grad_c, void* grad_x1, size_t size, DType dtype, int device_id);
 int backwards_add_x2(const void* grad_c, void* grad_x2, size_t size, DType dtype, int device_id);
 
@@ -137,6 +140,12 @@ int backwards_silu_host(const void* grad_c, const void* x, void* grad_x, size_t 
 int backwards_leaky_relu_host(const void* grad_c, const void* x, const void* alpha, void* grad_x, size_t size, DType dtype);
 int backwards_rsqrt_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 
+int backwards_sum_all(const void* grad_c, void* grad_x, size_t size, DType dtype, int device_id);
+int backwards_mean_all(const void* grad_c, void* grad_x, size_t size, DType dtype, int device_id);
+
+int backwards_sum_all_host(const void* grad_c, void* grad_x, size_t size, DType dtype);
+int backwards_mean_all_host(const void* grad_c, void* grad_x, size_t size, DType dtype);
+
 int backwards_add_x1_device(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_device(const void* grad_c, void* grad_x2, size_t size, DType dtype);
 
@@ -175,6 +184,9 @@ int backwards_gelu_device(const void* grad_c, const void* x, void* grad_x, size_
 int backwards_silu_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
 int backwards_leaky_relu_device(const void* grad_c, const void* x, const void* alpha, void* grad_x, size_t size, DType dtype);
 int backwards_rsqrt_device(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype);
+
+int backwards_sum_all_device(const void* grad_c, void* grad_x, size_t size, DType dtype);
+int backwards_mean_all_device(const void* grad_c, void* grad_x, size_t size, DType dtype);
 
 void free_grad_fn(GradFn* grad_fn);
 

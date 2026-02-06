@@ -787,3 +787,43 @@ int backwards_rsqrt_host(const void* grad_c, const void* x, void* grad_x, size_t
 
     return 0;
 }
+
+int backwards_sum_all_host(const void* grad_c, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        float val = *(const float*)grad_c;
+        float* grad_x_f32 = (float*)grad_x;
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f32[i] = val;
+        }
+    } else {
+        double val = *(const double*)grad_c;
+        double* grad_x_f64 = (double*)grad_x;
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f64[i] = val;
+        }
+    }
+
+    return 0;
+}
+
+int backwards_mean_all_host(const void* grad_c, void* grad_x, size_t size, DType dtype) {
+    if (!grad_c || !grad_x) return -1;
+
+    if (dtype == DTYPE_FLOAT32) {
+        float val = *(const float*)grad_c / (float)size;
+        float* grad_x_f32 = (float*)grad_x;
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f32[i] = val;
+        }
+    } else {
+        double val = *(const double*)grad_c / (double)size;
+        double* grad_x_f64 = (double*)grad_x;
+        for (size_t i = 0; i < size; i++) {
+            grad_x_f64[i] = val;
+        }
+    }
+
+    return 0;
+}

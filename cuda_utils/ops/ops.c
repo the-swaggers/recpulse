@@ -964,6 +964,28 @@ int backwards_rsqrt(const void* grad_c, const void* x, void* grad_x,
     }
 }
 
+int backwards_sum_all(const void* grad_c, void* grad_x,
+                      size_t size, DType dtype, int device_id) {
+    if (!grad_c || !grad_x) return -1;
+
+    if (device_id == -1) {
+        return backwards_sum_all_host(grad_c, grad_x, size, dtype);
+    } else {
+        return backwards_sum_all_device(grad_c, grad_x, size, dtype);
+    }
+}
+
+int backwards_mean_all(const void* grad_c, void* grad_x,
+                       size_t size, DType dtype, int device_id) {
+    if (!grad_c || !grad_x) return -1;
+
+    if (device_id == -1) {
+        return backwards_mean_all_host(grad_c, grad_x, size, dtype);
+    } else {
+        return backwards_mean_all_device(grad_c, grad_x, size, dtype);
+    }
+}
+
 void backward_exp_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
@@ -1470,6 +1492,56 @@ void backward_rsqrt_fn(GradFn* self, Tensor* grad_output) {
                                grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
+                free_tensor(temp_grad);
+            }
+        }
+    }
+}
+
+void backward_sum_all_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+
+    if (x->metadata && x->metadata->requires_grad) {
+        if (!x->metadata->grad) {
+            x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (x->metadata->grad) {
+                backwards_sum_all(grad_output->data, x->metadata->grad->data,
+                                  x->size, x->dtype, x->device_id);
+            }
+        } else {
+            Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (temp_grad) {
+                backwards_sum_all(grad_output->data, temp_grad->data,
+                                  x->size, x->dtype, x->device_id);
+                rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
+                       x->size, x->dtype, x->device_id);
+                free_tensor(temp_grad);
+            }
+        }
+    }
+}
+
+void backward_mean_all_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+
+    if (x->metadata && x->metadata->requires_grad) {
+        if (!x->metadata->grad) {
+            x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (x->metadata->grad) {
+                backwards_mean_all(grad_output->data, x->metadata->grad->data,
+                                   x->size, x->dtype, x->device_id);
+            }
+        } else {
+            Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (temp_grad) {
+                backwards_mean_all(grad_output->data, temp_grad->data,
+                                   x->size, x->dtype, x->device_id);
+                rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
+                       x->size, x->dtype, x->device_id);
                 free_tensor(temp_grad);
             }
         }
@@ -2443,6 +2515,104 @@ Tensor* op_rsqrt(Tensor* x) {
         }
 
         grad_fn->backward = backward_rsqrt_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = x;
+        grad_fn->saved_data = NULL;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+Tensor* op_sum_all(Tensor* x) {
+    if (!x) return NULL;
+
+    int scalar_shape[1] = {1};
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, 1, scalar_shape, NULL);
+    if (!out) return NULL;
+
+    int result = rp_sum_all(out->data, x->data, x->size, x->dtype, x->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        return NULL;
+    }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_sum_all_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = x;
+        grad_fn->saved_data = NULL;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+Tensor* op_mean_all(Tensor* x) {
+    if (!x) return NULL;
+
+    int scalar_shape[1] = {1};
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, 1, scalar_shape, NULL);
+    if (!out) return NULL;
+
+    int result = rp_mean_all(out->data, x->data, x->size, x->dtype, x->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        return NULL;
+    }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_mean_all_fn;
         grad_fn->num_inputs = 1;
         grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
         if (!grad_fn->inputs) {
