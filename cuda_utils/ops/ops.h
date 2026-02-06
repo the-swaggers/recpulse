@@ -56,6 +56,8 @@ Tensor* op_unsqueeze(Tensor* src, int dim);
 Tensor* op_flatten(Tensor* src, int start_dim, int end_dim);
 Tensor* op_permute(Tensor* src, int* dims);
 Tensor** op_chunk(Tensor* src, int chunks, int dim);
+Tensor** op_split(Tensor* src, int* sizes, int num_splits, int dim);
+Tensor** op_split_equal(Tensor* src, int num_splits, int dim);
 Tensor* op_expand(Tensor* src, int ndim, int* shape);
 Tensor* op_repeat(Tensor* src, int* repeats);
 
