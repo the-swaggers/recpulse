@@ -2505,9 +2505,17 @@ typedef struct {
     int* input_shape;
 } ExpandSavedData;
 
+typedef struct {
+    int dim;
+    int offset;
+    int input_ndim;
+    int* input_shape;
+} ChunkSavedData;
+
 void backward_cat_fn(GradFn* self, Tensor* grad_output);
 void backward_permute_fn(GradFn* self, Tensor* grad_output);
 void backward_expand_fn(GradFn* self, Tensor* grad_output);
+void backward_chunk_fn(GradFn* self, Tensor* grad_output);
 void backward_slice_fn(GradFn* self, Tensor* grad_output);
 void backward_reshape_fn(GradFn* self, Tensor* grad_output);
 void backward_transpose_fn(GradFn* self, Tensor* grad_output);
@@ -2539,6 +2547,9 @@ void free_grad_fn(GradFn* grad_fn) {
             if (saved->dims) free(saved->dims);
         } else if (grad_fn->backward == backward_expand_fn) {
             ExpandSavedData* saved = (ExpandSavedData*)grad_fn->saved_data;
+            if (saved->input_shape) free(saved->input_shape);
+        } else if (grad_fn->backward == backward_chunk_fn) {
+            ChunkSavedData* saved = (ChunkSavedData*)grad_fn->saved_data;
             if (saved->input_shape) free(saved->input_shape);
         }
         free(grad_fn->saved_data);
@@ -3250,6 +3261,69 @@ void backward_expand_fn(GradFn* self, Tensor* grad_output) {
     }
 }
 
+void backward_chunk_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    ChunkSavedData* saved = (ChunkSavedData*)self->saved_data;
+    if (!saved || self->num_inputs != 1) return;
+
+    Tensor* input = self->inputs[0];
+    if (!input || !input->metadata || !input->metadata->requires_grad) return;
+
+    int dim = saved->dim;
+    int offset = saved->offset;
+    int chunk_size = grad_output->shape[dim];
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = zeros_tensor(input->dtype, input->device_id,
+                                              saved->input_ndim, saved->input_shape, NULL);
+        if (!input->metadata->grad) return;
+    }
+
+    int ndim = saved->input_ndim;
+    size_t before_size = 1;
+    size_t after_size = 1;
+    for (int d = 0; d < dim; d++) {
+        before_size *= saved->input_shape[d];
+    }
+    for (int d = dim + 1; d < ndim; d++) {
+        after_size *= saved->input_shape[d];
+    }
+
+    size_t input_dim_size = saved->input_shape[dim];
+    size_t grad_size = grad_output->size;
+
+    if (input->dtype == DTYPE_FLOAT32) {
+        float* grad_in = (float*)input->metadata->grad->data;
+        const float* grad_out = (const float*)grad_output->data;
+
+        for (size_t i = 0; i < grad_size; i++) {
+            size_t after_idx = i % after_size;
+            size_t chunk_idx = (i / after_size) % chunk_size;
+            size_t before_idx = i / (after_size * chunk_size);
+
+            size_t input_idx = before_idx * (input_dim_size * after_size) +
+                              (offset + chunk_idx) * after_size + after_idx;
+
+            grad_in[input_idx] += grad_out[i];
+        }
+    } else {
+        double* grad_in = (double*)input->metadata->grad->data;
+        const double* grad_out = (const double*)grad_output->data;
+
+        for (size_t i = 0; i < grad_size; i++) {
+            size_t after_idx = i % after_size;
+            size_t chunk_idx = (i / after_size) % chunk_size;
+            size_t before_idx = i / (after_size * chunk_size);
+
+            size_t input_idx = before_idx * (input_dim_size * after_size) +
+                              (offset + chunk_idx) * after_size + after_idx;
+
+            grad_in[input_idx] += grad_out[i];
+        }
+    }
+}
+
 Tensor* op_transpose(Tensor* src, int dim0, int dim1) {
     if (!src) return NULL;
 
@@ -3560,11 +3634,81 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim) {
             actual_chunks++;
         }
 
+        int offset = 0;
         for (int i = 0; i < actual_chunks; i++) {
+            GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+            if (!grad_fn) {
+                for (int j = 0; j < actual_chunks; j++) {
+                    if (result[j]->metadata && result[j]->metadata->grad_fn) {
+                        free_grad_fn(result[j]->metadata->grad_fn);
+                    }
+                    free_tensor(result[j]);
+                }
+                free(result);
+                return NULL;
+            }
+
+            grad_fn->backward = backward_chunk_fn;
+            grad_fn->num_inputs = 1;
+            grad_fn->inputs = (Tensor**)malloc(sizeof(Tensor*));
+            if (!grad_fn->inputs) {
+                free(grad_fn);
+                for (int j = 0; j < actual_chunks; j++) {
+                    if (result[j]->metadata && result[j]->metadata->grad_fn) {
+                        free_grad_fn(result[j]->metadata->grad_fn);
+                    }
+                    free_tensor(result[j]);
+                }
+                free(result);
+                return NULL;
+            }
+            grad_fn->inputs[0] = src;
+
+            ChunkSavedData* saved = (ChunkSavedData*)malloc(sizeof(ChunkSavedData));
+            if (!saved) {
+                free(grad_fn->inputs);
+                free(grad_fn);
+                for (int j = 0; j < actual_chunks; j++) {
+                    if (result[j]->metadata && result[j]->metadata->grad_fn) {
+                        free_grad_fn(result[j]->metadata->grad_fn);
+                    }
+                    free_tensor(result[j]);
+                }
+                free(result);
+                return NULL;
+            }
+
+            saved->dim = dim;
+            saved->offset = offset;
+            saved->input_ndim = src->ndim;
+            saved->input_shape = (int*)malloc(src->ndim * sizeof(int));
+            if (!saved->input_shape) {
+                free(saved);
+                free(grad_fn->inputs);
+                free(grad_fn);
+                for (int j = 0; j < actual_chunks; j++) {
+                    if (result[j]->metadata && result[j]->metadata->grad_fn) {
+                        free_grad_fn(result[j]->metadata->grad_fn);
+                    }
+                    free_tensor(result[j]);
+                }
+                free(result);
+                return NULL;
+            }
+            memcpy(saved->input_shape, src->shape, src->ndim * sizeof(int));
+            grad_fn->saved_data = saved;
+
             if (!result[i]->metadata) {
                 result[i]->metadata = (Meta*)calloc(1, sizeof(Meta));
                 if (!result[i]->metadata) {
+                    free(saved->input_shape);
+                    free(saved);
+                    free(grad_fn->inputs);
+                    free(grad_fn);
                     for (int j = 0; j < actual_chunks; j++) {
+                        if (result[j]->metadata && result[j]->metadata->grad_fn) {
+                            free_grad_fn(result[j]->metadata->grad_fn);
+                        }
                         free_tensor(result[j]);
                     }
                     free(result);
@@ -3573,6 +3717,9 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim) {
             }
             result[i]->metadata->requires_grad = true;
             result[i]->metadata->is_leaf = false;
+            result[i]->metadata->grad_fn = grad_fn;
+
+            offset += result[i]->shape[dim];
         }
     }
 
