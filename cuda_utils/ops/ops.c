@@ -2495,7 +2495,13 @@ typedef struct {
     int* original_shape;
 } FlattenSavedData;
 
+typedef struct {
+    int ndim;
+    int* dims;
+} PermuteSavedData;
+
 void backward_cat_fn(GradFn* self, Tensor* grad_output);
+void backward_permute_fn(GradFn* self, Tensor* grad_output);
 void backward_slice_fn(GradFn* self, Tensor* grad_output);
 void backward_reshape_fn(GradFn* self, Tensor* grad_output);
 void backward_transpose_fn(GradFn* self, Tensor* grad_output);
@@ -2522,6 +2528,9 @@ void free_grad_fn(GradFn* grad_fn) {
         } else if (grad_fn->backward == backward_flatten_fn) {
             FlattenSavedData* saved = (FlattenSavedData*)grad_fn->saved_data;
             if (saved->original_shape) free(saved->original_shape);
+        } else if (grad_fn->backward == backward_permute_fn) {
+            PermuteSavedData* saved = (PermuteSavedData*)grad_fn->saved_data;
+            if (saved->dims) free(saved->dims);
         }
         free(grad_fn->saved_data);
     }
@@ -3092,6 +3101,36 @@ void backward_flatten_fn(GradFn* self, Tensor* grad_output) {
     }
 }
 
+void backward_permute_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    PermuteSavedData* saved = (PermuteSavedData*)self->saved_data;
+    if (!saved || self->num_inputs != 1) return;
+
+    Tensor* input = self->inputs[0];
+    if (!input || !input->metadata || !input->metadata->requires_grad) return;
+
+    int* inverse_dims = (int*)malloc(saved->ndim * sizeof(int));
+    if (!inverse_dims) return;
+
+    for (int i = 0; i < saved->ndim; i++) {
+        inverse_dims[saved->dims[i]] = i;
+    }
+
+    Tensor* grad_permuted = rp_permute(grad_output, inverse_dims);
+    free(inverse_dims);
+
+    if (!grad_permuted) return;
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = grad_permuted;
+    } else {
+        rp_add(input->metadata->grad->data, input->metadata->grad->data,
+               grad_permuted->data, input->size, input->dtype, input->device_id);
+        free_tensor(grad_permuted);
+    }
+}
+
 Tensor* op_transpose(Tensor* src, int dim0, int dim1) {
     if (!src) return NULL;
 
@@ -3346,6 +3385,43 @@ Tensor* op_permute(Tensor* src, int* dims) {
         }
         out->metadata->requires_grad = true;
         out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_permute_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = src;
+
+        PermuteSavedData* saved = (PermuteSavedData*)malloc(sizeof(PermuteSavedData));
+        if (!saved) {
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        saved->ndim = src->ndim;
+        saved->dims = (int*)malloc(src->ndim * sizeof(int));
+        if (!saved->dims) {
+            free(saved);
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        memcpy(saved->dims, dims, src->ndim * sizeof(int));
+        grad_fn->saved_data = saved;
+
+        out->metadata->grad_fn = grad_fn;
     }
 
     return out;
