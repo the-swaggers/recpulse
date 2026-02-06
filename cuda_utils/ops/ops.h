@@ -71,6 +71,7 @@ Tensor* op_rsub_scalar(Tensor* x, const void* scalar);
 Tensor* op_rdiv_scalar(Tensor* x, const void* scalar);
 Tensor* op_rpow_scalar(Tensor* x, const void* scalar);
 Tensor* op_logb_scalar(Tensor* x, const void* scalar);
+Tensor* op_rlogb_scalar(Tensor* x, const void* scalar);
 
 int backwards_add_x1(const void* grad_c, void* grad_x1, size_t size, DType dtype, int device_id);
 int backwards_add_x2(const void* grad_c, void* grad_x2, size_t size, DType dtype, int device_id);

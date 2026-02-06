@@ -3414,6 +3414,114 @@ Tensor* op_logb_scalar(Tensor* x, const void* scalar) {
     return out;
 }
 
+void backward_rlogb_scalar_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+    ScalarSavedData* saved = (ScalarSavedData*)self->saved_data;
+
+    if (x->metadata && x->metadata->requires_grad) {
+        float neg_ln_c_f32 = -logf(saved->scalar_f32);
+        double neg_ln_c_f64 = -log(saved->scalar_f64);
+        void* neg_ln_c_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&neg_ln_c_f32 : (void*)&neg_ln_c_f64;
+
+        Tensor* ln_x = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+        if (!ln_x) return;
+        rp_log(ln_x->data, x->data, x->size, x->dtype, x->device_id);
+
+        Tensor* ln_x_sq = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+        if (!ln_x_sq) { free_tensor(ln_x); return; }
+        rp_mul(ln_x_sq->data, ln_x->data, ln_x->data, x->size, x->dtype, x->device_id);
+        free_tensor(ln_x);
+
+        Tensor* x_ln_x_sq = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+        if (!x_ln_x_sq) { free_tensor(ln_x_sq); return; }
+        rp_mul(x_ln_x_sq->data, x->data, ln_x_sq->data, x->size, x->dtype, x->device_id);
+        free_tensor(ln_x_sq);
+
+        Tensor* deriv = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+        if (!deriv) { free_tensor(x_ln_x_sq); return; }
+        rp_rdiv_scalar(deriv->data, neg_ln_c_ptr, x_ln_x_sq->data, x->size, x->dtype, x->device_id);
+        free_tensor(x_ln_x_sq);
+
+        Tensor* local_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+        if (!local_grad) { free_tensor(deriv); return; }
+        rp_mul(local_grad->data, grad_output->data, deriv->data, x->size, x->dtype, x->device_id);
+        free_tensor(deriv);
+
+        if (!x->metadata->grad) {
+            x->metadata->grad = local_grad;
+        } else {
+            rp_add(x->metadata->grad->data, x->metadata->grad->data, local_grad->data,
+                   x->size, x->dtype, x->device_id);
+            free_tensor(local_grad);
+        }
+    }
+}
+
+Tensor* op_rlogb_scalar(Tensor* x, const void* scalar) {
+    if (!x || !scalar) return NULL;
+
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!out) return NULL;
+
+    int result = rp_rlogb_scalar(out->data, scalar, x->data, x->size, x->dtype, x->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        return NULL;
+    }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_rlogb_scalar_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = x;
+
+        ScalarSavedData* saved = (ScalarSavedData*)malloc(sizeof(ScalarSavedData));
+        if (!saved) {
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        if (x->dtype == DTYPE_FLOAT32) {
+            saved->scalar_f32 = *(const float*)scalar;
+            saved->scalar_f64 = (double)saved->scalar_f32;
+        } else {
+            saved->scalar_f64 = *(const double*)scalar;
+            saved->scalar_f32 = (float)saved->scalar_f64;
+        }
+        grad_fn->saved_data = saved;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
 typedef struct {
     int dim;
     int* input_sizes_at_dim;
