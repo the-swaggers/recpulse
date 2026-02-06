@@ -3049,6 +3049,79 @@ Tensor* op_pow_scalar(Tensor* x, const void* scalar) {
     return out;
 }
 
+void backward_rsub_scalar_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+
+    if (x->metadata && x->metadata->requires_grad) {
+        if (!x->metadata->grad) {
+            x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (x->metadata->grad) {
+                backwards_sub_x2(grad_output->data, x->metadata->grad->data,
+                                grad_output->size, grad_output->dtype, grad_output->device_id);
+            }
+        } else {
+            Tensor* temp = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (temp) {
+                backwards_sub_x2(grad_output->data, temp->data,
+                                grad_output->size, grad_output->dtype, grad_output->device_id);
+                rp_add(x->metadata->grad->data, x->metadata->grad->data, temp->data,
+                       x->size, x->dtype, x->device_id);
+                free_tensor(temp);
+            }
+        }
+    }
+}
+
+Tensor* op_rsub_scalar(Tensor* x, const void* scalar) {
+    if (!x || !scalar) return NULL;
+
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!out) return NULL;
+
+    int result = rp_rsub_scalar(out->data, scalar, x->data, x->size, x->dtype, x->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        return NULL;
+    }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_rsub_scalar_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = x;
+        grad_fn->saved_data = NULL;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
 typedef struct {
     int dim;
     int* input_sizes_at_dim;
