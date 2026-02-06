@@ -2950,6 +2950,105 @@ Tensor* op_div_scalar(Tensor* x, const void* scalar) {
     return out;
 }
 
+void backward_pow_scalar_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+    ScalarSavedData* saved = (ScalarSavedData*)self->saved_data;
+
+    if (x->metadata && x->metadata->requires_grad) {
+        float exp_m1_f32 = saved->scalar_f32 - 1.0f;
+        double exp_m1_f64 = saved->scalar_f64 - 1.0;
+        void* exp_m1_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&exp_m1_f32 : (void*)&exp_m1_f64;
+        void* scalar_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&saved->scalar_f32 : (void*)&saved->scalar_f64;
+
+        Tensor* x_pow = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+        if (!x_pow) return;
+        rp_pow_scalar(x_pow->data, x->data, exp_m1_ptr, x->size, x->dtype, x->device_id);
+
+        Tensor* scaled = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+        if (!scaled) { free_tensor(x_pow); return; }
+        rp_mul_scalar(scaled->data, x_pow->data, scalar_ptr, x->size, x->dtype, x->device_id);
+        free_tensor(x_pow);
+
+        Tensor* local_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+        if (!local_grad) { free_tensor(scaled); return; }
+        rp_mul(local_grad->data, grad_output->data, scaled->data, x->size, x->dtype, x->device_id);
+        free_tensor(scaled);
+
+        if (!x->metadata->grad) {
+            x->metadata->grad = local_grad;
+        } else {
+            rp_add(x->metadata->grad->data, x->metadata->grad->data, local_grad->data,
+                   x->size, x->dtype, x->device_id);
+            free_tensor(local_grad);
+        }
+    }
+}
+
+Tensor* op_pow_scalar(Tensor* x, const void* scalar) {
+    if (!x || !scalar) return NULL;
+
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!out) return NULL;
+
+    int result = rp_pow_scalar(out->data, x->data, scalar, x->size, x->dtype, x->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        return NULL;
+    }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            free_tensor(out);
+            return NULL;
+        }
+
+        grad_fn->backward = backward_pow_scalar_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) {
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->inputs[0] = x;
+
+        ScalarSavedData* saved = (ScalarSavedData*)malloc(sizeof(ScalarSavedData));
+        if (!saved) {
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+        if (x->dtype == DTYPE_FLOAT32) {
+            saved->scalar_f32 = *(const float*)scalar;
+            saved->scalar_f64 = (double)saved->scalar_f32;
+        } else {
+            saved->scalar_f64 = *(const double*)scalar;
+            saved->scalar_f32 = (float)saved->scalar_f64;
+        }
+        grad_fn->saved_data = saved;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
 typedef struct {
     int dim;
     int* input_sizes_at_dim;

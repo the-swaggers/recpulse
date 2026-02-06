@@ -66,6 +66,7 @@ Tensor* op_add_scalar(Tensor* x, const void* scalar);
 Tensor* op_sub_scalar(Tensor* x, const void* scalar);
 Tensor* op_mul_scalar(Tensor* x, const void* scalar);
 Tensor* op_div_scalar(Tensor* x, const void* scalar);
+Tensor* op_pow_scalar(Tensor* x, const void* scalar);
 
 int backwards_add_x1(const void* grad_c, void* grad_x1, size_t size, DType dtype, int device_id);
 int backwards_add_x2(const void* grad_c, void* grad_x2, size_t size, DType dtype, int device_id);
