@@ -72,6 +72,7 @@ Tensor* tensor_reshape_device(Tensor* tensor, int new_ndim, int* new_shape);
 bool validate_device_id(int device_id);
 
 int tensor_backward(Tensor* tensor);
+void tensor_zero_grad(Tensor* tensor);
 
 void free_tensor(Tensor* tensor);
 

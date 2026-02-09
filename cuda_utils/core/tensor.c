@@ -173,6 +173,18 @@ Tensor* tensor_reshape(Tensor* tensor, int new_ndim, int* new_shape) {
     return result;
 }
 
+typedef struct {
+    Tensor* tensor;
+    int dep_count;
+} NodeEntry;
+
+static int find_node(NodeEntry* nodes, int count, Tensor* t) {
+    for (int i = 0; i < count; i++) {
+        if (nodes[i].tensor == t) return i;
+    }
+    return -1;
+}
+
 int tensor_backward(Tensor* tensor) {
     if (!tensor) return -1;
     if (!tensor->metadata || !tensor->metadata->requires_grad) return -1;
@@ -186,35 +198,103 @@ int tensor_backward(Tensor* tensor) {
 
     if (!tensor->metadata->grad_fn) return 0;
 
-    Tensor* queue[100];
-    int queue_size = 0;
-    queue[queue_size++] = tensor;
+    int nodes_cap = 64;
+    int nodes_count = 0;
+    NodeEntry* nodes = (NodeEntry*)malloc(nodes_cap * sizeof(NodeEntry));
+    if (!nodes) return -1;
 
-    for (int idx = 0; idx < queue_size && idx < 100; idx++) {
-        Tensor* current = queue[idx];
+    int bfs_cap = 64;
+    int bfs_count = 0;
+    Tensor** bfs = (Tensor**)malloc(bfs_cap * sizeof(Tensor*));
+    if (!bfs) { free(nodes); return -1; }
 
-        if (current->metadata && current->metadata->grad_fn && current->metadata->grad) {
-            current->metadata->grad_fn->backward(current->metadata->grad_fn, current->metadata->grad);
+    nodes[nodes_count++] = (NodeEntry){tensor, 0};
+    bfs[bfs_count++] = tensor;
 
-            for (int i = 0; i < current->metadata->grad_fn->num_inputs; i++) {
-                Tensor* input = current->metadata->grad_fn->inputs[i];
-                if (input && input->metadata && input->metadata->requires_grad && input->metadata->grad && input->metadata->grad_fn) {
-                    bool already_queued = false;
-                    for (int j = 0; j < queue_size; j++) {
-                        if (queue[j] == input) {
-                            already_queued = true;
-                            break;
-                        }
-                    }
-                    if (!already_queued && queue_size < 100) {
-                        queue[queue_size++] = input;
-                    }
+    for (int idx = 0; idx < bfs_count; idx++) {
+        Tensor* cur = bfs[idx];
+        if (!cur->metadata || !cur->metadata->grad_fn) continue;
+
+        GradFn* gf = (GradFn*)cur->metadata->grad_fn;
+        for (int i = 0; i < gf->num_inputs; i++) {
+            Tensor* inp = gf->inputs[i];
+            if (!inp || inp == cur) continue;
+            if (!inp->metadata || !inp->metadata->requires_grad) continue;
+
+            int ni = find_node(nodes, nodes_count, inp);
+            if (ni == -1) {
+                if (nodes_count >= nodes_cap) {
+                    nodes_cap *= 2;
+                    NodeEntry* tmp = (NodeEntry*)realloc(nodes, nodes_cap * sizeof(NodeEntry));
+                    if (!tmp) { free(nodes); free(bfs); return -1; }
+                    nodes = tmp;
                 }
+                nodes[nodes_count++] = (NodeEntry){inp, 0};
+                ni = nodes_count - 1;
+
+                if (inp->metadata->grad_fn) {
+                    if (bfs_count >= bfs_cap) {
+                        bfs_cap *= 2;
+                        Tensor** tmp = (Tensor**)realloc(bfs, bfs_cap * sizeof(Tensor*));
+                        if (!tmp) { free(nodes); free(bfs); return -1; }
+                        bfs = tmp;
+                    }
+                    bfs[bfs_count++] = inp;
+                }
+            }
+            nodes[ni].dep_count++;
+        }
+    }
+    free(bfs);
+
+    int ready_cap = 64;
+    int ready_count = 0;
+    int ready_idx = 0;
+    Tensor** ready = (Tensor**)malloc(ready_cap * sizeof(Tensor*));
+    if (!ready) { free(nodes); return -1; }
+
+    int root_idx = find_node(nodes, nodes_count, tensor);
+    if (root_idx >= 0 && nodes[root_idx].dep_count == 0) {
+        ready[ready_count++] = tensor;
+    }
+
+    while (ready_idx < ready_count) {
+        Tensor* cur = ready[ready_idx++];
+        if (!cur->metadata || !cur->metadata->grad_fn || !cur->metadata->grad) continue;
+
+        GradFn* gf = (GradFn*)cur->metadata->grad_fn;
+        gf->backward(gf, cur->metadata->grad);
+
+        for (int i = 0; i < gf->num_inputs; i++) {
+            Tensor* inp = gf->inputs[i];
+            if (!inp || inp == cur) continue;
+            if (!inp->metadata || !inp->metadata->requires_grad) continue;
+
+            int ni = find_node(nodes, nodes_count, inp);
+            if (ni < 0) continue;
+
+            nodes[ni].dep_count--;
+            if (nodes[ni].dep_count == 0 && inp->metadata->grad_fn) {
+                if (ready_count >= ready_cap) {
+                    ready_cap *= 2;
+                    Tensor** tmp = (Tensor**)realloc(ready, ready_cap * sizeof(Tensor*));
+                    if (!tmp) { free(nodes); free(ready); return -1; }
+                    ready = tmp;
+                }
+                ready[ready_count++] = inp;
             }
         }
     }
 
+    free(nodes);
+    free(ready);
     return 0;
+}
+
+void tensor_zero_grad(Tensor* tensor) {
+    if (!tensor || !tensor->metadata || !tensor->metadata->grad) return;
+    free_tensor(tensor->metadata->grad);
+    tensor->metadata->grad = NULL;
 }
 
 void free_tensor(Tensor* tensor){
