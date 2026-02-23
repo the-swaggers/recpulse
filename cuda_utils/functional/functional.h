@@ -13,7 +13,14 @@ int rp_sub(void* out, const void* x1, const void* x2, size_t size, DType dtype, 
 int rp_mul(void* out, const void* x1, const void* x2, size_t size, DType dtype, int device_id);
 int rp_divide(void* out, const void* x1, const void* x2, size_t size, DType dtype, int device_id);
 int rp_power(void* out, const void* x1, const void* x2, size_t size, DType dtype, int device_id);
-int rp_logb(void* out, const void* x1, const void* x2, size_t size, DType dtype, int device_id); // out[i] = log_b(a) = log(a[i]) / log(b[i])
+int rp_logb(void* out, const void* x1, const void* x2, size_t size, DType dtype, int device_id);
+
+int rp_add_strided(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype, int device_id);
+int rp_sub_strided(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype, int device_id);
+int rp_mul_strided(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype, int device_id);
+int rp_divide_strided(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype, int device_id);
+int rp_power_strided(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype, int device_id);
+int rp_logb_strided(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype, int device_id);
 
 int rp_add_scalar(void* out, const void* x, const void* scalar, size_t size, DType dtype, int device_id);
 int rp_sub_scalar(void* out, const void* x, const void* scalar, size_t size, DType dtype, int device_id);
@@ -73,6 +80,20 @@ Tensor* rp_permute(Tensor* src, int* dims);
 Tensor** rp_chunk(Tensor* src, int chunks, int dim);
 Tensor* rp_expand(Tensor* src, int ndim, int* shape);
 Tensor* rp_repeat(Tensor* src, int* repeats);
+
+int add_strided_kernel_host_f32(float* out, const float* x1, const float* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int sub_strided_kernel_host_f32(float* out, const float* x1, const float* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int mul_strided_kernel_host_f32(float* out, const float* x1, const float* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int div_strided_kernel_host_f32(float* out, const float* x1, const float* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int pow_strided_kernel_host_f32(float* out, const float* x1, const float* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int logb_strided_kernel_host_f32(float* out, const float* x1, const float* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+
+int add_strided_kernel_host_f64(double* out, const double* x1, const double* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int sub_strided_kernel_host_f64(double* out, const double* x1, const double* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int mul_strided_kernel_host_f64(double* out, const double* x1, const double* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int div_strided_kernel_host_f64(double* out, const double* x1, const double* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int pow_strided_kernel_host_f64(double* out, const double* x1, const double* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
+int logb_strided_kernel_host_f64(double* out, const double* x1, const double* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size);
 
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
 int sub_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size);
@@ -174,6 +195,13 @@ int contiguous_copy_kernel_host_f64(double* out, const double* in, int ndim, int
 
 int repeat_kernel_host_f32(float* out, const float* in, int ndim, int* src_shape, int* repeats);
 int repeat_kernel_host_f64(double* out, const double* in, int ndim, int* src_shape, int* repeats);
+
+int add_strided_kernel_device(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype);
+int sub_strided_kernel_device(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype);
+int mul_strided_kernel_device(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype);
+int div_strided_kernel_device(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype);
+int pow_strided_kernel_device(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype);
+int logb_strided_kernel_device(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype);
 
 int add_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);
 int sub_kernel_device(void* out, const void* x1, const void* x2, size_t size, DType dtype);

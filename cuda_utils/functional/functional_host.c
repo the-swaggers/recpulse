@@ -99,6 +99,46 @@ int logb_kernel_host_f64(double* out, const double* x1, const double* x2, size_t
     return 0;
 }
 
+#define STRIDED_BINARY_HOST(name, T, op_expr) \
+int name(T* out, const T* x1, const T* x2, int ndim, const int* out_shape, \
+         const int* x1_strides, const int* x2_strides, size_t out_size) { \
+    if (!out || !x1 || !x2 || out_size == 0) return -1; \
+    int* out_strides = (int*)malloc(ndim * sizeof(int)); \
+    if (!out_strides) return -1; \
+    out_strides[ndim - 1] = 1; \
+    for (int d = ndim - 2; d >= 0; d--) { \
+        out_strides[d] = out_strides[d + 1] * out_shape[d + 1]; \
+    } \
+    for (size_t i = 0; i < out_size; i++) { \
+        size_t rem = i; \
+        size_t idx1 = 0, idx2 = 0; \
+        for (int d = 0; d < ndim; d++) { \
+            int coord = rem / out_strides[d]; \
+            rem %= out_strides[d]; \
+            idx1 += coord * x1_strides[d]; \
+            idx2 += coord * x2_strides[d]; \
+        } \
+        T a = x1[idx1]; \
+        T b = x2[idx2]; \
+        out[i] = op_expr; \
+    } \
+    free(out_strides); \
+    return 0; \
+}
+
+STRIDED_BINARY_HOST(add_strided_kernel_host_f32, float, a + b)
+STRIDED_BINARY_HOST(add_strided_kernel_host_f64, double, a + b)
+STRIDED_BINARY_HOST(sub_strided_kernel_host_f32, float, a - b)
+STRIDED_BINARY_HOST(sub_strided_kernel_host_f64, double, a - b)
+STRIDED_BINARY_HOST(mul_strided_kernel_host_f32, float, a * b)
+STRIDED_BINARY_HOST(mul_strided_kernel_host_f64, double, a * b)
+STRIDED_BINARY_HOST(div_strided_kernel_host_f32, float, a / b)
+STRIDED_BINARY_HOST(div_strided_kernel_host_f64, double, a / b)
+STRIDED_BINARY_HOST(pow_strided_kernel_host_f32, float, powf(a, b))
+STRIDED_BINARY_HOST(pow_strided_kernel_host_f64, double, pow(a, b))
+STRIDED_BINARY_HOST(logb_strided_kernel_host_f32, float, logf(a) / logf(b))
+STRIDED_BINARY_HOST(logb_strided_kernel_host_f64, double, log(a) / log(b))
+
 int add_scalar_kernel_host_f32(float* out, const float* x, float scalar, size_t size) {
     if (!out || !x || size == 0) return -1;
     for (size_t i = 0; i < size; i++) {

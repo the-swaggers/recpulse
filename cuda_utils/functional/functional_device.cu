@@ -234,6 +234,83 @@ int logb_kernel_device(void* out, const void* x1, const void* x2, size_t size, D
     return check_cuda_kernel() ? 0 : -1;
 }
 
+template<typename T>
+__device__ void compute_strided_indices(size_t flat_idx, int ndim, const int* out_shape,
+                                         const int* x1_strides, const int* x2_strides,
+                                         size_t* idx1, size_t* idx2) {
+    size_t rem = flat_idx;
+    *idx1 = 0;
+    *idx2 = 0;
+    for (int d = ndim - 1; d >= 0; d--) {
+        int coord = rem % out_shape[d];
+        rem /= out_shape[d];
+        *idx1 += coord * x1_strides[d];
+        *idx2 += coord * x2_strides[d];
+    }
+}
+
+#define STRIDED_BINARY_CUDA_KERNEL(name, op_expr) \
+template<typename T> \
+__global__ void name##_strided_kernel(T* out, const T* a, const T* b, \
+                                       int ndim, const int* out_shape, \
+                                       const int* a_strides, const int* b_strides, \
+                                       size_t out_size) { \
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x; \
+    if (idx < out_size) { \
+        size_t idx1, idx2; \
+        compute_strided_indices<T>(idx, ndim, out_shape, a_strides, b_strides, &idx1, &idx2); \
+        T va = a[idx1]; \
+        T vb = b[idx2]; \
+        out[idx] = op_expr; \
+    } \
+}
+
+STRIDED_BINARY_CUDA_KERNEL(add, va + vb)
+STRIDED_BINARY_CUDA_KERNEL(sub, va - vb)
+STRIDED_BINARY_CUDA_KERNEL(mul, va * vb)
+STRIDED_BINARY_CUDA_KERNEL(div, va / vb)
+STRIDED_BINARY_CUDA_KERNEL(pow, pow(va, vb))
+STRIDED_BINARY_CUDA_KERNEL(logb, log(va) / log(vb))
+
+#define STRIDED_BINARY_DEVICE_WRAPPER(name, kernel_name) \
+int name##_strided_kernel_device(void* out, const void* x1, const void* x2, \
+                                  int ndim, const int* out_shape, \
+                                  const int* x1_strides, const int* x2_strides, \
+                                  size_t out_size, DType dtype) { \
+    if (!out || !x1 || !x2 || out_size == 0) return -1; \
+    int* d_shape, *d_s1, *d_s2; \
+    cudaMalloc(&d_shape, ndim * sizeof(int)); \
+    cudaMalloc(&d_s1, ndim * sizeof(int)); \
+    cudaMalloc(&d_s2, ndim * sizeof(int)); \
+    cudaMemcpy(d_shape, out_shape, ndim * sizeof(int), cudaMemcpyHostToDevice); \
+    cudaMemcpy(d_s1, x1_strides, ndim * sizeof(int), cudaMemcpyHostToDevice); \
+    cudaMemcpy(d_s2, x2_strides, ndim * sizeof(int), cudaMemcpyHostToDevice); \
+    size_t threads = 256; \
+    size_t blocks = (out_size + threads - 1) / threads; \
+    if (dtype == DTYPE_FLOAT32) { \
+        kernel_name##_strided_kernel<float><<<blocks, threads>>>( \
+            (float*)out, (const float*)x1, (const float*)x2, \
+            ndim, d_shape, d_s1, d_s2, out_size); \
+    } else if (dtype == DTYPE_FLOAT64) { \
+        kernel_name##_strided_kernel<double><<<blocks, threads>>>( \
+            (double*)out, (const double*)x1, (const double*)x2, \
+            ndim, d_shape, d_s1, d_s2, out_size); \
+    } else { \
+        cudaFree(d_shape); cudaFree(d_s1); cudaFree(d_s2); \
+        return -1; \
+    } \
+    bool ok = check_cuda_kernel(); \
+    cudaFree(d_shape); cudaFree(d_s1); cudaFree(d_s2); \
+    return ok ? 0 : -1; \
+}
+
+STRIDED_BINARY_DEVICE_WRAPPER(add, add)
+STRIDED_BINARY_DEVICE_WRAPPER(sub, sub)
+STRIDED_BINARY_DEVICE_WRAPPER(mul, mul)
+STRIDED_BINARY_DEVICE_WRAPPER(div, div)
+STRIDED_BINARY_DEVICE_WRAPPER(pow, pow)
+STRIDED_BINARY_DEVICE_WRAPPER(logb, logb)
+
 int add_scalar_kernel_device(void* out, const void* x, const void* scalar, size_t size, DType dtype) {
     if (!out || !x || !scalar || size == 0) return -1;
 

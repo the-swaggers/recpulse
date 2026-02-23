@@ -205,6 +205,17 @@ int backwards_mean_all_device(const void* grad_c, void* grad_x, size_t size, DTy
 
 void free_grad_fn(GradFn* grad_fn);
 
+typedef struct {
+    int x1_ndim;
+    int* x1_shape;
+    int x2_ndim;
+    int* x2_shape;
+} BroadcastSavedData;
+
+int broadcast_shapes(int ndim1, const int* shape1, int ndim2, const int* shape2,
+                     int* out_ndim, int** out_shape);
+Tensor* reduce_grad_to_shape(Tensor* grad, int target_ndim, const int* target_shape);
+
 #ifdef __cplusplus
 }
 #endif

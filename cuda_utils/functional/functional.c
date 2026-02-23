@@ -101,6 +101,29 @@ int rp_logb(void* out, const void* x1, const void* x2, size_t size, DType dtype,
     return logb_kernel_device(out, x1, x2, size, dtype);
 }
 
+#define STRIDED_BINARY_DISPATCHER(name, host_f32, host_f64, device_fn) \
+int name(void* out, const void* x1, const void* x2, int ndim, const int* out_shape, \
+         const int* x1_strides, const int* x2_strides, size_t out_size, DType dtype, int device_id) { \
+    if (!out || !x1 || !x2 || out_size == 0) return -1; \
+    if (device_id == -1) { \
+        if (dtype == DTYPE_FLOAT32) { \
+            return host_f32((float*)out, (const float*)x1, (const float*)x2, ndim, out_shape, x1_strides, x2_strides, out_size); \
+        } else if (dtype == DTYPE_FLOAT64) { \
+            return host_f64((double*)out, (const double*)x1, (const double*)x2, ndim, out_shape, x1_strides, x2_strides, out_size); \
+        } \
+        return -1; \
+    } \
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1; \
+    return device_fn(out, x1, x2, ndim, out_shape, x1_strides, x2_strides, out_size, dtype); \
+}
+
+STRIDED_BINARY_DISPATCHER(rp_add_strided, add_strided_kernel_host_f32, add_strided_kernel_host_f64, add_strided_kernel_device)
+STRIDED_BINARY_DISPATCHER(rp_sub_strided, sub_strided_kernel_host_f32, sub_strided_kernel_host_f64, sub_strided_kernel_device)
+STRIDED_BINARY_DISPATCHER(rp_mul_strided, mul_strided_kernel_host_f32, mul_strided_kernel_host_f64, mul_strided_kernel_device)
+STRIDED_BINARY_DISPATCHER(rp_divide_strided, div_strided_kernel_host_f32, div_strided_kernel_host_f64, div_strided_kernel_device)
+STRIDED_BINARY_DISPATCHER(rp_power_strided, pow_strided_kernel_host_f32, pow_strided_kernel_host_f64, pow_strided_kernel_device)
+STRIDED_BINARY_DISPATCHER(rp_logb_strided, logb_strided_kernel_host_f32, logb_strided_kernel_host_f64, logb_strided_kernel_device)
+
 int rp_add_scalar(void* out, const void* x, const void* scalar, size_t size, DType dtype, int device_id) {
     if (!out || !x || !scalar || size == 0) return -1;
 
