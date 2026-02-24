@@ -78,9 +78,12 @@ Tensor* tensor_to(Tensor* src, int target_device_id, DType target_dtype, bool in
     if (same_device && same_dtype) {
         if (inplace) {
             return src;
-        } else {
-            return tensor_copy(src);
         }
+        Tensor* copy = tensor_copy(src);
+        if (copy && copy->metadata && src->metadata && src->metadata->grad) {
+            copy->metadata->grad = tensor_copy(src->metadata->grad);
+        }
+        return copy;
     }
 
     Tensor* result = NULL;
@@ -103,6 +106,10 @@ Tensor* tensor_to(Tensor* src, int target_device_id, DType target_dtype, bool in
 
     if (!result) {
         return NULL;
+    }
+
+    if (result->metadata && src->metadata && src->metadata->grad) {
+        result->metadata->grad = tensor_to(src->metadata->grad, target_device_id, target_dtype, false);
     }
 
     if (inplace) {
