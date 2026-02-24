@@ -56,7 +56,7 @@ LDFLAGS := -shared
 LDFLAGS += -L/opt/cuda/lib64 -lcudart -lcublas
 LDFLAGS += $(PYTHON_LDFLAGS)
 
-.PHONY: all clean help install config test test_functional test_sum_mean test_scalar test_split test_shape_ops test_backward test_optim test_all
+.PHONY: all clean help install config test test_functional test_sum_mean test_scalar test_split test_shape_ops test_backward test_optim test_grad_transfer test_all
 
 all: $(TARGET)
 
@@ -148,6 +148,10 @@ test_backward: $(TARGET)
 	@echo "Running backward topological sort tests..."
 	@$(PYTHON) tests/autograd/test_backward_topo.py
 
+test_grad_transfer: $(TARGET)
+	@echo "Running gradient transfer tests..."
+	@$(PYTHON) tests/autograd/test_grad_transfer.py
+
 test_optim: $(TARGET)
 	@echo "Running optimizer tests..."
 	@$(PYTHON) tests/integration/test_optimizers.py
@@ -192,6 +196,7 @@ help:
 	@echo "  test_split       - Run split/split_equal autograd tests"
 	@echo "  test_shape_ops   - Run shape operations tests"
 	@echo "  test_backward    - Run backward topological sort tests"
+	@echo "  test_grad_transfer - Run gradient transfer tests"
 	@echo "  test_optim       - Run optimizer tests (tests/integration/)"
 	@echo "  test_all         - Run all tests"
 	@echo "  config           - Show build configuration"
