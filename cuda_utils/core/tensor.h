@@ -5,8 +5,10 @@
 #include <stddef.h>
 
 typedef enum {
-    DTYPE_FLOAT32,
-    DTYPE_FLOAT64,
+    DTYPE_FLOAT32 = 0,
+    DTYPE_FLOAT64 = 1,
+    DTYPE_FLOAT16 = 2,
+    DTYPE_BFLOAT16 = 3,
     DTYPE_PRESERVE = -1,
 } DType;
 

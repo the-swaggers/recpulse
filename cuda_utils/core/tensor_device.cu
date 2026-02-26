@@ -4,6 +4,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <cuda_bf16.h>
+#include "half_precision.h"
 
 Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Meta* metadata) {
     if (!check_shape_valid(ndim, shape)) return NULL;
@@ -21,8 +24,7 @@ Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Me
 
     // Declare variables before any goto statements
     int stride = 1;
-    size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = total_elements * dtype_size;
+    size_t data_size = total_elements * dtype_size(dtype);
 
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) goto cleanup;
@@ -74,6 +76,40 @@ __global__ void copy_value_kernel(DstType* dst, SrcType* src, size_t size) {
     }
 }
 
+static int device_convert_dtype(void* dst, DType dst_dtype, const void* src, DType src_dtype, size_t size) {
+    size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+
+    if (src_dtype == DTYPE_FLOAT32 && dst_dtype == DTYPE_FLOAT64) {
+        copy_value_kernel<float, double><<<blocks, threads>>>((double*)dst, (float*)src, size);
+    } else if (src_dtype == DTYPE_FLOAT64 && dst_dtype == DTYPE_FLOAT32) {
+        copy_value_kernel<double, float><<<blocks, threads>>>((float*)dst, (double*)src, size);
+    } else if (src_dtype == DTYPE_FLOAT32 && dst_dtype == DTYPE_FLOAT16) {
+        copy_value_kernel<float, __half><<<blocks, threads>>>((__half*)dst, (float*)src, size);
+    } else if (src_dtype == DTYPE_FLOAT16 && dst_dtype == DTYPE_FLOAT32) {
+        copy_value_kernel<__half, float><<<blocks, threads>>>((float*)dst, (__half*)src, size);
+    } else if (src_dtype == DTYPE_FLOAT32 && dst_dtype == DTYPE_BFLOAT16) {
+        copy_value_kernel<float, __nv_bfloat16><<<blocks, threads>>>((__nv_bfloat16*)dst, (float*)src, size);
+    } else if (src_dtype == DTYPE_BFLOAT16 && dst_dtype == DTYPE_FLOAT32) {
+        copy_value_kernel<__nv_bfloat16, float><<<blocks, threads>>>((float*)dst, (__nv_bfloat16*)src, size);
+    } else if (src_dtype == DTYPE_FLOAT64 && dst_dtype == DTYPE_FLOAT16) {
+        copy_value_kernel<double, __half><<<blocks, threads>>>((__half*)dst, (double*)src, size);
+    } else if (src_dtype == DTYPE_FLOAT16 && dst_dtype == DTYPE_FLOAT64) {
+        copy_value_kernel<__half, double><<<blocks, threads>>>((double*)dst, (__half*)src, size);
+    } else if (src_dtype == DTYPE_FLOAT64 && dst_dtype == DTYPE_BFLOAT16) {
+        copy_value_kernel<double, __nv_bfloat16><<<blocks, threads>>>((__nv_bfloat16*)dst, (double*)src, size);
+    } else if (src_dtype == DTYPE_BFLOAT16 && dst_dtype == DTYPE_FLOAT64) {
+        copy_value_kernel<__nv_bfloat16, double><<<blocks, threads>>>((double*)dst, (__nv_bfloat16*)src, size);
+    } else if (src_dtype == DTYPE_FLOAT16 && dst_dtype == DTYPE_BFLOAT16) {
+        copy_value_kernel<__half, __nv_bfloat16><<<blocks, threads>>>((__nv_bfloat16*)dst, (__half*)src, size);
+    } else if (src_dtype == DTYPE_BFLOAT16 && dst_dtype == DTYPE_FLOAT16) {
+        copy_value_kernel<__nv_bfloat16, __half><<<blocks, threads>>>((__half*)dst, (__nv_bfloat16*)src, size);
+    } else {
+        return -1;
+    }
+    return check_cuda_kernel() ? 0 : -1;
+}
+
 Tensor* fill_value_device_tensor(double value, Tensor* tensor){
     if (!tensor || !tensor->data) return NULL;
 
@@ -87,8 +123,14 @@ Tensor* fill_value_device_tensor(double value, Tensor* tensor){
     if (tensor->dtype == DTYPE_FLOAT32) {
         float f_value = (float)value;
         fill_value_kernel<float><<<num_blocks, threads_per_block>>>((float*)tensor->data, tensor->size, f_value);
-    } else {
+    } else if (tensor->dtype == DTYPE_FLOAT64) {
         fill_value_kernel<double><<<num_blocks, threads_per_block>>>((double*)tensor->data, tensor->size, value);
+    } else if (tensor->dtype == DTYPE_FLOAT16) {
+        __half h_value = __float2half((float)value);
+        fill_value_kernel<__half><<<num_blocks, threads_per_block>>>((__half*)tensor->data, tensor->size, h_value);
+    } else if (tensor->dtype == DTYPE_BFLOAT16) {
+        __nv_bfloat16 b_value = __float2bfloat16((float)value);
+        fill_value_kernel<__nv_bfloat16><<<num_blocks, threads_per_block>>>((__nv_bfloat16*)tensor->data, tensor->size, b_value);
     }
 
     if (!check_cuda_kernel()) return NULL;
@@ -112,8 +154,7 @@ Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Met
 
     // Declare variables before any goto statements
     int stride = 1;
-    size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = total_elements * dtype_size;
+    size_t data_size = total_elements * dtype_size(dtype);
 
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) goto cleanup;
@@ -165,11 +206,7 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, i
 
     // Declare variables before any goto statements
     int stride = 1;
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t vals_dtype_size = (vals_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = total_elements * target_dtype_size;
-    size_t threads_per_block = 256;
-    size_t num_blocks = (total_elements + threads_per_block - 1) / threads_per_block;
+    size_t data_size = total_elements * dtype_size(target_dtype);
 
     tensor->shape = (int*)malloc(ndim * sizeof(int));
     if (!tensor->shape) goto cleanup;
@@ -195,34 +232,19 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, i
     if (source_device_id == -1) {
         if (vals_dtype == target_dtype) {
             if (!check_cuda_call(cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
-        } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-            if (!check_cuda_call(cudaMalloc(&device_src, total_elements * sizeof(float)), "cudaMalloc")) goto cleanup;
-            if (!check_cuda_call(cudaMemcpy(device_src, vals, total_elements * sizeof(float), cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
-
-            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)tensor->data, (float*)device_src, total_elements);
-            if (!check_cuda_kernel()) goto cleanup;
-
-            cudaFree(device_src);
-            device_src = NULL;
-        } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-            if (!check_cuda_call(cudaMalloc(&device_src, total_elements * sizeof(double)), "cudaMalloc")) goto cleanup;
-            if (!check_cuda_call(cudaMemcpy(device_src, vals, total_elements * sizeof(double), cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
-
-            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)tensor->data, (double*)device_src, total_elements);
-            if (!check_cuda_kernel()) goto cleanup;
-
+        } else {
+            size_t src_data_size = total_elements * dtype_size(vals_dtype);
+            if (!check_cuda_call(cudaMalloc(&device_src, src_data_size), "cudaMalloc")) goto cleanup;
+            if (!check_cuda_call(cudaMemcpy(device_src, vals, src_data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
+            if (device_convert_dtype(tensor->data, target_dtype, device_src, vals_dtype, total_elements) != 0) goto cleanup;
             cudaFree(device_src);
             device_src = NULL;
         }
     } else {
         if (vals_dtype == target_dtype) {
             if (!check_cuda_call(cudaMemcpy(tensor->data, vals, data_size, cudaMemcpyDeviceToDevice), "cudaMemcpy")) goto cleanup;
-        } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)tensor->data, (float*)vals, total_elements);
-            if (!check_cuda_kernel()) goto cleanup;
-        } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)tensor->data, (double*)vals, total_elements);
-            if (!check_cuda_kernel()) goto cleanup;
+        } else {
+            if (device_convert_dtype(tensor->data, target_dtype, vals, vals_dtype, total_elements) != 0) goto cleanup;
         }
     }
 
@@ -272,11 +294,8 @@ Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype) {
     void* temp_buffer = NULL;
 
     // Declare variables before any goto statements
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = tensor->size * target_dtype_size;
+    size_t data_size = tensor->size * dtype_size(target_dtype);
     bool same_gpu = (tensor->device_id == device_id);
-    size_t threads_per_block = 256;
-    size_t num_blocks = (tensor->size + threads_per_block - 1) / threads_per_block;
 
     copy->shape = (int*)malloc(tensor->ndim * sizeof(int));
     if (!copy->shape) goto cleanup;
@@ -292,12 +311,8 @@ Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype) {
     if (same_gpu) {
         if (tensor->dtype == target_dtype) {
             if (!check_cuda_call(cudaMemcpy(copy->data, tensor->data, data_size, cudaMemcpyDeviceToDevice), "cudaMemcpy")) goto cleanup;
-        } else if (tensor->dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)copy->data, (float*)tensor->data, tensor->size);
-            if (!check_cuda_kernel()) goto cleanup;
-        } else if (tensor->dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)copy->data, (double*)tensor->data, tensor->size);
-            if (!check_cuda_kernel()) goto cleanup;
+        } else {
+            if (device_convert_dtype(copy->data, target_dtype, tensor->data, tensor->dtype, tensor->size) != 0) goto cleanup;
         }
     } else {
         cudaError_t p2p_err = cudaDeviceEnablePeerAccess(tensor->device_id, 0);
@@ -308,20 +323,10 @@ Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype) {
         if (tensor->dtype == target_dtype) {
             if (!check_cuda_call(cudaMemcpyPeer(copy->data, device_id, tensor->data, tensor->device_id, data_size), "cudaMemcpyPeer")) goto cleanup;
         } else {
-            size_t src_dtype_size = (tensor->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-            size_t src_data_size = tensor->size * src_dtype_size;
-
+            size_t src_data_size = tensor->size * dtype_size(tensor->dtype);
             if (!check_cuda_call(cudaMalloc(&temp_buffer, src_data_size), "cudaMalloc temp")) goto cleanup;
             if (!check_cuda_call(cudaMemcpyPeer(temp_buffer, device_id, tensor->data, tensor->device_id, src_data_size), "cudaMemcpyPeer")) goto cleanup;
-
-            if (tensor->dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-                copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)copy->data, (float*)temp_buffer, tensor->size);
-            } else if (tensor->dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-                copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)copy->data, (double*)temp_buffer, tensor->size);
-            }
-
-            if (!check_cuda_kernel()) goto cleanup;
-
+            if (device_convert_dtype(copy->data, target_dtype, temp_buffer, tensor->dtype, tensor->size) != 0) goto cleanup;
             cudaFree(temp_buffer);
             temp_buffer = NULL;
         }
@@ -366,10 +371,7 @@ Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype) {
     void* temp_buffer = NULL;
 
     // Declare variables before any goto statements
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = tensor->size * target_dtype_size;
-    size_t threads_per_block = 256;
-    size_t num_blocks = (tensor->size + threads_per_block - 1) / threads_per_block;
+    size_t data_size = tensor->size * dtype_size(target_dtype);
 
     result->shape = (int*)malloc(tensor->ndim * sizeof(int));
     if (!result->shape) goto cleanup;
@@ -385,20 +387,10 @@ Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype) {
     if (tensor->dtype == target_dtype) {
         if (!check_cuda_call(cudaMemcpy(result->data, tensor->data, data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
     } else {
-        size_t src_dtype_size = (tensor->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-        size_t src_data_size = tensor->size * src_dtype_size;
-
+        size_t src_data_size = tensor->size * dtype_size(tensor->dtype);
         if (!check_cuda_call(cudaMalloc(&temp_buffer, src_data_size), "cudaMalloc temp")) goto cleanup;
         if (!check_cuda_call(cudaMemcpy(temp_buffer, tensor->data, src_data_size, cudaMemcpyHostToDevice), "cudaMemcpy")) goto cleanup;
-
-        if (tensor->dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-            copy_value_kernel<float, double><<<num_blocks, threads_per_block>>>((double*)result->data, (float*)temp_buffer, tensor->size);
-        } else if (tensor->dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-            copy_value_kernel<double, float><<<num_blocks, threads_per_block>>>((float*)result->data, (double*)temp_buffer, tensor->size);
-        }
-
-        if (!check_cuda_kernel()) goto cleanup;
-
+        if (device_convert_dtype(result->data, target_dtype, temp_buffer, tensor->dtype, tensor->size) != 0) goto cleanup;
         cudaFree(temp_buffer);
         temp_buffer = NULL;
     }
@@ -441,9 +433,9 @@ Tensor* move_device_to_host(Tensor* tensor, DType target_dtype) {
     result->metadata = NULL;
     void* temp_buffer = NULL;
 
-    // Declare variables before any goto statements
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = tensor->size * target_dtype_size;
+    size_t data_size = tensor->size * dtype_size(target_dtype);
+    float* fp32_buf = NULL;
+    bool need_free_fp32 = false;
 
     result->shape = (int*)malloc(tensor->ndim * sizeof(int));
     if (!result->shape) goto cleanup;
@@ -461,28 +453,36 @@ Tensor* move_device_to_host(Tensor* tensor, DType target_dtype) {
     if (tensor->dtype == target_dtype) {
         if (!check_cuda_call(cudaMemcpy(result->data, tensor->data, data_size, cudaMemcpyDeviceToHost), "cudaMemcpy")) goto cleanup;
     } else {
-        size_t src_dtype_size = (tensor->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-        size_t src_data_size = tensor->size * src_dtype_size;
-
+        size_t src_data_size = tensor->size * dtype_size(tensor->dtype);
         temp_buffer = malloc(src_data_size);
         if (!temp_buffer) goto cleanup;
-
         if (!check_cuda_call(cudaMemcpy(temp_buffer, tensor->data, src_data_size, cudaMemcpyDeviceToHost), "cudaMemcpy")) goto cleanup;
 
-        if (tensor->dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-            float* src = (float*)temp_buffer;
-            double* dst = (double*)result->data;
-            for (size_t i = 0; i < tensor->size; i++) {
-                dst[i] = (double)src[i];
-            }
-        } else if (tensor->dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
+        if (tensor->dtype == DTYPE_FLOAT32) {
+            fp32_buf = (float*)temp_buffer;
+        } else if (tensor->dtype == DTYPE_FLOAT64) {
+            fp32_buf = (float*)malloc(tensor->size * sizeof(float));
+            if (!fp32_buf) goto cleanup;
+            need_free_fp32 = true;
             double* src = (double*)temp_buffer;
-            float* dst = (float*)result->data;
-            for (size_t i = 0; i < tensor->size; i++) {
-                dst[i] = (float)src[i];
-            }
+            for (size_t i = 0; i < tensor->size; i++) fp32_buf[i] = (float)src[i];
+        } else {
+            fp32_buf = (float*)malloc(tensor->size * sizeof(float));
+            if (!fp32_buf) goto cleanup;
+            need_free_fp32 = true;
+            half_to_fp32_array(temp_buffer, fp32_buf, tensor->size, tensor->dtype);
         }
 
+        if (target_dtype == DTYPE_FLOAT32) {
+            memcpy(result->data, fp32_buf, tensor->size * sizeof(float));
+        } else if (target_dtype == DTYPE_FLOAT64) {
+            double* dst = (double*)result->data;
+            for (size_t i = 0; i < tensor->size; i++) dst[i] = (double)fp32_buf[i];
+        } else {
+            fp32_to_half_array(fp32_buf, result->data, tensor->size, target_dtype);
+        }
+
+        if (need_free_fp32) free(fp32_buf);
         free(temp_buffer);
         temp_buffer = NULL;
     }
@@ -525,8 +525,7 @@ Tensor* tensor_reshape_device(Tensor* tensor, int new_ndim, int* new_shape) {
     reshaped->metadata = NULL;
 
     int stride = 1;
-    size_t dtype_size = (tensor->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = tensor->size * dtype_size;
+    size_t data_size = tensor->size * dtype_size(tensor->dtype);
 
     reshaped->shape = (int*)malloc(new_ndim * sizeof(int));
     if (!reshaped->shape) goto cleanup;

@@ -1,4 +1,5 @@
 #include "tensor.h"
+#include "half_precision.h"
 #include "cuda_helpers.h"
 #include <stdlib.h>
 #include <string.h>
@@ -30,8 +31,7 @@ Tensor* zeros_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
         stride *= shape[i];
     }
 
-    size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    tensor->data = calloc(total_elements, dtype_size);
+    tensor->data = calloc(total_elements, dtype_size(dtype));
     if (!tensor->data) goto cleanup;
 
     tensor->dtype = dtype;
@@ -78,8 +78,7 @@ Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
         stride *= shape[i];
     }
 
-    size_t dtype_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    tensor->data = malloc(total_elements * dtype_size);
+    tensor->data = malloc(total_elements * dtype_size(dtype));
     if (!tensor->data) goto cleanup;
 
     if (dtype == DTYPE_FLOAT32) {
@@ -87,10 +86,22 @@ Tensor* ones_host_tensor(DType dtype, int ndim, int* shape, Meta* metadata) {
         for (size_t i = 0; i < total_elements; i++) {
             data[i] = 1.0f;
         }
-    } else {
+    } else if (dtype == DTYPE_FLOAT64) {
         double* data = (double*)tensor->data;
         for (size_t i = 0; i < total_elements; i++) {
             data[i] = 1.0;
+        }
+    } else if (dtype == DTYPE_FLOAT16) {
+        uint16_t* data = (uint16_t*)tensor->data;
+        uint16_t one = fp32_to_fp16(1.0f);
+        for (size_t i = 0; i < total_elements; i++) {
+            data[i] = one;
+        }
+    } else if (dtype == DTYPE_BFLOAT16) {
+        uint16_t* data = (uint16_t*)tensor->data;
+        uint16_t one = fp32_to_bf16(1.0f);
+        for (size_t i = 0; i < total_elements; i++) {
+            data[i] = one;
         }
     }
 
@@ -138,26 +149,38 @@ Tensor* values_host_tensor(void* vals, DType vals_dtype, DType target_dtype, int
         stride *= shape[i];
     }
 
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = total_elements * target_dtype_size;
+    size_t data_size = total_elements * dtype_size(target_dtype);
 
     tensor->data = malloc(data_size);
     if (!tensor->data) goto cleanup;
 
     if (vals_dtype == target_dtype) {
         memcpy(tensor->data, vals, data_size);
-    } else if (vals_dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-        float* src = (float*)vals;
-        double* dst = (double*)tensor->data;
-        for (size_t i = 0; i < total_elements; i++) {
-            dst[i] = (double)src[i];
+    } else {
+        float* tmp = NULL;
+        if (vals_dtype == DTYPE_FLOAT32) {
+            tmp = (float*)vals;
+        } else if (vals_dtype == DTYPE_FLOAT64) {
+            tmp = (float*)malloc(total_elements * sizeof(float));
+            if (!tmp) goto cleanup;
+            double* src = (double*)vals;
+            for (size_t i = 0; i < total_elements; i++) tmp[i] = (float)src[i];
+        } else {
+            tmp = (float*)malloc(total_elements * sizeof(float));
+            if (!tmp) goto cleanup;
+            half_to_fp32_array(vals, tmp, total_elements, vals_dtype);
         }
-    } else if (vals_dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-        double* src = (double*)vals;
-        float* dst = (float*)tensor->data;
-        for (size_t i = 0; i < total_elements; i++) {
-            dst[i] = (float)src[i];
+
+        if (target_dtype == DTYPE_FLOAT32) {
+            memcpy(tensor->data, tmp, total_elements * sizeof(float));
+        } else if (target_dtype == DTYPE_FLOAT64) {
+            double* dst = (double*)tensor->data;
+            for (size_t i = 0; i < total_elements; i++) dst[i] = (double)tmp[i];
+        } else {
+            fp32_to_half_array(tmp, tensor->data, total_elements, target_dtype);
         }
+
+        if (tmp != (float*)vals) free(tmp);
     }
 
     tensor->dtype = target_dtype;
@@ -195,26 +218,38 @@ Tensor* tensor_copy_host(Tensor* tensor, DType target_dtype) {
     if (!copy->strides) goto cleanup;
     memcpy(copy->strides, tensor->strides, tensor->ndim * sizeof(int));
 
-    size_t target_dtype_size = (target_dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = tensor->size * target_dtype_size;
+    size_t data_size = tensor->size * dtype_size(target_dtype);
 
     copy->data = malloc(data_size);
     if (!copy->data) goto cleanup;
 
     if (tensor->dtype == target_dtype) {
         memcpy(copy->data, tensor->data, data_size);
-    } else if (tensor->dtype == DTYPE_FLOAT32 && target_dtype == DTYPE_FLOAT64) {
-        float* src = (float*)tensor->data;
-        double* dst = (double*)copy->data;
-        for (size_t i = 0; i < tensor->size; i++) {
-            dst[i] = (double)src[i];
+    } else {
+        float* tmp = NULL;
+        if (tensor->dtype == DTYPE_FLOAT32) {
+            tmp = (float*)tensor->data;
+        } else if (tensor->dtype == DTYPE_FLOAT64) {
+            tmp = (float*)malloc(tensor->size * sizeof(float));
+            if (!tmp) goto cleanup;
+            double* src = (double*)tensor->data;
+            for (size_t i = 0; i < tensor->size; i++) tmp[i] = (float)src[i];
+        } else {
+            tmp = (float*)malloc(tensor->size * sizeof(float));
+            if (!tmp) goto cleanup;
+            half_to_fp32_array(tensor->data, tmp, tensor->size, tensor->dtype);
         }
-    } else if (tensor->dtype == DTYPE_FLOAT64 && target_dtype == DTYPE_FLOAT32) {
-        double* src = (double*)tensor->data;
-        float* dst = (float*)copy->data;
-        for (size_t i = 0; i < tensor->size; i++) {
-            dst[i] = (float)src[i];
+
+        if (target_dtype == DTYPE_FLOAT32) {
+            memcpy(copy->data, tmp, tensor->size * sizeof(float));
+        } else if (target_dtype == DTYPE_FLOAT64) {
+            double* dst = (double*)copy->data;
+            for (size_t i = 0; i < tensor->size; i++) dst[i] = (double)tmp[i];
+        } else {
+            fp32_to_half_array(tmp, copy->data, tensor->size, target_dtype);
         }
+
+        if (tmp != (float*)tensor->data) free(tmp);
     }
 
     copy->dtype = target_dtype;
@@ -278,10 +313,22 @@ Tensor* fill_value_host_tensor(double value, Tensor* tensor){
         for (size_t i = 0; i < tensor->size; i++) {
             data[i] = f_value;
         }
-    } else {
+    } else if (tensor->dtype == DTYPE_FLOAT64) {
         double* data = (double*)tensor->data;
         for (size_t i = 0; i < tensor->size; i++) {
             data[i] = value;
+        }
+    } else if (tensor->dtype == DTYPE_FLOAT16) {
+        uint16_t* data = (uint16_t*)tensor->data;
+        uint16_t h_value = fp32_to_fp16((float)value);
+        for (size_t i = 0; i < tensor->size; i++) {
+            data[i] = h_value;
+        }
+    } else if (tensor->dtype == DTYPE_BFLOAT16) {
+        uint16_t* data = (uint16_t*)tensor->data;
+        uint16_t b_value = fp32_to_bf16((float)value);
+        for (size_t i = 0; i < tensor->size; i++) {
+            data[i] = b_value;
         }
     }
     return tensor;
@@ -311,8 +358,7 @@ Tensor* tensor_reshape_host(Tensor* tensor, int new_ndim, int* new_shape) {
         stride *= new_shape[i];
     }
 
-    size_t dtype_size = (tensor->dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
-    size_t data_size = tensor->size * dtype_size;
+    size_t data_size = tensor->size * dtype_size(tensor->dtype);
 
     reshaped->data = malloc(data_size);
     if (!reshaped->data) goto cleanup;
