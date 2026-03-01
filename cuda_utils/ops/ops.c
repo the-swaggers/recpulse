@@ -1821,7 +1821,7 @@ void backward_leaky_relu_fn(GradFn* self, Tensor* grad_output) {
     LeakyReluSavedData* saved = (LeakyReluSavedData*)self->saved_data;
 
     if (x->metadata && x->metadata->requires_grad) {
-        void* alpha_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&saved->alpha_f32 : (void*)&saved->alpha_f64;
+        void* alpha_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&saved->alpha_f64 : (void*)&saved->alpha_f32;
 
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
@@ -2794,10 +2794,10 @@ Tensor* op_leaky_relu(Tensor* x, float alpha) {
     void* alpha_ptr;
     float alpha_f32 = alpha;
     double alpha_f64 = (double)alpha;
-    if (x->dtype == DTYPE_FLOAT32) {
-        alpha_ptr = &alpha_f32;
-    } else {
+    if (x->dtype == DTYPE_FLOAT64) {
         alpha_ptr = &alpha_f64;
+    } else {
+        alpha_ptr = &alpha_f32;
     }
 
     int result = rp_leaky_relu(out->data, x->data, alpha_ptr, x->size, x->dtype, x->device_id);
@@ -3144,7 +3144,7 @@ void backward_mul_scalar_fn(GradFn* self, Tensor* grad_output) {
     ScalarSavedData* saved = (ScalarSavedData*)self->saved_data;
 
     if (x->metadata && x->metadata->requires_grad) {
-        void* scalar_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&saved->scalar_f32 : (void*)&saved->scalar_f64;
+        void* scalar_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&saved->scalar_f64 : (void*)&saved->scalar_f32;
 
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
@@ -3172,7 +3172,7 @@ void backward_div_scalar_fn(GradFn* self, Tensor* grad_output) {
     ScalarSavedData* saved = (ScalarSavedData*)self->saved_data;
 
     if (x->metadata && x->metadata->requires_grad) {
-        void* scalar_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&saved->scalar_f32 : (void*)&saved->scalar_f64;
+        void* scalar_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&saved->scalar_f64 : (void*)&saved->scalar_f32;
 
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
@@ -3241,12 +3241,12 @@ Tensor* op_mul_scalar(Tensor* x, const void* scalar) {
             free_tensor(out);
             return NULL;
         }
-        if (x->dtype == DTYPE_FLOAT32) {
-            saved->scalar_f32 = *(const float*)scalar;
-            saved->scalar_f64 = (double)saved->scalar_f32;
-        } else {
+        if (x->dtype == DTYPE_FLOAT64) {
             saved->scalar_f64 = *(const double*)scalar;
             saved->scalar_f32 = (float)saved->scalar_f64;
+        } else {
+            saved->scalar_f32 = *(const float*)scalar;
+            saved->scalar_f64 = (double)saved->scalar_f32;
         }
         grad_fn->saved_data = saved;
 
@@ -3304,12 +3304,12 @@ Tensor* op_div_scalar(Tensor* x, const void* scalar) {
             free_tensor(out);
             return NULL;
         }
-        if (x->dtype == DTYPE_FLOAT32) {
-            saved->scalar_f32 = *(const float*)scalar;
-            saved->scalar_f64 = (double)saved->scalar_f32;
-        } else {
+        if (x->dtype == DTYPE_FLOAT64) {
             saved->scalar_f64 = *(const double*)scalar;
             saved->scalar_f32 = (float)saved->scalar_f64;
+        } else {
+            saved->scalar_f32 = *(const float*)scalar;
+            saved->scalar_f64 = (double)saved->scalar_f32;
         }
         grad_fn->saved_data = saved;
 
@@ -3328,8 +3328,8 @@ void backward_pow_scalar_fn(GradFn* self, Tensor* grad_output) {
     if (x->metadata && x->metadata->requires_grad) {
         float exp_m1_f32 = saved->scalar_f32 - 1.0f;
         double exp_m1_f64 = saved->scalar_f64 - 1.0;
-        void* exp_m1_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&exp_m1_f32 : (void*)&exp_m1_f64;
-        void* scalar_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&saved->scalar_f32 : (void*)&saved->scalar_f64;
+        void* exp_m1_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&exp_m1_f64 : (void*)&exp_m1_f32;
+        void* scalar_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&saved->scalar_f64 : (void*)&saved->scalar_f32;
 
         Tensor* x_pow = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
         if (!x_pow) return;
@@ -3403,12 +3403,12 @@ Tensor* op_pow_scalar(Tensor* x, const void* scalar) {
             free_tensor(out);
             return NULL;
         }
-        if (x->dtype == DTYPE_FLOAT32) {
-            saved->scalar_f32 = *(const float*)scalar;
-            saved->scalar_f64 = (double)saved->scalar_f32;
-        } else {
+        if (x->dtype == DTYPE_FLOAT64) {
             saved->scalar_f64 = *(const double*)scalar;
             saved->scalar_f32 = (float)saved->scalar_f64;
+        } else {
+            saved->scalar_f32 = *(const float*)scalar;
+            saved->scalar_f64 = (double)saved->scalar_f32;
         }
         grad_fn->saved_data = saved;
 
@@ -3498,7 +3498,7 @@ void backward_rdiv_scalar_fn(GradFn* self, Tensor* grad_output) {
     ScalarSavedData* saved = (ScalarSavedData*)self->saved_data;
 
     if (x->metadata && x->metadata->requires_grad) {
-        void* scalar_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&saved->scalar_f32 : (void*)&saved->scalar_f64;
+        void* scalar_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&saved->scalar_f64 : (void*)&saved->scalar_f32;
 
         Tensor* x_sq = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
         if (!x_sq) return;
@@ -3511,7 +3511,7 @@ void backward_rdiv_scalar_fn(GradFn* self, Tensor* grad_output) {
 
         float neg1_f32 = -1.0f;
         double neg1_f64 = -1.0;
-        void* neg1_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&neg1_f32 : (void*)&neg1_f64;
+        void* neg1_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&neg1_f64 : (void*)&neg1_f32;
         rp_mul_scalar(neg_c_over_x2->data, neg_c_over_x2->data, neg1_ptr,
                      x->size, x->dtype, x->device_id);
 
@@ -3579,12 +3579,12 @@ Tensor* op_rdiv_scalar(Tensor* x, const void* scalar) {
             free_tensor(out);
             return NULL;
         }
-        if (x->dtype == DTYPE_FLOAT32) {
-            saved->scalar_f32 = *(const float*)scalar;
-            saved->scalar_f64 = (double)saved->scalar_f32;
-        } else {
+        if (x->dtype == DTYPE_FLOAT64) {
             saved->scalar_f64 = *(const double*)scalar;
             saved->scalar_f32 = (float)saved->scalar_f64;
+        } else {
+            saved->scalar_f32 = *(const float*)scalar;
+            saved->scalar_f64 = (double)saved->scalar_f32;
         }
         grad_fn->saved_data = saved;
 
@@ -3604,7 +3604,7 @@ void backward_rpow_scalar_fn(GradFn* self, Tensor* grad_output) {
     if (x->metadata && x->metadata->requires_grad) {
         float ln_c_f32 = logf(saved->scalar_f32);
         double ln_c_f64 = log(saved->scalar_f64);
-        void* ln_c_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&ln_c_f32 : (void*)&ln_c_f64;
+        void* ln_c_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&ln_c_f64 : (void*)&ln_c_f32;
 
         Tensor* out_ln_c = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
         if (!out_ln_c) return;
@@ -3674,12 +3674,12 @@ Tensor* op_rpow_scalar(Tensor* x, const void* scalar) {
             free_tensor(out);
             return NULL;
         }
-        if (x->dtype == DTYPE_FLOAT32) {
-            saved->scalar_f32 = *(const float*)scalar;
-            saved->scalar_f64 = (double)saved->scalar_f32;
-        } else {
+        if (x->dtype == DTYPE_FLOAT64) {
             saved->scalar_f64 = *(const double*)scalar;
             saved->scalar_f32 = (float)saved->scalar_f64;
+        } else {
+            saved->scalar_f32 = *(const float*)scalar;
+            saved->scalar_f64 = (double)saved->scalar_f32;
         }
         grad_fn->saved_data = saved;
 
@@ -3698,7 +3698,7 @@ void backward_logb_scalar_fn(GradFn* self, Tensor* grad_output) {
     if (x->metadata && x->metadata->requires_grad) {
         float ln_c_f32 = logf(saved->scalar_f32);
         double ln_c_f64 = log(saved->scalar_f64);
-        void* ln_c_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&ln_c_f32 : (void*)&ln_c_f64;
+        void* ln_c_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&ln_c_f64 : (void*)&ln_c_f32;
 
         Tensor* x_ln_c = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
         if (!x_ln_c) return;
@@ -3767,12 +3767,12 @@ Tensor* op_logb_scalar(Tensor* x, const void* scalar) {
             free_tensor(out);
             return NULL;
         }
-        if (x->dtype == DTYPE_FLOAT32) {
-            saved->scalar_f32 = *(const float*)scalar;
-            saved->scalar_f64 = (double)saved->scalar_f32;
-        } else {
+        if (x->dtype == DTYPE_FLOAT64) {
             saved->scalar_f64 = *(const double*)scalar;
             saved->scalar_f32 = (float)saved->scalar_f64;
+        } else {
+            saved->scalar_f32 = *(const float*)scalar;
+            saved->scalar_f64 = (double)saved->scalar_f32;
         }
         grad_fn->saved_data = saved;
 
@@ -3791,7 +3791,7 @@ void backward_rlogb_scalar_fn(GradFn* self, Tensor* grad_output) {
     if (x->metadata && x->metadata->requires_grad) {
         float neg_ln_c_f32 = -logf(saved->scalar_f32);
         double neg_ln_c_f64 = -log(saved->scalar_f64);
-        void* neg_ln_c_ptr = (x->dtype == DTYPE_FLOAT32) ? (void*)&neg_ln_c_f32 : (void*)&neg_ln_c_f64;
+        void* neg_ln_c_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&neg_ln_c_f64 : (void*)&neg_ln_c_f32;
 
         Tensor* ln_x = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
         if (!ln_x) return;
@@ -3875,12 +3875,12 @@ Tensor* op_rlogb_scalar(Tensor* x, const void* scalar) {
             free_tensor(out);
             return NULL;
         }
-        if (x->dtype == DTYPE_FLOAT32) {
-            saved->scalar_f32 = *(const float*)scalar;
-            saved->scalar_f64 = (double)saved->scalar_f32;
-        } else {
+        if (x->dtype == DTYPE_FLOAT64) {
             saved->scalar_f64 = *(const double*)scalar;
             saved->scalar_f32 = (float)saved->scalar_f64;
+        } else {
+            saved->scalar_f32 = *(const float*)scalar;
+            saved->scalar_f64 = (double)saved->scalar_f32;
         }
         grad_fn->saved_data = saved;
 

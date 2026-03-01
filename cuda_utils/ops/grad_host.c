@@ -1,11 +1,47 @@
 #include "ops.h"
+#include "../core/half_precision.h"
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
+
+#define HALF_CHECK (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16)
+
+#define HALF_GRAD_MEMCPY(grad_c, grad_x, size, dtype) do { \
+    size_t _nbytes = (size) * dtype_size(dtype); \
+    memcpy(grad_x, grad_c, _nbytes); \
+    return 0; \
+} while(0)
+
+#define HALF_GRAD_1IN(body, grad_c, x, grad_x, size, dtype) do { \
+    float* _gc = (float*)malloc((size) * sizeof(float)); \
+    float* _x = (float*)malloc((size) * sizeof(float)); \
+    float* _gx = (float*)malloc((size) * sizeof(float)); \
+    if (!_gc || !_x || !_gx) { free(_gc); free(_x); free(_gx); return -1; } \
+    half_to_fp32_array(grad_c, _gc, size, dtype); \
+    half_to_fp32_array(x, _x, size, dtype); \
+    { body } \
+    fp32_to_half_array(_gx, (void*)(grad_x), size, dtype); \
+    free(_gc); free(_x); free(_gx); \
+    return 0; \
+} while(0)
+
+#define HALF_GRAD_1OUT(body, grad_c, fn_output, grad_x, size, dtype) do { \
+    float* _gc = (float*)malloc((size) * sizeof(float)); \
+    float* _fo = (float*)malloc((size) * sizeof(float)); \
+    float* _gx = (float*)malloc((size) * sizeof(float)); \
+    if (!_gc || !_fo || !_gx) { free(_gc); free(_fo); free(_gx); return -1; } \
+    half_to_fp32_array(grad_c, _gc, size, dtype); \
+    half_to_fp32_array(fn_output, _fo, size, dtype); \
+    { body } \
+    fp32_to_half_array(_gx, (void*)(grad_x), size, dtype); \
+    free(_gc); free(_fo); free(_gx); \
+    return 0; \
+} while(0)
 
 int backwards_add_x1_host(const void* grad_c, void* grad_x1, size_t size, DType dtype) {
     if (!grad_c || !grad_x1) return -1;
 
-    size_t element_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t element_size = dtype_size(dtype);
     size_t nbytes = size * element_size;
 
     memcpy(grad_x1, grad_c, nbytes);
@@ -15,7 +51,7 @@ int backwards_add_x1_host(const void* grad_c, void* grad_x1, size_t size, DType 
 int backwards_add_x2_host(const void* grad_c, void* grad_x2, size_t size, DType dtype) {
     if (!grad_c || !grad_x2) return -1;
 
-    size_t element_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t element_size = dtype_size(dtype);
     size_t nbytes = size * element_size;
 
     memcpy(grad_x2, grad_c, nbytes);
@@ -24,6 +60,21 @@ int backwards_add_x2_host(const void* grad_c, void* grad_x2, size_t size, DType 
 
 int backwards_mul_x1_host(const void* grad_c, const void* x2, void* grad_x1, size_t size, DType dtype) {
     if (!grad_c || !x2 || !grad_x1) return -1;
+
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* x2_f32 = (float*)malloc(size * sizeof(float));
+        float* gx1_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !x2_f32 || !gx1_f32) { free(gc_f32); free(x2_f32); free(gx1_f32); return -1; }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        half_to_fp32_array(x2, x2_f32, size, dtype);
+        for (size_t i = 0; i < size; i++) {
+            gx1_f32[i] = gc_f32[i] * x2_f32[i];
+        }
+        fp32_to_half_array(gx1_f32, grad_x1, size, dtype);
+        free(gc_f32); free(x2_f32); free(gx1_f32);
+        return 0;
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -49,6 +100,21 @@ int backwards_mul_x1_host(const void* grad_c, const void* x2, void* grad_x1, siz
 int backwards_mul_x2_host(const void* grad_c, const void* x1, void* grad_x2, size_t size, DType dtype) {
     if (!grad_c || !x1 || !grad_x2) return -1;
 
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* x1_f32 = (float*)malloc(size * sizeof(float));
+        float* gx2_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !x1_f32 || !gx2_f32) { free(gc_f32); free(x1_f32); free(gx2_f32); return -1; }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        half_to_fp32_array(x1, x1_f32, size, dtype);
+        for (size_t i = 0; i < size; i++) {
+            gx2_f32[i] = gc_f32[i] * x1_f32[i];
+        }
+        fp32_to_half_array(gx2_f32, grad_x2, size, dtype);
+        free(gc_f32); free(x1_f32); free(gx2_f32);
+        return 0;
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x1_f32 = (const float*)x1;
@@ -73,7 +139,7 @@ int backwards_mul_x2_host(const void* grad_c, const void* x1, void* grad_x2, siz
 int backwards_sub_x1_host(const void* grad_c, void* grad_x1, size_t size, DType dtype) {
     if (!grad_c || !grad_x1) return -1;
 
-    size_t element_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+    size_t element_size = dtype_size(dtype);
     size_t nbytes = size * element_size;
 
     memcpy(grad_x1, grad_c, nbytes);
@@ -82,6 +148,19 @@ int backwards_sub_x1_host(const void* grad_c, void* grad_x1, size_t size, DType 
 
 int backwards_sub_x2_host(const void* grad_c, void* grad_x2, size_t size, DType dtype) {
     if (!grad_c || !grad_x2) return -1;
+
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* gx2_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !gx2_f32) { free(gc_f32); free(gx2_f32); return -1; }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        for (size_t i = 0; i < size; i++) {
+            gx2_f32[i] = -gc_f32[i];
+        }
+        fp32_to_half_array(gx2_f32, grad_x2, size, dtype);
+        free(gc_f32); free(gx2_f32);
+        return 0;
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -104,6 +183,21 @@ int backwards_sub_x2_host(const void* grad_c, void* grad_x2, size_t size, DType 
 
 int backwards_div_x1_host(const void* grad_c, const void* x2, void* grad_x1, size_t size, DType dtype) {
     if (!grad_c || !x2 || !grad_x1) return -1;
+
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* x2_f32 = (float*)malloc(size * sizeof(float));
+        float* gx1_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !x2_f32 || !gx1_f32) { free(gc_f32); free(x2_f32); free(gx1_f32); return -1; }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        half_to_fp32_array(x2, x2_f32, size, dtype);
+        for (size_t i = 0; i < size; i++) {
+            gx1_f32[i] = gc_f32[i] / x2_f32[i];
+        }
+        fp32_to_half_array(gx1_f32, grad_x1, size, dtype);
+        free(gc_f32); free(x2_f32); free(gx1_f32);
+        return 0;
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -128,6 +222,23 @@ int backwards_div_x1_host(const void* grad_c, const void* x2, void* grad_x1, siz
 
 int backwards_div_x2_host(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype) {
     if (!grad_c || !x1 || !x2 || !grad_x2) return -1;
+
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* x1_f32 = (float*)malloc(size * sizeof(float));
+        float* x2_f32 = (float*)malloc(size * sizeof(float));
+        float* gx2_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !x1_f32 || !x2_f32 || !gx2_f32) { free(gc_f32); free(x1_f32); free(x2_f32); free(gx2_f32); return -1; }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        half_to_fp32_array(x1, x1_f32, size, dtype);
+        half_to_fp32_array(x2, x2_f32, size, dtype);
+        for (size_t i = 0; i < size; i++) {
+            gx2_f32[i] = -gc_f32[i] * x1_f32[i] / (x2_f32[i] * x2_f32[i]);
+        }
+        fp32_to_half_array(gx2_f32, grad_x2, size, dtype);
+        free(gc_f32); free(x1_f32); free(x2_f32); free(gx2_f32);
+        return 0;
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -155,6 +266,15 @@ int backwards_div_x2_host(const void* grad_c, const void* x1, const void* x2, vo
 int backwards_exp_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !fn_output || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1OUT(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] * _fo[i];
+            },
+            grad_c, fn_output, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* fn_output_f32 = (const float*)fn_output;
@@ -178,6 +298,15 @@ int backwards_exp_host(const void* grad_c, const void* fn_output, void* grad_x, 
 
 int backwards_log_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
+
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] / _x[i];
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -203,6 +332,15 @@ int backwards_log_host(const void* grad_c, const void* x, void* grad_x, size_t s
 int backwards_sqrt_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !fn_output || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1OUT(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = 0.5f * _gc[i] / _fo[i];
+            },
+            grad_c, fn_output, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* fn_output_f32 = (const float*)fn_output;
@@ -227,6 +365,15 @@ int backwards_sqrt_host(const void* grad_c, const void* fn_output, void* grad_x,
 int backwards_tanh_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !fn_output || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1OUT(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] * (1.0f - _fo[i] * _fo[i]);
+            },
+            grad_c, fn_output, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* fn_output_f32 = (const float*)fn_output;
@@ -250,6 +397,28 @@ int backwards_tanh_host(const void* grad_c, const void* fn_output, void* grad_x,
 
 int backwards_power_x1_host(const void* grad_c, const void* x1, const void* x2, const void* out, void* grad_x1, size_t size, DType dtype) {
     if (!grad_c || !x1 || !x2 || !out || !grad_x1) return -1;
+
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* x1_f32 = (float*)malloc(size * sizeof(float));
+        float* x2_f32 = (float*)malloc(size * sizeof(float));
+        float* out_f32 = (float*)malloc(size * sizeof(float));
+        float* gx1_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !x1_f32 || !x2_f32 || !out_f32 || !gx1_f32) {
+            free(gc_f32); free(x1_f32); free(x2_f32); free(out_f32); free(gx1_f32);
+            return -1;
+        }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        half_to_fp32_array(x1, x1_f32, size, dtype);
+        half_to_fp32_array(x2, x2_f32, size, dtype);
+        half_to_fp32_array(out, out_f32, size, dtype);
+        for (size_t i = 0; i < size; i++) {
+            gx1_f32[i] = gc_f32[i] * x2_f32[i] * out_f32[i] / x1_f32[i];
+        }
+        fp32_to_half_array(gx1_f32, grad_x1, size, dtype);
+        free(gc_f32); free(x1_f32); free(x2_f32); free(out_f32); free(gx1_f32);
+        return 0;
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -279,6 +448,26 @@ int backwards_power_x1_host(const void* grad_c, const void* x1, const void* x2, 
 int backwards_power_x2_host(const void* grad_c, const void* x1, const void* out, void* grad_x2, size_t size, DType dtype) {
     if (!grad_c || !x1 || !out || !grad_x2) return -1;
 
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* x1_f32 = (float*)malloc(size * sizeof(float));
+        float* out_f32 = (float*)malloc(size * sizeof(float));
+        float* gx2_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !x1_f32 || !out_f32 || !gx2_f32) {
+            free(gc_f32); free(x1_f32); free(out_f32); free(gx2_f32);
+            return -1;
+        }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        half_to_fp32_array(x1, x1_f32, size, dtype);
+        half_to_fp32_array(out, out_f32, size, dtype);
+        for (size_t i = 0; i < size; i++) {
+            gx2_f32[i] = gc_f32[i] * out_f32[i] * logf(x1_f32[i]);
+        }
+        fp32_to_half_array(gx2_f32, grad_x2, size, dtype);
+        free(gc_f32); free(x1_f32); free(out_f32); free(gx2_f32);
+        return 0;
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x1_f32 = (const float*)x1;
@@ -305,6 +494,26 @@ int backwards_power_x2_host(const void* grad_c, const void* x1, const void* out,
 int backwards_logb_x1_host(const void* grad_c, const void* x1, const void* x2, void* grad_x1, size_t size, DType dtype) {
     if (!grad_c || !x1 || !x2 || !grad_x1) return -1;
 
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* x1_f32 = (float*)malloc(size * sizeof(float));
+        float* x2_f32 = (float*)malloc(size * sizeof(float));
+        float* gx1_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !x1_f32 || !x2_f32 || !gx1_f32) {
+            free(gc_f32); free(x1_f32); free(x2_f32); free(gx1_f32);
+            return -1;
+        }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        half_to_fp32_array(x1, x1_f32, size, dtype);
+        half_to_fp32_array(x2, x2_f32, size, dtype);
+        for (size_t i = 0; i < size; i++) {
+            gx1_f32[i] = gc_f32[i] / (x1_f32[i] * logf(x2_f32[i]));
+        }
+        fp32_to_half_array(gx1_f32, grad_x1, size, dtype);
+        free(gc_f32); free(x1_f32); free(x2_f32); free(gx1_f32);
+        return 0;
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x1_f32 = (const float*)x1;
@@ -330,6 +539,27 @@ int backwards_logb_x1_host(const void* grad_c, const void* x1, const void* x2, v
 
 int backwards_logb_x2_host(const void* grad_c, const void* x1, const void* x2, void* grad_x2, size_t size, DType dtype) {
     if (!grad_c || !x1 || !x2 || !grad_x2) return -1;
+
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* x1_f32 = (float*)malloc(size * sizeof(float));
+        float* x2_f32 = (float*)malloc(size * sizeof(float));
+        float* gx2_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !x1_f32 || !x2_f32 || !gx2_f32) {
+            free(gc_f32); free(x1_f32); free(x2_f32); free(gx2_f32);
+            return -1;
+        }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        half_to_fp32_array(x1, x1_f32, size, dtype);
+        half_to_fp32_array(x2, x2_f32, size, dtype);
+        for (size_t i = 0; i < size; i++) {
+            float log_x2 = logf(x2_f32[i]);
+            gx2_f32[i] = -gc_f32[i] * logf(x1_f32[i]) / (x2_f32[i] * log_x2 * log_x2);
+        }
+        fp32_to_half_array(gx2_f32, grad_x2, size, dtype);
+        free(gc_f32); free(x1_f32); free(x2_f32); free(gx2_f32);
+        return 0;
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -359,6 +589,15 @@ int backwards_logb_x2_host(const void* grad_c, const void* x1, const void* x2, v
 int backwards_relu_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = (_x[i] > 0.0f) ? _gc[i] : 0.0f;
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x_f32 = (const float*)x;
@@ -382,6 +621,15 @@ int backwards_relu_host(const void* grad_c, const void* x, void* grad_x, size_t 
 
 int backwards_sigmoid_host(const void* grad_c, const void* fn_output, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !fn_output || !grad_x) return -1;
+
+    if (HALF_CHECK) {
+        HALF_GRAD_1OUT(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] * _fo[i] * (1.0f - _fo[i]);
+            },
+            grad_c, fn_output, grad_x, size, dtype
+        );
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -407,6 +655,15 @@ int backwards_sigmoid_host(const void* grad_c, const void* fn_output, void* grad
 int backwards_square_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] * 2.0f * _x[i];
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x_f32 = (const float*)x;
@@ -430,6 +687,21 @@ int backwards_square_host(const void* grad_c, const void* x, void* grad_x, size_
 
 int backwards_abs_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
+
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                if (_x[i] > 0.0f) {
+                    _gx[i] = _gc[i];
+                } else if (_x[i] < 0.0f) {
+                    _gx[i] = -_gc[i];
+                } else {
+                    _gx[i] = 0.0f;
+                }
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -467,6 +739,15 @@ int backwards_abs_host(const void* grad_c, const void* x, void* grad_x, size_t s
 int backwards_sin_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] * cosf(_x[i]);
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x_f32 = (const float*)x;
@@ -491,6 +772,15 @@ int backwards_sin_host(const void* grad_c, const void* x, void* grad_x, size_t s
 int backwards_cos_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = -_gc[i] * sinf(_x[i]);
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x_f32 = (const float*)x;
@@ -514,6 +804,16 @@ int backwards_cos_host(const void* grad_c, const void* x, void* grad_x, size_t s
 
 int backwards_tan_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
+
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                float cos_x = cosf(_x[i]);
+                _gx[i] = _gc[i] / (cos_x * cos_x);
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -541,6 +841,15 @@ int backwards_tan_host(const void* grad_c, const void* x, void* grad_x, size_t s
 int backwards_asin_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] / sqrtf(1.0f - _x[i] * _x[i]);
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x_f32 = (const float*)x;
@@ -564,6 +873,15 @@ int backwards_asin_host(const void* grad_c, const void* x, void* grad_x, size_t 
 
 int backwards_acos_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
+
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = -_gc[i] / sqrtf(1.0f - _x[i] * _x[i]);
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -589,6 +907,15 @@ int backwards_acos_host(const void* grad_c, const void* x, void* grad_x, size_t 
 int backwards_atan_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] / (1.0f + _x[i] * _x[i]);
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x_f32 = (const float*)x;
@@ -612,6 +939,15 @@ int backwards_atan_host(const void* grad_c, const void* x, void* grad_x, size_t 
 
 int backwards_sinh_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
+
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] * coshf(_x[i]);
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -637,6 +973,15 @@ int backwards_sinh_host(const void* grad_c, const void* x, void* grad_x, size_t 
 int backwards_cosh_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                _gx[i] = _gc[i] * sinhf(_x[i]);
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x_f32 = (const float*)x;
@@ -660,6 +1005,26 @@ int backwards_cosh_host(const void* grad_c, const void* x, void* grad_x, size_t 
 
 int backwards_gelu_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
+
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            const float sqrt_2_over_pi = 0.7978845608f;
+            const float coeff = 0.044715f;
+            const float coeff3 = 0.134145f;
+            for (size_t i = 0; i < size; i++) {
+                float x_val = _x[i];
+                float x_sq = x_val * x_val;
+                float x_cubed = x_sq * x_val;
+                float inner = sqrt_2_over_pi * (x_val + coeff * x_cubed);
+                float tanh_inner = tanhf(inner);
+                float sech2_inner = 1.0f - tanh_inner * tanh_inner;
+                float d_inner = sqrt_2_over_pi * (1.0f + coeff3 * x_sq);
+                float gelu_grad = 0.5f * (1.0f + tanh_inner + x_val * sech2_inner * d_inner);
+                _gx[i] = _gc[i] * gelu_grad;
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -709,6 +1074,18 @@ int backwards_gelu_host(const void* grad_c, const void* x, void* grad_x, size_t 
 int backwards_silu_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                float x_val = _x[i];
+                float sigmoid = 1.0f / (1.0f + expf(-x_val));
+                float silu_grad = sigmoid * (1.0f + x_val * (1.0f - sigmoid));
+                _gx[i] = _gc[i] * silu_grad;
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x_f32 = (const float*)x;
@@ -739,6 +1116,22 @@ int backwards_silu_host(const void* grad_c, const void* x, void* grad_x, size_t 
 int backwards_leaky_relu_host(const void* grad_c, const void* x, const void* alpha, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !alpha || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        float* gc_f32 = (float*)malloc(size * sizeof(float));
+        float* x_f32 = (float*)malloc(size * sizeof(float));
+        float* gx_f32 = (float*)malloc(size * sizeof(float));
+        if (!gc_f32 || !x_f32 || !gx_f32) { free(gc_f32); free(x_f32); free(gx_f32); return -1; }
+        half_to_fp32_array(grad_c, gc_f32, size, dtype);
+        half_to_fp32_array(x, x_f32, size, dtype);
+        float alpha_val = *(const float*)alpha;
+        for (size_t i = 0; i < size; i++) {
+            gx_f32[i] = gc_f32[i] * ((x_f32[i] > 0.0f) ? 1.0f : alpha_val);
+        }
+        fp32_to_half_array(gx_f32, grad_x, size, dtype);
+        free(gc_f32); free(x_f32); free(gx_f32);
+        return 0;
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
         const float* x_f32 = (const float*)x;
@@ -764,6 +1157,16 @@ int backwards_leaky_relu_host(const void* grad_c, const void* x, const void* alp
 
 int backwards_rsqrt_host(const void* grad_c, const void* x, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !x || !grad_x) return -1;
+
+    if (HALF_CHECK) {
+        HALF_GRAD_1IN(
+            for (size_t i = 0; i < size; i++) {
+                float x_val = _x[i];
+                _gx[i] = _gc[i] * (-0.5f) / (x_val * sqrtf(x_val));
+            },
+            grad_c, x, grad_x, size, dtype
+        );
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         const float* grad_c_f32 = (const float*)grad_c;
@@ -791,6 +1194,19 @@ int backwards_rsqrt_host(const void* grad_c, const void* x, void* grad_x, size_t
 int backwards_sum_all_host(const void* grad_c, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !grad_x) return -1;
 
+    if (HALF_CHECK) {
+        float gc_f32;
+        half_to_fp32_array(grad_c, &gc_f32, 1, dtype);
+        float* gx_f32 = (float*)malloc(size * sizeof(float));
+        if (!gx_f32) return -1;
+        for (size_t i = 0; i < size; i++) {
+            gx_f32[i] = gc_f32;
+        }
+        fp32_to_half_array(gx_f32, grad_x, size, dtype);
+        free(gx_f32);
+        return 0;
+    }
+
     if (dtype == DTYPE_FLOAT32) {
         float val = *(const float*)grad_c;
         float* grad_x_f32 = (float*)grad_x;
@@ -810,6 +1226,20 @@ int backwards_sum_all_host(const void* grad_c, void* grad_x, size_t size, DType 
 
 int backwards_mean_all_host(const void* grad_c, void* grad_x, size_t size, DType dtype) {
     if (!grad_c || !grad_x) return -1;
+
+    if (HALF_CHECK) {
+        float gc_f32;
+        half_to_fp32_array(grad_c, &gc_f32, 1, dtype);
+        float val = gc_f32 / (float)size;
+        float* gx_f32 = (float*)malloc(size * sizeof(float));
+        if (!gx_f32) return -1;
+        for (size_t i = 0; i < size; i++) {
+            gx_f32[i] = val;
+        }
+        fp32_to_half_array(gx_f32, grad_x, size, dtype);
+        free(gx_f32);
+        return 0;
+    }
 
     if (dtype == DTYPE_FLOAT32) {
         float val = *(const float*)grad_c / (float)size;

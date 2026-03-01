@@ -17,6 +17,8 @@ static DType parse_dtype(const char* dtype_str) {
     if (dtype_str == NULL) return DTYPE_PRESERVE;
     if (strcmp(dtype_str, "float32") == 0) return DTYPE_FLOAT32;
     if (strcmp(dtype_str, "float64") == 0) return DTYPE_FLOAT64;
+    if (strcmp(dtype_str, "float16") == 0) return DTYPE_FLOAT16;
+    if (strcmp(dtype_str, "bfloat16") == 0) return DTYPE_BFLOAT16;
     return DTYPE_PRESERVE;
 }
 
@@ -24,6 +26,8 @@ static const char* dtype_to_string(DType dtype) {
     switch (dtype) {
         case DTYPE_FLOAT32: return "float32";
         case DTYPE_FLOAT64: return "float64";
+        case DTYPE_FLOAT16: return "float16";
+        case DTYPE_BFLOAT16: return "bfloat16";
         default: return "unknown";
     }
 }
@@ -218,7 +222,7 @@ static PyObject* PyTensor_to(PyTensorObject* self, PyObject* args, PyObject* kwa
     if (dtype_str != NULL) {
         target_dtype = parse_dtype(dtype_str);
         if (target_dtype == DTYPE_PRESERVE) {
-            PyErr_SetString(PyExc_ValueError, "Invalid dtype. Use 'float32' or 'float64'");
+            PyErr_SetString(PyExc_ValueError, "Invalid dtype. Use 'float32', 'float64', 'float16', or 'bfloat16'");
             return NULL;
         }
     }
@@ -2164,10 +2168,31 @@ static PyObject* module_values(PyObject* self, PyObject* args, PyObject* kwargs)
             }
         }
         data_buffer = data_f64;
+    } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+        float* data_f32 = (float*)malloc(size * sizeof(float));
+        if (data_f32 == NULL) {
+            PyErr_NoMemory();
+            return NULL;
+        }
+        for (Py_ssize_t i = 0; i < size; i++) {
+            PyObject* item = PySequence_GetItem(data_obj, i);
+            if (item == NULL) {
+                free(data_f32);
+                return NULL;
+            }
+            data_f32[i] = (float)PyFloat_AsDouble(item);
+            Py_DECREF(item);
+            if (PyErr_Occurred()) {
+                free(data_f32);
+                return NULL;
+            }
+        }
+        data_buffer = data_f32;
     }
 
+    DType src_dtype = (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) ? DTYPE_FLOAT32 : dtype;
     int shape[1] = {(int)size};
-    Tensor* tensor = values_tensor(data_buffer, dtype, dtype, -1, device_id, 1, shape, NULL);
+    Tensor* tensor = values_tensor(data_buffer, src_dtype, dtype, -1, device_id, 1, shape, NULL);
     free(data_buffer);
 
     if (tensor == NULL) {
