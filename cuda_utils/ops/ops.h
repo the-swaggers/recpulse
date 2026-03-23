@@ -64,6 +64,9 @@ Tensor* op_repeat(Tensor* src, int* repeats);
 Tensor* op_sum_all(Tensor* x);
 Tensor* op_mean_all(Tensor* x);
 
+Tensor* op_sum_dim(Tensor* x, int dim, bool keepdim);
+Tensor* op_mean_dim(Tensor* x, int dim, bool keepdim);
+
 Tensor* op_add_scalar(Tensor* x, const void* scalar);
 Tensor* op_sub_scalar(Tensor* x, const void* scalar);
 Tensor* op_mul_scalar(Tensor* x, const void* scalar);
@@ -158,8 +161,14 @@ int backwards_rsqrt_host(const void* grad_c, const void* x, void* grad_x, size_t
 int backwards_sum_all(const void* grad_c, void* grad_x, size_t size, DType dtype, int device_id);
 int backwards_mean_all(const void* grad_c, void* grad_x, size_t size, DType dtype, int device_id);
 
+int backwards_sum_dim(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
+int backwards_mean_dim(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
+
 int backwards_sum_all_host(const void* grad_c, void* grad_x, size_t size, DType dtype);
 int backwards_mean_all_host(const void* grad_c, void* grad_x, size_t size, DType dtype);
+
+int backwards_sum_dim_host(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
+int backwards_mean_dim_host(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
 
 int backwards_add_x1_device(const void* grad_c, void* grad_x1, size_t size, DType dtype);
 int backwards_add_x2_device(const void* grad_c, void* grad_x2, size_t size, DType dtype);
@@ -202,6 +211,9 @@ int backwards_rsqrt_device(const void* grad_c, const void* x, void* grad_x, size
 
 int backwards_sum_all_device(const void* grad_c, void* grad_x, size_t size, DType dtype);
 int backwards_mean_all_device(const void* grad_c, void* grad_x, size_t size, DType dtype);
+
+int backwards_sum_dim_device(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
+int backwards_mean_dim_device(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
 
 void free_grad_fn(GradFn* grad_fn);
 

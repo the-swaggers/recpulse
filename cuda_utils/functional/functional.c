@@ -496,6 +496,62 @@ int rp_mean_all(void* out, const void* x, size_t size, DType dtype, int device_i
     return mean_all_kernel_device(out, x, size, dtype);
 }
 
+int rp_sum_dim(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id) {
+    if (!out || !x) return -1;
+
+    size_t out_size = outer_size * inner_size;
+    size_t in_size = outer_size * dim_size * inner_size;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return sum_dim_kernel_host_f32((float*)out, (const float*)x, outer_size, dim_size, inner_size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return sum_dim_kernel_host_f64((double*)out, (const double*)x, outer_size, dim_size, inner_size);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            float* x_f32 = (float*)malloc(in_size * sizeof(float));
+            float* out_f32 = (float*)malloc(out_size * sizeof(float));
+            if (!x_f32 || !out_f32) { free(x_f32); free(out_f32); return -1; }
+            half_to_fp32_array(x, x_f32, in_size, dtype);
+            int ret = sum_dim_kernel_host_f32(out_f32, x_f32, outer_size, dim_size, inner_size);
+            if (ret == 0) fp32_to_half_array(out_f32, out, out_size, dtype);
+            free(x_f32); free(out_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return sum_dim_kernel_device(out, x, outer_size, dim_size, inner_size, dtype);
+}
+
+int rp_mean_dim(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id) {
+    if (!out || !x) return -1;
+
+    size_t out_size = outer_size * inner_size;
+    size_t in_size = outer_size * dim_size * inner_size;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return mean_dim_kernel_host_f32((float*)out, (const float*)x, outer_size, dim_size, inner_size);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return mean_dim_kernel_host_f64((double*)out, (const double*)x, outer_size, dim_size, inner_size);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            float* x_f32 = (float*)malloc(in_size * sizeof(float));
+            float* out_f32 = (float*)malloc(out_size * sizeof(float));
+            if (!x_f32 || !out_f32) { free(x_f32); free(out_f32); return -1; }
+            half_to_fp32_array(x, x_f32, in_size, dtype);
+            int ret = mean_dim_kernel_host_f32(out_f32, x_f32, outer_size, dim_size, inner_size);
+            if (ret == 0) fp32_to_half_array(out_f32, out, out_size, dtype);
+            free(x_f32); free(out_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return mean_dim_kernel_device(out, x, outer_size, dim_size, inner_size, dtype);
+}
+
 int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id) {
     if (!C || !A || !B || m <= 0 || k <= 0 || n <= 0) return -1;
 

@@ -1347,3 +1347,141 @@ int repeat_kernel_device(void* out, const void* in, int ndim, int* src_shape, in
     cudaDeviceSynchronize();
     return 0;
 }
+
+template<typename T>
+__global__ void sum_dim_kernel(const T* x, T* out, size_t outer_size, size_t dim_size, size_t inner_size, size_t out_size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < out_size) {
+        size_t o = idx / inner_size;
+        size_t i = idx % inner_size;
+        T sum = T(0);
+        for (size_t d = 0; d < dim_size; d++) {
+            sum = sum + x[o * dim_size * inner_size + d * inner_size + i];
+        }
+        out[idx] = sum;
+    }
+}
+
+template<>
+__global__ void sum_dim_kernel<__half>(const __half* x, __half* out, size_t outer_size, size_t dim_size, size_t inner_size, size_t out_size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < out_size) {
+        size_t o = idx / inner_size;
+        size_t i = idx % inner_size;
+        float sum = 0.0f;
+        for (size_t d = 0; d < dim_size; d++) {
+            sum += __half2float(x[o * dim_size * inner_size + d * inner_size + i]);
+        }
+        out[idx] = __float2half(sum);
+    }
+}
+
+template<>
+__global__ void sum_dim_kernel<__nv_bfloat16>(const __nv_bfloat16* x, __nv_bfloat16* out, size_t outer_size, size_t dim_size, size_t inner_size, size_t out_size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < out_size) {
+        size_t o = idx / inner_size;
+        size_t i = idx % inner_size;
+        float sum = 0.0f;
+        for (size_t d = 0; d < dim_size; d++) {
+            sum += __bfloat162float(x[o * dim_size * inner_size + d * inner_size + i]);
+        }
+        out[idx] = __float2bfloat16(sum);
+    }
+}
+
+int sum_dim_kernel_device(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    if (!out || !x) return -1;
+
+    size_t out_size = outer_size * inner_size;
+    int block_size = 256;
+    int num_blocks = (out_size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        sum_dim_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)x, (float*)out, outer_size, dim_size, inner_size, out_size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        sum_dim_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)x, (double*)out, outer_size, dim_size, inner_size, out_size);
+    } else if (dtype == DTYPE_FLOAT16) {
+        sum_dim_kernel<__half><<<num_blocks, block_size>>>(
+            (const __half*)x, (__half*)out, outer_size, dim_size, inner_size, out_size);
+    } else if (dtype == DTYPE_BFLOAT16) {
+        sum_dim_kernel<__nv_bfloat16><<<num_blocks, block_size>>>(
+            (const __nv_bfloat16*)x, (__nv_bfloat16*)out, outer_size, dim_size, inner_size, out_size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}
+
+template<typename T>
+__global__ void mean_dim_kernel(const T* x, T* out, size_t outer_size, size_t dim_size, size_t inner_size, size_t out_size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < out_size) {
+        size_t o = idx / inner_size;
+        size_t i = idx % inner_size;
+        T sum = T(0);
+        for (size_t d = 0; d < dim_size; d++) {
+            sum = sum + x[o * dim_size * inner_size + d * inner_size + i];
+        }
+        out[idx] = sum / T(dim_size);
+    }
+}
+
+template<>
+__global__ void mean_dim_kernel<__half>(const __half* x, __half* out, size_t outer_size, size_t dim_size, size_t inner_size, size_t out_size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < out_size) {
+        size_t o = idx / inner_size;
+        size_t i = idx % inner_size;
+        float sum = 0.0f;
+        for (size_t d = 0; d < dim_size; d++) {
+            sum += __half2float(x[o * dim_size * inner_size + d * inner_size + i]);
+        }
+        out[idx] = __float2half(sum / (float)dim_size);
+    }
+}
+
+template<>
+__global__ void mean_dim_kernel<__nv_bfloat16>(const __nv_bfloat16* x, __nv_bfloat16* out, size_t outer_size, size_t dim_size, size_t inner_size, size_t out_size) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < out_size) {
+        size_t o = idx / inner_size;
+        size_t i = idx % inner_size;
+        float sum = 0.0f;
+        for (size_t d = 0; d < dim_size; d++) {
+            sum += __bfloat162float(x[o * dim_size * inner_size + d * inner_size + i]);
+        }
+        out[idx] = __float2bfloat16(sum / (float)dim_size);
+    }
+}
+
+int mean_dim_kernel_device(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    if (!out || !x) return -1;
+
+    size_t out_size = outer_size * inner_size;
+    int block_size = 256;
+    int num_blocks = (out_size + block_size - 1) / block_size;
+
+    if (dtype == DTYPE_FLOAT32) {
+        mean_dim_kernel<float><<<num_blocks, block_size>>>(
+            (const float*)x, (float*)out, outer_size, dim_size, inner_size, out_size);
+    } else if (dtype == DTYPE_FLOAT64) {
+        mean_dim_kernel<double><<<num_blocks, block_size>>>(
+            (const double*)x, (double*)out, outer_size, dim_size, inner_size, out_size);
+    } else if (dtype == DTYPE_FLOAT16) {
+        mean_dim_kernel<__half><<<num_blocks, block_size>>>(
+            (const __half*)x, (__half*)out, outer_size, dim_size, inner_size, out_size);
+    } else if (dtype == DTYPE_BFLOAT16) {
+        mean_dim_kernel<__nv_bfloat16><<<num_blocks, block_size>>>(
+            (const __nv_bfloat16*)x, (__nv_bfloat16*)out, outer_size, dim_size, inner_size, out_size);
+    }
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return -1;
+
+    return 0;
+}

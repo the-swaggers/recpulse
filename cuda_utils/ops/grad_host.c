@@ -1257,3 +1257,102 @@ int backwards_mean_all_host(const void* grad_c, void* grad_x, size_t size, DType
 
     return 0;
 }
+
+int backwards_sum_dim_host(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    if (!grad_c || !grad_x) return -1;
+
+    size_t total = outer_size * dim_size * inner_size;
+
+    if (HALF_CHECK) {
+        size_t gc_size = outer_size * inner_size;
+        float* gc_f32 = (float*)malloc(gc_size * sizeof(float));
+        float* gx_f32 = (float*)malloc(total * sizeof(float));
+        if (!gc_f32 || !gx_f32) { free(gc_f32); free(gx_f32); return -1; }
+        half_to_fp32_array(grad_c, gc_f32, gc_size, dtype);
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t d = 0; d < dim_size; d++) {
+                for (size_t i = 0; i < inner_size; i++) {
+                    gx_f32[o * dim_size * inner_size + d * inner_size + i] = gc_f32[o * inner_size + i];
+                }
+            }
+        }
+        fp32_to_half_array(gx_f32, grad_x, total, dtype);
+        free(gc_f32); free(gx_f32);
+        return 0;
+    }
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* gc = (const float*)grad_c;
+        float* gx = (float*)grad_x;
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t d = 0; d < dim_size; d++) {
+                for (size_t i = 0; i < inner_size; i++) {
+                    gx[o * dim_size * inner_size + d * inner_size + i] = gc[o * inner_size + i];
+                }
+            }
+        }
+    } else {
+        const double* gc = (const double*)grad_c;
+        double* gx = (double*)grad_x;
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t d = 0; d < dim_size; d++) {
+                for (size_t i = 0; i < inner_size; i++) {
+                    gx[o * dim_size * inner_size + d * inner_size + i] = gc[o * inner_size + i];
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+int backwards_mean_dim_host(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    if (!grad_c || !grad_x) return -1;
+
+    size_t total = outer_size * dim_size * inner_size;
+
+    if (HALF_CHECK) {
+        size_t gc_size = outer_size * inner_size;
+        float* gc_f32 = (float*)malloc(gc_size * sizeof(float));
+        float* gx_f32 = (float*)malloc(total * sizeof(float));
+        if (!gc_f32 || !gx_f32) { free(gc_f32); free(gx_f32); return -1; }
+        half_to_fp32_array(grad_c, gc_f32, gc_size, dtype);
+        float divisor = (float)dim_size;
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t d = 0; d < dim_size; d++) {
+                for (size_t i = 0; i < inner_size; i++) {
+                    gx_f32[o * dim_size * inner_size + d * inner_size + i] = gc_f32[o * inner_size + i] / divisor;
+                }
+            }
+        }
+        fp32_to_half_array(gx_f32, grad_x, total, dtype);
+        free(gc_f32); free(gx_f32);
+        return 0;
+    }
+
+    if (dtype == DTYPE_FLOAT32) {
+        const float* gc = (const float*)grad_c;
+        float* gx = (float*)grad_x;
+        float divisor = (float)dim_size;
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t d = 0; d < dim_size; d++) {
+                for (size_t i = 0; i < inner_size; i++) {
+                    gx[o * dim_size * inner_size + d * inner_size + i] = gc[o * inner_size + i] / divisor;
+                }
+            }
+        }
+    } else {
+        const double* gc = (const double*)grad_c;
+        double* gx = (double*)grad_x;
+        double divisor = (double)dim_size;
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t d = 0; d < dim_size; d++) {
+                for (size_t i = 0; i < inner_size; i++) {
+                    gx[o * dim_size * inner_size + d * inner_size + i] = gc[o * inner_size + i] / divisor;
+                }
+            }
+        }
+    }
+
+    return 0;
+}

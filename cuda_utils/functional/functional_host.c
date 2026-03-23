@@ -1,4 +1,5 @@
 #include "functional.h"
+#include "../core/half_precision.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -721,6 +722,58 @@ double mean_all_kernel_host_f64(const double* x, size_t size) {
     return sum_all_kernel_host_f64(x, size) / (double)size;
 }
 
+int sum_dim_kernel_host_f32(float* out, const float* x, size_t outer_size, size_t dim_size, size_t inner_size) {
+    if (!out || !x) return -1;
+    for (size_t o = 0; o < outer_size; o++) {
+        for (size_t i = 0; i < inner_size; i++) {
+            float sum = 0.0f;
+            for (size_t d = 0; d < dim_size; d++) {
+                sum += x[o * dim_size * inner_size + d * inner_size + i];
+            }
+            out[o * inner_size + i] = sum;
+        }
+    }
+    return 0;
+}
+
+int sum_dim_kernel_host_f64(double* out, const double* x, size_t outer_size, size_t dim_size, size_t inner_size) {
+    if (!out || !x) return -1;
+    for (size_t o = 0; o < outer_size; o++) {
+        for (size_t i = 0; i < inner_size; i++) {
+            double sum = 0.0;
+            for (size_t d = 0; d < dim_size; d++) {
+                sum += x[o * dim_size * inner_size + d * inner_size + i];
+            }
+            out[o * inner_size + i] = sum;
+        }
+    }
+    return 0;
+}
+
+int mean_dim_kernel_host_f32(float* out, const float* x, size_t outer_size, size_t dim_size, size_t inner_size) {
+    if (!out || !x) return -1;
+    int ret = sum_dim_kernel_host_f32(out, x, outer_size, dim_size, inner_size);
+    if (ret != 0) return ret;
+    size_t out_size = outer_size * inner_size;
+    float divisor = (float)dim_size;
+    for (size_t i = 0; i < out_size; i++) {
+        out[i] /= divisor;
+    }
+    return 0;
+}
+
+int mean_dim_kernel_host_f64(double* out, const double* x, size_t outer_size, size_t dim_size, size_t inner_size) {
+    if (!out || !x) return -1;
+    int ret = sum_dim_kernel_host_f64(out, x, outer_size, dim_size, inner_size);
+    if (ret != 0) return ret;
+    size_t out_size = outer_size * inner_size;
+    double divisor = (double)dim_size;
+    for (size_t i = 0; i < out_size; i++) {
+        out[i] /= divisor;
+    }
+    return 0;
+}
+
 int matmul_kernel_host_f32(float* C, const float* A, const float* B, int m, int k, int n) {
     if (!C || !A || !B || m <= 0 || k <= 0 || n <= 0) return -1;
 
@@ -777,7 +830,7 @@ Tensor* cat_kernel_host(Tensor** tensors, int num_tensors, int dim) {
 
     for (int t = 0; t < num_tensors; t++) {
         Tensor* src = tensors[t];
-        size_t elem_size = (dtype == DTYPE_FLOAT32) ? sizeof(float) : sizeof(double);
+        size_t elem_size = dtype_size(dtype);
 
         if (ndim == 1) {
             void* dst_ptr = (char*)out->data + offset_in_cat_dim * elem_size;
@@ -806,11 +859,9 @@ Tensor* cat_kernel_host(Tensor** tensors, int num_tensors, int dim) {
 
                 indices[dim] -= offset_in_cat_dim;
 
-                if (dtype == DTYPE_FLOAT32) {
-                    ((float*)out->data)[out_idx] = ((float*)src->data)[i];
-                } else {
-                    ((double*)out->data)[out_idx] = ((double*)src->data)[i];
-                }
+                memcpy((char*)out->data + out_idx * elem_size,
+                       (char*)src->data + i * elem_size,
+                       elem_size);
             }
 
             free(indices);

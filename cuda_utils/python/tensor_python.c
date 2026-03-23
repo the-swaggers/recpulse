@@ -398,12 +398,12 @@ static PyObject* PyTensor_##name(PyTensorObject* self, PyObject* args) { \
     void* scalar_ptr; \
     float scalar_f32; \
     double scalar_f64; \
-    if (a->dtype == DTYPE_FLOAT32) { \
-        scalar_f32 = (float)scalar_val; \
-        scalar_ptr = &scalar_f32; \
-    } else { \
+    if (a->dtype == DTYPE_FLOAT64) { \
         scalar_f64 = scalar_val; \
         scalar_ptr = &scalar_f64; \
+    } else { \
+        scalar_f32 = (float)scalar_val; \
+        scalar_ptr = &scalar_f32; \
     } \
     int status = func(result->data, a->data, scalar_ptr, a->size, a->dtype, a->device_id); \
     if (status != 0) { \
@@ -440,12 +440,12 @@ static PyObject* PyTensor_##name(PyTensorObject* self, PyObject* args) { \
     void* scalar_ptr; \
     float scalar_f32; \
     double scalar_f64; \
-    if (a->dtype == DTYPE_FLOAT32) { \
-        scalar_f32 = (float)scalar_val; \
-        scalar_ptr = &scalar_f32; \
-    } else { \
+    if (a->dtype == DTYPE_FLOAT64) { \
         scalar_f64 = scalar_val; \
         scalar_ptr = &scalar_f64; \
+    } else { \
+        scalar_f32 = (float)scalar_val; \
+        scalar_ptr = &scalar_f32; \
     } \
     int status = func(result->data, scalar_ptr, a->data, a->size, a->dtype, a->device_id); \
     if (status != 0) { \
@@ -596,6 +596,210 @@ static PyObject* PyTensor_mean_all(PyTensorObject* self, PyObject* Py_UNUSED(ign
 
     PyErr_SetString(PyExc_RuntimeError, "Unsupported dtype");
     return NULL;
+}
+
+static PyObject* PyTensor_sum_dim(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
+        return NULL;
+    }
+
+    int dim;
+    int keepdim = 0;
+    static char* kwlist[] = {"dim", "keepdim", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "i|p", kwlist, &dim, &keepdim))
+        return NULL;
+
+    Tensor* a = self->tensor;
+
+    int normalized_dim = dim;
+    if (normalized_dim < 0) normalized_dim += a->ndim;
+    if (normalized_dim < 0 || normalized_dim >= a->ndim) {
+        PyErr_SetString(PyExc_ValueError, "dim out of range");
+        return NULL;
+    }
+
+    Tensor* input = a;
+    bool made_contiguous = false;
+    if (!rp_is_contiguous(a)) {
+        input = rp_contiguous(a);
+        if (!input) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous");
+            return NULL;
+        }
+        made_contiguous = true;
+    }
+
+    size_t outer_size = 1;
+    for (int i = 0; i < normalized_dim; i++) outer_size *= input->shape[i];
+    size_t dim_size = input->shape[normalized_dim];
+    size_t inner_size = 1;
+    for (int i = normalized_dim + 1; i < input->ndim; i++) inner_size *= input->shape[i];
+
+    int out_ndim;
+    int* out_shape;
+    if (keepdim) {
+        out_ndim = input->ndim;
+        out_shape = (int*)malloc(out_ndim * sizeof(int));
+        if (!out_shape) { if (made_contiguous) free_tensor(input); return PyErr_NoMemory(); }
+        memcpy(out_shape, input->shape, out_ndim * sizeof(int));
+        out_shape[normalized_dim] = 1;
+    } else {
+        out_ndim = input->ndim - 1;
+        if (out_ndim == 0) out_ndim = 1;
+        out_shape = (int*)malloc(out_ndim * sizeof(int));
+        if (!out_shape) { if (made_contiguous) free_tensor(input); return PyErr_NoMemory(); }
+        if (input->ndim == 1) {
+            out_shape[0] = 1;
+        } else {
+            int j = 0;
+            for (int i = 0; i < input->ndim; i++) {
+                if (i != normalized_dim) out_shape[j++] = input->shape[i];
+            }
+        }
+    }
+
+    Tensor* out = zeros_tensor(input->dtype, input->device_id, out_ndim, out_shape, NULL);
+    free(out_shape);
+    if (!out) {
+        if (made_contiguous) free_tensor(input);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to allocate output tensor");
+        return NULL;
+    }
+
+    int status = rp_sum_dim(out->data, input->data, outer_size, dim_size, inner_size,
+                            input->dtype, input->device_id);
+    if (made_contiguous) free_tensor(input);
+
+    if (status != 0) {
+        free_tensor(out);
+        PyErr_SetString(PyExc_RuntimeError, "sum_dim operation failed");
+        return NULL;
+    }
+
+    return wrap_tensor_result(out);
+}
+
+static PyObject* PyTensor_mean_dim(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
+        return NULL;
+    }
+
+    int dim;
+    int keepdim = 0;
+    static char* kwlist[] = {"dim", "keepdim", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "i|p", kwlist, &dim, &keepdim))
+        return NULL;
+
+    Tensor* a = self->tensor;
+
+    int normalized_dim = dim;
+    if (normalized_dim < 0) normalized_dim += a->ndim;
+    if (normalized_dim < 0 || normalized_dim >= a->ndim) {
+        PyErr_SetString(PyExc_ValueError, "dim out of range");
+        return NULL;
+    }
+
+    Tensor* input = a;
+    bool made_contiguous = false;
+    if (!rp_is_contiguous(a)) {
+        input = rp_contiguous(a);
+        if (!input) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous");
+            return NULL;
+        }
+        made_contiguous = true;
+    }
+
+    size_t outer_size = 1;
+    for (int i = 0; i < normalized_dim; i++) outer_size *= input->shape[i];
+    size_t dim_size = input->shape[normalized_dim];
+    size_t inner_size = 1;
+    for (int i = normalized_dim + 1; i < input->ndim; i++) inner_size *= input->shape[i];
+
+    int out_ndim;
+    int* out_shape;
+    if (keepdim) {
+        out_ndim = input->ndim;
+        out_shape = (int*)malloc(out_ndim * sizeof(int));
+        if (!out_shape) { if (made_contiguous) free_tensor(input); return PyErr_NoMemory(); }
+        memcpy(out_shape, input->shape, out_ndim * sizeof(int));
+        out_shape[normalized_dim] = 1;
+    } else {
+        out_ndim = input->ndim - 1;
+        if (out_ndim == 0) out_ndim = 1;
+        out_shape = (int*)malloc(out_ndim * sizeof(int));
+        if (!out_shape) { if (made_contiguous) free_tensor(input); return PyErr_NoMemory(); }
+        if (input->ndim == 1) {
+            out_shape[0] = 1;
+        } else {
+            int j = 0;
+            for (int i = 0; i < input->ndim; i++) {
+                if (i != normalized_dim) out_shape[j++] = input->shape[i];
+            }
+        }
+    }
+
+    Tensor* out = zeros_tensor(input->dtype, input->device_id, out_ndim, out_shape, NULL);
+    free(out_shape);
+    if (!out) {
+        if (made_contiguous) free_tensor(input);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to allocate output tensor");
+        return NULL;
+    }
+
+    int status = rp_mean_dim(out->data, input->data, outer_size, dim_size, inner_size,
+                             input->dtype, input->device_id);
+    if (made_contiguous) free_tensor(input);
+
+    if (status != 0) {
+        free_tensor(out);
+        PyErr_SetString(PyExc_RuntimeError, "mean_dim operation failed");
+        return NULL;
+    }
+
+    return wrap_tensor_result(out);
+}
+
+static PyObject* PyTensor_op_sum_dim(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
+        return NULL;
+    }
+
+    int dim;
+    int keepdim = 0;
+    static char* kwlist[] = {"dim", "keepdim", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "i|p", kwlist, &dim, &keepdim))
+        return NULL;
+
+    Tensor* result = op_sum_dim(self->tensor, dim, (bool)keepdim);
+    if (result == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "op_sum_dim operation failed");
+        return NULL;
+    }
+    return wrap_tensor_result(result);
+}
+
+static PyObject* PyTensor_op_mean_dim(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
+        return NULL;
+    }
+
+    int dim;
+    int keepdim = 0;
+    static char* kwlist[] = {"dim", "keepdim", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "i|p", kwlist, &dim, &keepdim))
+        return NULL;
+
+    Tensor* result = op_mean_dim(self->tensor, dim, (bool)keepdim);
+    if (result == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "op_mean_dim operation failed");
+        return NULL;
+    }
+    return wrap_tensor_result(result);
 }
 
 static PyObject* PyTensor_backward(PyTensorObject* self, PyObject* Py_UNUSED(ignored)) {
@@ -1608,12 +1812,12 @@ static PyObject* PyTensor_##name(PyTensorObject* self, PyObject* args) { \
     void* scalar_ptr; \
     float scalar_f32; \
     double scalar_f64; \
-    if (a->dtype == DTYPE_FLOAT32) { \
-        scalar_f32 = (float)scalar_val; \
-        scalar_ptr = &scalar_f32; \
-    } else { \
+    if (a->dtype == DTYPE_FLOAT64) { \
         scalar_f64 = scalar_val; \
         scalar_ptr = &scalar_f64; \
+    } else { \
+        scalar_f32 = (float)scalar_val; \
+        scalar_ptr = &scalar_f32; \
     } \
     Tensor* result = op_func(a, scalar_ptr); \
     if (result == NULL) { \
@@ -1793,6 +1997,10 @@ static PyMethodDef PyTensor_methods[] = {
      "Sum all elements"},
     {"mean_all", (PyCFunction)PyTensor_mean_all, METH_NOARGS,
      "Mean of all elements"},
+    {"sum_dim", (PyCFunction)PyTensor_sum_dim, METH_VARARGS | METH_KEYWORDS,
+     "Sum along a dimension"},
+    {"mean_dim", (PyCFunction)PyTensor_mean_dim, METH_VARARGS | METH_KEYWORDS,
+     "Mean along a dimension"},
 
     {"requires_grad_", (PyCFunction)PyTensor_requires_grad_, METH_VARARGS,
      "Enable gradient tracking (in-place, returns self)"},
@@ -1864,6 +2072,10 @@ static PyMethodDef PyTensor_methods[] = {
      "Sum all elements with autograd support (returns scalar tensor)"},
     {"op_mean_all", (PyCFunction)PyTensor_op_mean_all, METH_NOARGS,
      "Mean of all elements with autograd support (returns scalar tensor)"},
+    {"op_sum_dim", (PyCFunction)PyTensor_op_sum_dim, METH_VARARGS | METH_KEYWORDS,
+     "Sum along a dimension with autograd support"},
+    {"op_mean_dim", (PyCFunction)PyTensor_op_mean_dim, METH_VARARGS | METH_KEYWORDS,
+     "Mean along a dimension with autograd support"},
     {"op_add_scalar", (PyCFunction)PyTensor_op_add_scalar, METH_VARARGS,
      "Add scalar with autograd support"},
     {"op_sub_scalar", (PyCFunction)PyTensor_op_sub_scalar, METH_VARARGS,

@@ -56,7 +56,7 @@ LDFLAGS := -shared
 LDFLAGS += -L/opt/cuda/lib64 -lcudart -lcublas
 LDFLAGS += $(PYTHON_LDFLAGS)
 
-.PHONY: all clean help install config test test_functional test_sum_mean test_scalar test_split test_shape_ops test_backward test_optim test_grad_transfer test_all
+.PHONY: all clean help install config test test_functional test_sum_mean test_sum_dim test_scalar test_split test_shape_ops test_backward test_optim test_grad_transfer test_all
 
 all: $(TARGET)
 
@@ -132,6 +132,10 @@ test_sum_mean: $(TARGET)
 	@echo "Running sum_all/mean_all autograd tests..."
 	@$(PYTHON) tests/autograd/test_sum_mean_autograd.py
 
+test_sum_dim: $(TARGET)
+	@echo "Running sum_dim/mean_dim autograd tests..."
+	@$(PYTHON) tests/autograd/test_sum_mean_dim.py
+
 test_scalar: $(TARGET)
 	@echo "Running scalar autograd tests..."
 	@$(PYTHON) tests/autograd/test_scalar_autograd.py
@@ -192,6 +196,7 @@ help:
 	@echo "  test             - Run tensor tests (tests/unit/)"
 	@echo "  test_functional  - Run functional layer tests (tests/unit/)"
 	@echo "  test_sum_mean    - Run sum_all/mean_all autograd tests"
+	@echo "  test_sum_dim     - Run sum_dim/mean_dim autograd tests"
 	@echo "  test_scalar      - Run scalar autograd tests"
 	@echo "  test_split       - Run split/split_equal autograd tests"
 	@echo "  test_shape_ops   - Run shape operations tests"

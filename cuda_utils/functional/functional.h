@@ -61,6 +61,9 @@ int rp_silu(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_sum_all(void* out, const void* x, size_t size, DType dtype, int device_id);
 int rp_mean_all(void* out, const void* x, size_t size, DType dtype, int device_id);
 
+int rp_sum_dim(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
+int rp_mean_dim(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
+
 int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id);
 
 Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim);
@@ -185,6 +188,11 @@ double sum_all_kernel_host_f64(const double* x, size_t size);
 float mean_all_kernel_host_f32(const float* x, size_t size);
 double mean_all_kernel_host_f64(const double* x, size_t size);
 
+int sum_dim_kernel_host_f32(float* out, const float* x, size_t outer_size, size_t dim_size, size_t inner_size);
+int sum_dim_kernel_host_f64(double* out, const double* x, size_t outer_size, size_t dim_size, size_t inner_size);
+int mean_dim_kernel_host_f32(float* out, const float* x, size_t outer_size, size_t dim_size, size_t inner_size);
+int mean_dim_kernel_host_f64(double* out, const double* x, size_t outer_size, size_t dim_size, size_t inner_size);
+
 int matmul_kernel_host_f32(float* C, const float* A, const float* B, int m, int k, int n);
 int matmul_kernel_host_f64(double* C, const double* A, const double* B, int m, int k, int n);
 
@@ -248,6 +256,9 @@ int silu_kernel_device(void* out, const void* x, size_t size, DType dtype);
 
 int sum_all_kernel_device(void* out, const void* x, size_t size, DType dtype);
 int mean_all_kernel_device(void* out, const void* x, size_t size, DType dtype);
+
+int sum_dim_kernel_device(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
+int mean_dim_kernel_device(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
 
 int matmul_kernel_device(void* C, const void* A, const void* B, int m, int k, int n, DType dtype);
 
