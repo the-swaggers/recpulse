@@ -11,6 +11,7 @@ CORE_DIR := core
 FUNCTIONAL_DIR := functional
 OPS_DIR := ops
 OPTIM_DIR := optim
+RAND_DIR := rand
 PYTHON_DIR := python
 BUILD_DIR := build
 
@@ -19,21 +20,25 @@ TARGET := recpulse_cuda.so
 C_SOURCES := $(CORE_DIR)/tensor.c $(CORE_DIR)/tensor_host.c \
              $(FUNCTIONAL_DIR)/functional.c $(FUNCTIONAL_DIR)/functional_host.c \
              $(OPS_DIR)/ops.c $(OPS_DIR)/grad_host.c \
-             $(OPTIM_DIR)/optim.c $(OPTIM_DIR)/optim_host.c
+             $(OPTIM_DIR)/optim.c $(OPTIM_DIR)/optim_host.c \
+             $(RAND_DIR)/rand.c $(RAND_DIR)/rand_host.c
 CU_SOURCES := $(CORE_DIR)/tensor_device.cu $(CORE_DIR)/cuda_helpers.cu \
               $(FUNCTIONAL_DIR)/functional_device.cu \
               $(OPS_DIR)/grad_device.cu \
-              $(OPTIM_DIR)/optim_device.cu
+              $(OPTIM_DIR)/optim_device.cu \
+              $(RAND_DIR)/rand_device.cu
 PY_SOURCES := $(PYTHON_DIR)/tensor_python.c
 
 C_OBJECTS := $(patsubst $(CORE_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(CORE_DIR)/%.c,$(C_SOURCES))) \
              $(patsubst $(FUNCTIONAL_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(FUNCTIONAL_DIR)/%.c,$(C_SOURCES))) \
              $(patsubst $(OPS_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(OPS_DIR)/%.c,$(C_SOURCES))) \
-             $(patsubst $(OPTIM_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(OPTIM_DIR)/%.c,$(C_SOURCES)))
+             $(patsubst $(OPTIM_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(OPTIM_DIR)/%.c,$(C_SOURCES))) \
+             $(patsubst $(RAND_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(RAND_DIR)/%.c,$(C_SOURCES)))
 CU_OBJECTS := $(patsubst $(CORE_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(CORE_DIR)/%.cu,$(CU_SOURCES))) \
               $(patsubst $(FUNCTIONAL_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(FUNCTIONAL_DIR)/%.cu,$(CU_SOURCES))) \
               $(patsubst $(OPS_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(OPS_DIR)/%.cu,$(CU_SOURCES))) \
-              $(patsubst $(OPTIM_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(OPTIM_DIR)/%.cu,$(CU_SOURCES)))
+              $(patsubst $(OPTIM_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(OPTIM_DIR)/%.cu,$(CU_SOURCES))) \
+              $(patsubst $(RAND_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(RAND_DIR)/%.cu,$(CU_SOURCES)))
 PY_OBJECTS := $(patsubst $(PYTHON_DIR)/%.c,$(BUILD_DIR)/%.o,$(PY_SOURCES))
 
 ALL_OBJECTS := $(C_OBJECTS) $(CU_OBJECTS) $(PY_OBJECTS)
@@ -45,18 +50,18 @@ CUDA_ARCH := -gencode arch=compute_75,code=sm_75 \
              -gencode arch=compute_90,code=sm_90
 
 CFLAGS := -O3 -fPIC -std=c11 -Wall -Wextra
-CFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) $(PYTHON_INCLUDES)
+CFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) $(PYTHON_INCLUDES)
 CFLAGS += -I/opt/cuda/include
 
 NVCCFLAGS := -O3 --shared -Xcompiler -fPIC
-NVCCFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) $(PYTHON_INCLUDES)
+NVCCFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) $(PYTHON_INCLUDES)
 NVCCFLAGS += $(CUDA_ARCH)
 
 LDFLAGS := -shared
 LDFLAGS += -L/opt/cuda/lib64 -lcudart -lcublas
 LDFLAGS += $(PYTHON_LDFLAGS)
 
-.PHONY: all clean help install config test test_functional test_sum_mean test_sum_dim test_scalar test_split test_shape_ops test_backward test_optim test_grad_transfer test_all
+.PHONY: all clean help install config test test_functional test_sum_mean test_sum_dim test_scalar test_split test_shape_ops test_backward test_optim test_grad_transfer test_rand test_all
 
 all: $(TARGET)
 
@@ -99,6 +104,14 @@ $(BUILD_DIR)/%.o: $(OPTIM_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.o: $(OPTIM_DIR)/%.cu | $(BUILD_DIR)
+	@echo "Compiling CUDA: $<"
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%.o: $(RAND_DIR)/%.c | $(BUILD_DIR)
+	@echo "Compiling C: $<"
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%.o: $(RAND_DIR)/%.cu | $(BUILD_DIR)
 	@echo "Compiling CUDA: $<"
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
@@ -159,6 +172,10 @@ test_grad_transfer: $(TARGET)
 test_optim: $(TARGET)
 	@echo "Running optimizer tests..."
 	@$(PYTHON) tests/integration/test_optimizers.py
+
+test_rand: $(TARGET)
+	@echo "Running random number generation tests..."
+	@$(PYTHON) tests/unit/test_rand.py
 
 test_all: $(TARGET)
 	@echo "Running all tests..."

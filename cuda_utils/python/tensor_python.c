@@ -4,6 +4,7 @@
 #include "../functional/functional.h"
 #include "../ops/ops.h"
 #include "../optim/optim.h"
+#include "../rand/rand.h"
 
 typedef struct {
     PyObject_HEAD
@@ -2489,6 +2490,167 @@ static PyObject* module_cat(PyObject* self, PyObject* args, PyObject* kwargs) {
     return wrap_tensor_result(result);
 }
 
+static PyObject* module_rand(PyObject* self, PyObject* args, PyObject* kwargs) {
+    (void)self;
+    PyObject* shape_obj;
+    const char* dtype_str = "float32";
+    const char* device_str = "cpu";
+
+    static char* kwlist[] = {"shape", "dtype", "device", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|ss", kwlist,
+                                     &shape_obj, &dtype_str, &device_str))
+        return NULL;
+
+    if (!PySequence_Check(shape_obj)) {
+        PyErr_SetString(PyExc_TypeError, "shape must be a sequence");
+        return NULL;
+    }
+
+    Py_ssize_t ndim = PySequence_Size(shape_obj);
+    if (ndim <= 0) {
+        PyErr_SetString(PyExc_ValueError, "shape must have at least 1 dimension");
+        return NULL;
+    }
+
+    int* shape = (int*)malloc(ndim * sizeof(int));
+    if (!shape) return PyErr_NoMemory();
+
+    for (Py_ssize_t i = 0; i < ndim; i++) {
+        PyObject* item = PySequence_GetItem(shape_obj, i);
+        if (!item) { free(shape); return NULL; }
+        shape[i] = (int)PyLong_AsLong(item);
+        Py_DECREF(item);
+        if (PyErr_Occurred()) { free(shape); return NULL; }
+        if (shape[i] <= 0) { free(shape); PyErr_SetString(PyExc_ValueError, "shape dimensions must be positive"); return NULL; }
+    }
+
+    DType dtype = parse_dtype(dtype_str);
+    if (dtype == DTYPE_PRESERVE) { free(shape); PyErr_SetString(PyExc_ValueError, "Invalid dtype"); return NULL; }
+
+    int device_id;
+    if (!parse_device(device_str, &device_id)) { free(shape); return NULL; }
+
+    Tensor* tensor = rp_rand_tensor(dtype, device_id, (int)ndim, shape);
+    free(shape);
+    if (!tensor) { PyErr_SetString(PyExc_RuntimeError, "rand failed"); return NULL; }
+    return wrap_tensor_result(tensor);
+}
+
+static PyObject* module_randn(PyObject* self, PyObject* args, PyObject* kwargs) {
+    (void)self;
+    PyObject* shape_obj;
+    const char* dtype_str = "float32";
+    const char* device_str = "cpu";
+    const char* method_str = NULL;
+
+    static char* kwlist[] = {"shape", "dtype", "device", "method", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sss", kwlist,
+                                     &shape_obj, &dtype_str, &device_str, &method_str))
+        return NULL;
+
+    NormalMethod method = NORMAL_BOX_MULLER;
+    if (method_str) {
+        if (strcmp(method_str, "box_muller") == 0) method = NORMAL_BOX_MULLER;
+        else if (strcmp(method_str, "ziggurat") == 0) method = NORMAL_ZIGGURAT;
+        else if (strcmp(method_str, "inverse_cdf") == 0) method = NORMAL_INVERSE_CDF;
+        else {
+            PyErr_Format(PyExc_ValueError,
+                "Unknown method '%s'. Use 'box_muller', 'ziggurat', or 'inverse_cdf'", method_str);
+            return NULL;
+        }
+    }
+
+    if (!PySequence_Check(shape_obj)) {
+        PyErr_SetString(PyExc_TypeError, "shape must be a sequence");
+        return NULL;
+    }
+
+    Py_ssize_t ndim = PySequence_Size(shape_obj);
+    if (ndim <= 0) {
+        PyErr_SetString(PyExc_ValueError, "shape must have at least 1 dimension");
+        return NULL;
+    }
+
+    int* shape = (int*)malloc(ndim * sizeof(int));
+    if (!shape) return PyErr_NoMemory();
+
+    for (Py_ssize_t i = 0; i < ndim; i++) {
+        PyObject* item = PySequence_GetItem(shape_obj, i);
+        if (!item) { free(shape); return NULL; }
+        shape[i] = (int)PyLong_AsLong(item);
+        Py_DECREF(item);
+        if (PyErr_Occurred()) { free(shape); return NULL; }
+        if (shape[i] <= 0) { free(shape); PyErr_SetString(PyExc_ValueError, "shape dimensions must be positive"); return NULL; }
+    }
+
+    DType dtype = parse_dtype(dtype_str);
+    if (dtype == DTYPE_PRESERVE) { free(shape); PyErr_SetString(PyExc_ValueError, "Invalid dtype"); return NULL; }
+
+    int device_id;
+    if (!parse_device(device_str, &device_id)) { free(shape); return NULL; }
+
+    Tensor* tensor = rp_randn_tensor(dtype, device_id, (int)ndim, shape, method);
+    free(shape);
+    if (!tensor) { PyErr_SetString(PyExc_RuntimeError, "randn failed"); return NULL; }
+    return wrap_tensor_result(tensor);
+}
+
+static PyObject* module_randint(PyObject* self, PyObject* args, PyObject* kwargs) {
+    (void)self;
+    double low, high;
+    PyObject* shape_obj;
+    const char* dtype_str = "float32";
+    const char* device_str = "cpu";
+
+    static char* kwlist[] = {"low", "high", "shape", "dtype", "device", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "ddO|ss", kwlist,
+                                     &low, &high, &shape_obj, &dtype_str, &device_str))
+        return NULL;
+
+    if (!PySequence_Check(shape_obj)) {
+        PyErr_SetString(PyExc_TypeError, "shape must be a sequence");
+        return NULL;
+    }
+
+    Py_ssize_t ndim = PySequence_Size(shape_obj);
+    if (ndim <= 0) {
+        PyErr_SetString(PyExc_ValueError, "shape must have at least 1 dimension");
+        return NULL;
+    }
+
+    int* shape = (int*)malloc(ndim * sizeof(int));
+    if (!shape) return PyErr_NoMemory();
+
+    for (Py_ssize_t i = 0; i < ndim; i++) {
+        PyObject* item = PySequence_GetItem(shape_obj, i);
+        if (!item) { free(shape); return NULL; }
+        shape[i] = (int)PyLong_AsLong(item);
+        Py_DECREF(item);
+        if (PyErr_Occurred()) { free(shape); return NULL; }
+        if (shape[i] <= 0) { free(shape); PyErr_SetString(PyExc_ValueError, "shape dimensions must be positive"); return NULL; }
+    }
+
+    DType dtype = parse_dtype(dtype_str);
+    if (dtype == DTYPE_PRESERVE) { free(shape); PyErr_SetString(PyExc_ValueError, "Invalid dtype"); return NULL; }
+
+    int device_id;
+    if (!parse_device(device_str, &device_id)) { free(shape); return NULL; }
+
+    Tensor* tensor = rp_randint_tensor(low, high, dtype, device_id, (int)ndim, shape);
+    free(shape);
+    if (!tensor) { PyErr_SetString(PyExc_RuntimeError, "randint failed"); return NULL; }
+    return wrap_tensor_result(tensor);
+}
+
+static PyObject* module_manual_seed(PyObject* self, PyObject* args) {
+    (void)self;
+    unsigned long long seed;
+    if (!PyArg_ParseTuple(args, "K", &seed))
+        return NULL;
+    rp_manual_seed((uint64_t)seed);
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef module_methods[] = {
     {"zeros", (PyCFunction)module_zeros, METH_VARARGS | METH_KEYWORDS,
      "Create a tensor filled with zeros"},
@@ -2498,6 +2660,14 @@ static PyMethodDef module_methods[] = {
      "Create a tensor from a list of values"},
     {"cat", (PyCFunction)module_cat, METH_VARARGS | METH_KEYWORDS,
      "Concatenate tensors along a dimension"},
+    {"rand", (PyCFunction)module_rand, METH_VARARGS | METH_KEYWORDS,
+     "Create tensor with uniform random values in [0, 1)"},
+    {"randn", (PyCFunction)module_randn, METH_VARARGS | METH_KEYWORDS,
+     "Create tensor with standard normal random values"},
+    {"randint", (PyCFunction)module_randint, METH_VARARGS | METH_KEYWORDS,
+     "Create tensor with random integers in [low, high)"},
+    {"manual_seed", (PyCFunction)module_manual_seed, METH_VARARGS,
+     "Set the random seed for reproducibility"},
     {NULL, NULL, 0, NULL}
 };
 
