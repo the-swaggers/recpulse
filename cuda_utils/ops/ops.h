@@ -67,6 +67,9 @@ Tensor* op_mean_all(Tensor* x);
 Tensor* op_sum_dim(Tensor* x, int dim, bool keepdim);
 Tensor* op_mean_dim(Tensor* x, int dim, bool keepdim);
 
+Tensor* op_softmax(Tensor* x, int dim);
+Tensor* op_log_softmax(Tensor* x, int dim);
+
 Tensor* op_add_scalar(Tensor* x, const void* scalar);
 Tensor* op_sub_scalar(Tensor* x, const void* scalar);
 Tensor* op_mul_scalar(Tensor* x, const void* scalar);
@@ -214,6 +217,15 @@ int backwards_mean_all_device(const void* grad_c, void* grad_x, size_t size, DTy
 
 int backwards_sum_dim_device(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
 int backwards_mean_dim_device(const void* grad_c, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
+
+int backwards_softmax(const void* grad_c, const void* softmax_out, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
+int backwards_log_softmax(const void* grad_c, const void* log_softmax_out, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
+
+int backwards_softmax_host(const void* grad_c, const void* softmax_out, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
+int backwards_log_softmax_host(const void* grad_c, const void* log_softmax_out, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
+
+int backwards_softmax_device(const void* grad_c, const void* softmax_out, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
+int backwards_log_softmax_device(const void* grad_c, const void* log_softmax_out, void* grad_x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype);
 
 void free_grad_fn(GradFn* grad_fn);
 

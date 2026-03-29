@@ -803,6 +803,44 @@ static PyObject* PyTensor_op_mean_dim(PyTensorObject* self, PyObject* args, PyOb
     return wrap_tensor_result(result);
 }
 
+static PyObject* PyTensor_op_softmax(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
+        return NULL;
+    }
+
+    int dim = -1;
+    static char* kwlist[] = {"dim", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i", kwlist, &dim))
+        return NULL;
+
+    Tensor* result = op_softmax(self->tensor, dim);
+    if (result == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "op_softmax operation failed");
+        return NULL;
+    }
+    return wrap_tensor_result(result);
+}
+
+static PyObject* PyTensor_op_log_softmax(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
+        return NULL;
+    }
+
+    int dim = -1;
+    static char* kwlist[] = {"dim", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i", kwlist, &dim))
+        return NULL;
+
+    Tensor* result = op_log_softmax(self->tensor, dim);
+    if (result == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "op_log_softmax operation failed");
+        return NULL;
+    }
+    return wrap_tensor_result(result);
+}
+
 static PyObject* PyTensor_backward(PyTensorObject* self, PyObject* Py_UNUSED(ignored)) {
     if (self->tensor == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
@@ -2077,6 +2115,10 @@ static PyMethodDef PyTensor_methods[] = {
      "Sum along a dimension with autograd support"},
     {"op_mean_dim", (PyCFunction)PyTensor_op_mean_dim, METH_VARARGS | METH_KEYWORDS,
      "Mean along a dimension with autograd support"},
+    {"op_softmax", (PyCFunction)PyTensor_op_softmax, METH_VARARGS | METH_KEYWORDS,
+     "Softmax along a dimension with autograd support"},
+    {"op_log_softmax", (PyCFunction)PyTensor_op_log_softmax, METH_VARARGS | METH_KEYWORDS,
+     "Log-softmax along a dimension with autograd support"},
     {"op_add_scalar", (PyCFunction)PyTensor_op_add_scalar, METH_VARARGS,
      "Add scalar with autograd support"},
     {"op_sub_scalar", (PyCFunction)PyTensor_op_sub_scalar, METH_VARARGS,

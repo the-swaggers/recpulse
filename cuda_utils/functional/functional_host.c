@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <float.h>
 
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size) {
     if (!out || !x1 || !x2 || size == 0) return -1;
@@ -1041,5 +1042,97 @@ int repeat_kernel_host_f64(double* out, const double* in, int ndim, int* src_sha
     free(out_shape);
     free(src_strides);
     free(out_indices);
+    return 0;
+}
+
+int softmax_kernel_host_f32(float* out, const float* x, size_t outer_size, size_t dim_size, size_t inner_size) {
+    for (size_t o = 0; o < outer_size; o++) {
+        for (size_t i = 0; i < inner_size; i++) {
+            float max_val = -FLT_MAX;
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                if (x[idx] > max_val) max_val = x[idx];
+            }
+            float sum_exp = 0.0f;
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                out[idx] = expf(x[idx] - max_val);
+                sum_exp += out[idx];
+            }
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                out[idx] /= sum_exp;
+            }
+        }
+    }
+    return 0;
+}
+
+int softmax_kernel_host_f64(double* out, const double* x, size_t outer_size, size_t dim_size, size_t inner_size) {
+    for (size_t o = 0; o < outer_size; o++) {
+        for (size_t i = 0; i < inner_size; i++) {
+            double max_val = -DBL_MAX;
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                if (x[idx] > max_val) max_val = x[idx];
+            }
+            double sum_exp = 0.0;
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                out[idx] = exp(x[idx] - max_val);
+                sum_exp += out[idx];
+            }
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                out[idx] /= sum_exp;
+            }
+        }
+    }
+    return 0;
+}
+
+int log_softmax_kernel_host_f32(float* out, const float* x, size_t outer_size, size_t dim_size, size_t inner_size) {
+    for (size_t o = 0; o < outer_size; o++) {
+        for (size_t i = 0; i < inner_size; i++) {
+            float max_val = -FLT_MAX;
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                if (x[idx] > max_val) max_val = x[idx];
+            }
+            float sum_exp = 0.0f;
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                sum_exp += expf(x[idx] - max_val);
+            }
+            float log_sum_exp = logf(sum_exp);
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                out[idx] = x[idx] - max_val - log_sum_exp;
+            }
+        }
+    }
+    return 0;
+}
+
+int log_softmax_kernel_host_f64(double* out, const double* x, size_t outer_size, size_t dim_size, size_t inner_size) {
+    for (size_t o = 0; o < outer_size; o++) {
+        for (size_t i = 0; i < inner_size; i++) {
+            double max_val = -DBL_MAX;
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                if (x[idx] > max_val) max_val = x[idx];
+            }
+            double sum_exp = 0.0;
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                sum_exp += exp(x[idx] - max_val);
+            }
+            double log_sum_exp = log(sum_exp);
+            for (size_t d = 0; d < dim_size; d++) {
+                size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                out[idx] = x[idx] - max_val - log_sum_exp;
+            }
+        }
+    }
     return 0;
 }

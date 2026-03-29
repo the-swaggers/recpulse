@@ -1356,3 +1356,139 @@ int backwards_mean_dim_host(const void* grad_c, void* grad_x, size_t outer_size,
 
     return 0;
 }
+
+int backwards_softmax_host(const void* grad_c, const void* softmax_out, void* grad_x,
+                           size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    bool is_half = (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16);
+    size_t total = outer_size * dim_size * inner_size;
+
+    if (is_half || dtype == DTYPE_FLOAT32) {
+        const float* gc;
+        const float* y;
+        float* gx;
+        float* gc_alloc = NULL;
+        float* y_alloc = NULL;
+        float* gx_alloc = NULL;
+
+        if (is_half) {
+            gc_alloc = (float*)malloc(total * sizeof(float));
+            y_alloc = (float*)malloc(total * sizeof(float));
+            gx_alloc = (float*)malloc(total * sizeof(float));
+            if (!gc_alloc || !y_alloc || !gx_alloc) { free(gc_alloc); free(y_alloc); free(gx_alloc); return -1; }
+            half_to_fp32_array(grad_c, gc_alloc, total, dtype);
+            half_to_fp32_array(softmax_out, y_alloc, total, dtype);
+            gc = gc_alloc; y = y_alloc; gx = gx_alloc;
+        } else {
+            gc = (const float*)grad_c;
+            y = (const float*)softmax_out;
+            gx = (float*)grad_x;
+        }
+
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t i = 0; i < inner_size; i++) {
+                float dot = 0.0f;
+                for (size_t d = 0; d < dim_size; d++) {
+                    size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                    dot += gc[idx] * y[idx];
+                }
+                for (size_t d = 0; d < dim_size; d++) {
+                    size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                    gx[idx] = y[idx] * (gc[idx] - dot);
+                }
+            }
+        }
+
+        if (is_half) {
+            fp32_to_half_array(gx_alloc, grad_x, total, dtype);
+            free(gc_alloc); free(y_alloc); free(gx_alloc);
+        }
+    } else {
+        const double* gc = (const double*)grad_c;
+        const double* y = (const double*)softmax_out;
+        double* gx = (double*)grad_x;
+
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t i = 0; i < inner_size; i++) {
+                double dot = 0.0;
+                for (size_t d = 0; d < dim_size; d++) {
+                    size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                    dot += gc[idx] * y[idx];
+                }
+                for (size_t d = 0; d < dim_size; d++) {
+                    size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                    gx[idx] = y[idx] * (gc[idx] - dot);
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+int backwards_log_softmax_host(const void* grad_c, const void* log_softmax_out, void* grad_x,
+                               size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    bool is_half = (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16);
+    size_t total = outer_size * dim_size * inner_size;
+
+    if (is_half || dtype == DTYPE_FLOAT32) {
+        const float* gc;
+        const float* lsm;
+        float* gx;
+        float* gc_alloc = NULL;
+        float* lsm_alloc = NULL;
+        float* gx_alloc = NULL;
+
+        if (is_half) {
+            gc_alloc = (float*)malloc(total * sizeof(float));
+            lsm_alloc = (float*)malloc(total * sizeof(float));
+            gx_alloc = (float*)malloc(total * sizeof(float));
+            if (!gc_alloc || !lsm_alloc || !gx_alloc) { free(gc_alloc); free(lsm_alloc); free(gx_alloc); return -1; }
+            half_to_fp32_array(grad_c, gc_alloc, total, dtype);
+            half_to_fp32_array(log_softmax_out, lsm_alloc, total, dtype);
+            gc = gc_alloc; lsm = lsm_alloc; gx = gx_alloc;
+        } else {
+            gc = (const float*)grad_c;
+            lsm = (const float*)log_softmax_out;
+            gx = (float*)grad_x;
+        }
+
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t i = 0; i < inner_size; i++) {
+                float sum_grad = 0.0f;
+                for (size_t d = 0; d < dim_size; d++) {
+                    size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                    sum_grad += gc[idx];
+                }
+                for (size_t d = 0; d < dim_size; d++) {
+                    size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                    gx[idx] = gc[idx] - expf(lsm[idx]) * sum_grad;
+                }
+            }
+        }
+
+        if (is_half) {
+            fp32_to_half_array(gx_alloc, grad_x, total, dtype);
+            free(gc_alloc); free(lsm_alloc); free(gx_alloc);
+        }
+    } else {
+        const double* gc = (const double*)grad_c;
+        const double* lsm = (const double*)log_softmax_out;
+        double* gx = (double*)grad_x;
+
+        for (size_t o = 0; o < outer_size; o++) {
+            for (size_t i = 0; i < inner_size; i++) {
+                double sum_grad = 0.0;
+                for (size_t d = 0; d < dim_size; d++) {
+                    size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                    sum_grad += gc[idx];
+                }
+                for (size_t d = 0; d < dim_size; d++) {
+                    size_t idx = o * dim_size * inner_size + d * inner_size + i;
+                    gx[idx] = gc[idx] - exp(lsm[idx]) * sum_grad;
+                }
+            }
+        }
+    }
+
+    return 0;
+}

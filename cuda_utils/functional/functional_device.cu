@@ -1485,3 +1485,82 @@ int mean_dim_kernel_device(void* out, const void* x, size_t outer_size, size_t d
 
     return 0;
 }
+
+template<typename T>
+__global__ void softmax_dim_kernel(const T* x, T* out, size_t dim_size, size_t inner_size, size_t stripe_count) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= stripe_count) return;
+    size_t o = idx / inner_size;
+    size_t i = idx % inner_size;
+
+    float max_val = -1e38f;
+    for (size_t d = 0; d < dim_size; d++) {
+        float v = (float)x[o * dim_size * inner_size + d * inner_size + i];
+        if (v > max_val) max_val = v;
+    }
+    float sum_exp = 0.0f;
+    for (size_t d = 0; d < dim_size; d++) {
+        float v = (float)x[o * dim_size * inner_size + d * inner_size + i];
+        sum_exp += expf(v - max_val);
+    }
+    for (size_t d = 0; d < dim_size; d++) {
+        size_t pos = o * dim_size * inner_size + d * inner_size + i;
+        out[pos] = T(expf((float)x[pos] - max_val) / sum_exp);
+    }
+}
+
+template<typename T>
+__global__ void log_softmax_dim_kernel(const T* x, T* out, size_t dim_size, size_t inner_size, size_t stripe_count) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= stripe_count) return;
+    size_t o = idx / inner_size;
+    size_t i = idx % inner_size;
+
+    float max_val = -1e38f;
+    for (size_t d = 0; d < dim_size; d++) {
+        float v = (float)x[o * dim_size * inner_size + d * inner_size + i];
+        if (v > max_val) max_val = v;
+    }
+    float sum_exp = 0.0f;
+    for (size_t d = 0; d < dim_size; d++) {
+        float v = (float)x[o * dim_size * inner_size + d * inner_size + i];
+        sum_exp += expf(v - max_val);
+    }
+    float log_sum_exp = logf(sum_exp);
+    for (size_t d = 0; d < dim_size; d++) {
+        size_t pos = o * dim_size * inner_size + d * inner_size + i;
+        out[pos] = T((float)x[pos] - max_val - log_sum_exp);
+    }
+}
+
+extern "C" int softmax_kernel_device(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    size_t stripe_count = outer_size * inner_size;
+    int threads = 256;
+    int blocks = ((int)stripe_count + threads - 1) / threads;
+    if (dtype == DTYPE_FLOAT32)
+        softmax_dim_kernel<float><<<blocks, threads>>>((const float*)x, (float*)out, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_FLOAT64)
+        softmax_dim_kernel<double><<<blocks, threads>>>((const double*)x, (double*)out, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_FLOAT16)
+        softmax_dim_kernel<__half><<<blocks, threads>>>((const __half*)x, (__half*)out, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_BFLOAT16)
+        softmax_dim_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)x, (__nv_bfloat16*)out, dim_size, inner_size, stripe_count);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}
+
+extern "C" int log_softmax_kernel_device(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    size_t stripe_count = outer_size * inner_size;
+    int threads = 256;
+    int blocks = ((int)stripe_count + threads - 1) / threads;
+    if (dtype == DTYPE_FLOAT32)
+        log_softmax_dim_kernel<float><<<blocks, threads>>>((const float*)x, (float*)out, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_FLOAT64)
+        log_softmax_dim_kernel<double><<<blocks, threads>>>((const double*)x, (double*)out, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_FLOAT16)
+        log_softmax_dim_kernel<__half><<<blocks, threads>>>((const __half*)x, (__half*)out, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_BFLOAT16)
+        log_softmax_dim_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)x, (__nv_bfloat16*)out, dim_size, inner_size, stripe_count);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}

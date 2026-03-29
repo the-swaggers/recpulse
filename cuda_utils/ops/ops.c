@@ -3363,6 +3363,220 @@ void backward_sub_scalar_fn(GradFn* self, Tensor* grad_output) {
     }
 }
 
+int backwards_softmax(const void* grad_c, const void* softmax_out, void* grad_x,
+                      size_t outer_size, size_t dim_size, size_t inner_size,
+                      DType dtype, int device_id) {
+    if (device_id == -1) {
+        return backwards_softmax_host(grad_c, softmax_out, grad_x, outer_size, dim_size, inner_size, dtype);
+    } else {
+        return backwards_softmax_device(grad_c, softmax_out, grad_x, outer_size, dim_size, inner_size, dtype);
+    }
+}
+
+int backwards_log_softmax(const void* grad_c, const void* log_softmax_out, void* grad_x,
+                           size_t outer_size, size_t dim_size, size_t inner_size,
+                           DType dtype, int device_id) {
+    if (device_id == -1) {
+        return backwards_log_softmax_host(grad_c, log_softmax_out, grad_x, outer_size, dim_size, inner_size, dtype);
+    } else {
+        return backwards_log_softmax_device(grad_c, log_softmax_out, grad_x, outer_size, dim_size, inner_size, dtype);
+    }
+}
+
+void backward_softmax_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+    Tensor* out = self->inputs[1];
+    SumDimSavedData* saved = (SumDimSavedData*)self->saved_data;
+    if (!saved) return;
+
+    if (x->metadata && x->metadata->requires_grad) {
+        if (!x->metadata->grad) {
+            x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (!x->metadata->grad) return;
+            backwards_softmax(grad_output->data, out->data, x->metadata->grad->data,
+                             saved->outer_size, saved->dim_size, saved->inner_size,
+                             x->dtype, x->device_id);
+        } else {
+            Tensor* temp = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (!temp) return;
+            backwards_softmax(grad_output->data, out->data, temp->data,
+                             saved->outer_size, saved->dim_size, saved->inner_size,
+                             x->dtype, x->device_id);
+            rp_add(x->metadata->grad->data, x->metadata->grad->data, temp->data,
+                   x->size, x->dtype, x->device_id);
+            free_tensor(temp);
+        }
+    }
+}
+
+void backward_log_softmax_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+    Tensor* out = self->inputs[1];
+    SumDimSavedData* saved = (SumDimSavedData*)self->saved_data;
+    if (!saved) return;
+
+    if (x->metadata && x->metadata->requires_grad) {
+        if (!x->metadata->grad) {
+            x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (!x->metadata->grad) return;
+            backwards_log_softmax(grad_output->data, out->data, x->metadata->grad->data,
+                                  saved->outer_size, saved->dim_size, saved->inner_size,
+                                  x->dtype, x->device_id);
+        } else {
+            Tensor* temp = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+            if (!temp) return;
+            backwards_log_softmax(grad_output->data, out->data, temp->data,
+                                  saved->outer_size, saved->dim_size, saved->inner_size,
+                                  x->dtype, x->device_id);
+            rp_add(x->metadata->grad->data, x->metadata->grad->data, temp->data,
+                   x->size, x->dtype, x->device_id);
+            free_tensor(temp);
+        }
+    }
+}
+
+Tensor* op_softmax(Tensor* x, int dim) {
+    if (!x) return NULL;
+
+    if (dim < 0) dim += x->ndim;
+    if (dim < 0 || dim >= x->ndim) return NULL;
+
+    Tensor* input = x;
+    bool made_contiguous = false;
+    if (!rp_is_contiguous(x)) {
+        input = rp_contiguous(x);
+        if (!input) return NULL;
+        made_contiguous = true;
+    }
+
+    size_t outer_size = 1;
+    for (int i = 0; i < dim; i++) outer_size *= input->shape[i];
+    size_t dim_size = input->shape[dim];
+    size_t inner_size = 1;
+    for (int i = dim + 1; i < input->ndim; i++) inner_size *= input->shape[i];
+
+    Tensor* out = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+    if (!out) { if (made_contiguous) free_tensor(input); return NULL; }
+
+    int result = rp_softmax(out->data, input->data, outer_size, dim_size, inner_size,
+                            input->dtype, input->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        if (made_contiguous) free_tensor(input);
+        return NULL;
+    }
+
+    if (made_contiguous) free_tensor(input);
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) { free_tensor(out); return NULL; }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { free_tensor(out); return NULL; }
+
+        grad_fn->backward = backward_softmax_fn;
+        grad_fn->num_inputs = 2;
+        grad_fn->inputs = (Tensor**)malloc(2 * sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = x;
+        grad_fn->inputs[1] = out;
+
+        SumDimSavedData* saved = (SumDimSavedData*)malloc(sizeof(SumDimSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); free_tensor(out); return NULL; }
+        saved->outer_size = outer_size;
+        saved->dim_size = dim_size;
+        saved->inner_size = inner_size;
+        saved->input_ndim = x->ndim;
+        saved->input_shape = (int*)malloc(x->ndim * sizeof(int));
+        if (!saved->input_shape) { free(saved); free(grad_fn->inputs); free(grad_fn); free_tensor(out); return NULL; }
+        memcpy(saved->input_shape, x->shape, x->ndim * sizeof(int));
+        grad_fn->saved_data = saved;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+Tensor* op_log_softmax(Tensor* x, int dim) {
+    if (!x) return NULL;
+
+    if (dim < 0) dim += x->ndim;
+    if (dim < 0 || dim >= x->ndim) return NULL;
+
+    Tensor* input = x;
+    bool made_contiguous = false;
+    if (!rp_is_contiguous(x)) {
+        input = rp_contiguous(x);
+        if (!input) return NULL;
+        made_contiguous = true;
+    }
+
+    size_t outer_size = 1;
+    for (int i = 0; i < dim; i++) outer_size *= input->shape[i];
+    size_t dim_size = input->shape[dim];
+    size_t inner_size = 1;
+    for (int i = dim + 1; i < input->ndim; i++) inner_size *= input->shape[i];
+
+    Tensor* out = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+    if (!out) { if (made_contiguous) free_tensor(input); return NULL; }
+
+    int result = rp_log_softmax(out->data, input->data, outer_size, dim_size, inner_size,
+                                input->dtype, input->device_id);
+    if (result != 0) {
+        free_tensor(out);
+        if (made_contiguous) free_tensor(input);
+        return NULL;
+    }
+
+    if (made_contiguous) free_tensor(input);
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) { free_tensor(out); return NULL; }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { free_tensor(out); return NULL; }
+
+        grad_fn->backward = backward_log_softmax_fn;
+        grad_fn->num_inputs = 2;
+        grad_fn->inputs = (Tensor**)malloc(2 * sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = x;
+        grad_fn->inputs[1] = out;
+
+        SumDimSavedData* saved = (SumDimSavedData*)malloc(sizeof(SumDimSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); free_tensor(out); return NULL; }
+        saved->outer_size = outer_size;
+        saved->dim_size = dim_size;
+        saved->inner_size = inner_size;
+        saved->input_ndim = x->ndim;
+        saved->input_shape = (int*)malloc(x->ndim * sizeof(int));
+        if (!saved->input_shape) { free(saved); free(grad_fn->inputs); free(grad_fn); free_tensor(out); return NULL; }
+        memcpy(saved->input_shape, x->shape, x->ndim * sizeof(int));
+        grad_fn->saved_data = saved;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
 Tensor* op_add_scalar(Tensor* x, const void* scalar) {
     if (!x || !scalar) return NULL;
 
@@ -4596,7 +4810,9 @@ void free_grad_fn(GradFn* grad_fn) {
             ChunkSavedData* saved = (ChunkSavedData*)grad_fn->saved_data;
             if (saved->input_shape) free(saved->input_shape);
         } else if (grad_fn->backward == backward_sum_dim_fn ||
-                   grad_fn->backward == backward_mean_dim_fn) {
+                   grad_fn->backward == backward_mean_dim_fn ||
+                   grad_fn->backward == backward_softmax_fn ||
+                   grad_fn->backward == backward_log_softmax_fn) {
             SumDimSavedData* saved = (SumDimSavedData*)grad_fn->saved_data;
             if (saved->input_shape) free(saved->input_shape);
         } else if (grad_fn->backward == backward_repeat_fn) {

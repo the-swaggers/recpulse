@@ -1230,3 +1230,77 @@ int backwards_mean_dim_device(const void* grad_c, void* grad_x, size_t outer_siz
 
     return 0;
 }
+
+template<typename T>
+__global__ void backwards_softmax_kernel(const T* grad_c, const T* y, T* grad_x,
+                                          size_t dim_size, size_t inner_size, size_t stripe_count) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= stripe_count) return;
+    size_t o = idx / inner_size;
+    size_t i = idx % inner_size;
+
+    float dot = 0.0f;
+    for (size_t d = 0; d < dim_size; d++) {
+        size_t pos = o * dim_size * inner_size + d * inner_size + i;
+        dot += (float)grad_c[pos] * (float)y[pos];
+    }
+    for (size_t d = 0; d < dim_size; d++) {
+        size_t pos = o * dim_size * inner_size + d * inner_size + i;
+        grad_x[pos] = T((float)y[pos] * ((float)grad_c[pos] - dot));
+    }
+}
+
+template<typename T>
+__global__ void backwards_log_softmax_kernel(const T* grad_c, const T* lsm, T* grad_x,
+                                              size_t dim_size, size_t inner_size, size_t stripe_count) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= stripe_count) return;
+    size_t o = idx / inner_size;
+    size_t i = idx % inner_size;
+
+    float sum_grad = 0.0f;
+    for (size_t d = 0; d < dim_size; d++) {
+        size_t pos = o * dim_size * inner_size + d * inner_size + i;
+        sum_grad += (float)grad_c[pos];
+    }
+    for (size_t d = 0; d < dim_size; d++) {
+        size_t pos = o * dim_size * inner_size + d * inner_size + i;
+        grad_x[pos] = T((float)grad_c[pos] - expf((float)lsm[pos]) * sum_grad);
+    }
+}
+
+extern "C" int backwards_softmax_device(const void* grad_c, const void* softmax_out, void* grad_x,
+                                        size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    size_t stripe_count = outer_size * inner_size;
+    int threads = 256;
+    int blocks = ((int)stripe_count + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        backwards_softmax_kernel<float><<<blocks, threads>>>((const float*)grad_c, (const float*)softmax_out, (float*)grad_x, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_FLOAT64)
+        backwards_softmax_kernel<double><<<blocks, threads>>>((const double*)grad_c, (const double*)softmax_out, (double*)grad_x, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_FLOAT16)
+        backwards_softmax_kernel<__half><<<blocks, threads>>>((const __half*)grad_c, (const __half*)softmax_out, (__half*)grad_x, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_BFLOAT16)
+        backwards_softmax_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)grad_c, (const __nv_bfloat16*)softmax_out, (__nv_bfloat16*)grad_x, dim_size, inner_size, stripe_count);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}
+
+extern "C" int backwards_log_softmax_device(const void* grad_c, const void* log_softmax_out, void* grad_x,
+                                            size_t outer_size, size_t dim_size, size_t inner_size, DType dtype) {
+    size_t stripe_count = outer_size * inner_size;
+    int threads = 256;
+    int blocks = ((int)stripe_count + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        backwards_log_softmax_kernel<float><<<blocks, threads>>>((const float*)grad_c, (const float*)log_softmax_out, (float*)grad_x, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_FLOAT64)
+        backwards_log_softmax_kernel<double><<<blocks, threads>>>((const double*)grad_c, (const double*)log_softmax_out, (double*)grad_x, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_FLOAT16)
+        backwards_log_softmax_kernel<__half><<<blocks, threads>>>((const __half*)grad_c, (const __half*)log_softmax_out, (__half*)grad_x, dim_size, inner_size, stripe_count);
+    else if (dtype == DTYPE_BFLOAT16)
+        backwards_log_softmax_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)grad_c, (const __nv_bfloat16*)log_softmax_out, (__nv_bfloat16*)grad_x, dim_size, inner_size, stripe_count);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}
