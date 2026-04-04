@@ -830,6 +830,105 @@ static int* tensor_to_int_array(Tensor* t) {
     return result;
 }
 
+static int parse_reduction(const char* s) {
+    if (!s || strcmp(s, "mean") == 0) return REDUCTION_MEAN;
+    if (strcmp(s, "sum") == 0) return REDUCTION_SUM;
+    if (strcmp(s, "none") == 0) return REDUCTION_NONE;
+    return -1;
+}
+
+static PyObject* PyTensor_op_mse_loss(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+    PyObject* target_obj;
+    const char* reduction_str = "mean";
+    static char* kwlist[] = {"target", "reduction", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|s", kwlist, &target_obj, &reduction_str)) return NULL;
+    if (!PyObject_TypeCheck(target_obj, &PyTensorType)) { PyErr_SetString(PyExc_TypeError, "target must be a Tensor"); return NULL; }
+    int reduction = parse_reduction(reduction_str);
+    if (reduction < 0) { PyErr_SetString(PyExc_ValueError, "reduction must be 'mean', 'sum', or 'none'"); return NULL; }
+    Tensor* result = op_mse_loss(self->tensor, ((PyTensorObject*)target_obj)->tensor, reduction);
+    if (!result) { PyErr_SetString(PyExc_RuntimeError, "op_mse_loss failed"); return NULL; }
+    return wrap_tensor_result(result);
+}
+
+static PyObject* PyTensor_op_bce_loss(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+    PyObject* target_obj;
+    const char* reduction_str = "mean";
+    int from_logits = -1;
+    static char* kwlist[] = {"target", "reduction", "from_logits", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|si", kwlist, &target_obj, &reduction_str, &from_logits)) return NULL;
+    if (!PyObject_TypeCheck(target_obj, &PyTensorType)) { PyErr_SetString(PyExc_TypeError, "target must be a Tensor"); return NULL; }
+    int reduction = parse_reduction(reduction_str);
+    if (reduction < 0) { PyErr_SetString(PyExc_ValueError, "reduction must be 'mean', 'sum', or 'none'"); return NULL; }
+    Tensor* result = op_bce_loss(self->tensor, ((PyTensorObject*)target_obj)->tensor, reduction, from_logits);
+    if (!result) { PyErr_SetString(PyExc_RuntimeError, "op_bce_loss failed"); return NULL; }
+    return wrap_tensor_result(result);
+}
+
+static PyObject* PyTensor_op_nll_loss(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+    PyObject* targets_obj;
+    const char* reduction_str = "mean";
+    static char* kwlist[] = {"targets", "reduction", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|s", kwlist, &targets_obj, &reduction_str)) return NULL;
+    int reduction = parse_reduction(reduction_str);
+    if (reduction < 0) { PyErr_SetString(PyExc_ValueError, "reduction must be 'mean', 'sum', or 'none'"); return NULL; }
+    Tensor* input = self->tensor;
+    if (input->ndim != 2) { PyErr_SetString(PyExc_ValueError, "input must be 2D [batch, classes]"); return NULL; }
+    int batch_size = input->shape[0];
+    int num_classes = input->shape[1];
+    int* targets = NULL;
+    if (PyObject_TypeCheck(targets_obj, &PyTensorType)) {
+        targets = tensor_to_int_array(((PyTensorObject*)targets_obj)->tensor);
+    } else if (PySequence_Check(targets_obj)) {
+        Py_ssize_t n = PySequence_Size(targets_obj);
+        targets = (int*)malloc(n * sizeof(int));
+        for (Py_ssize_t i = 0; i < n; i++) {
+            PyObject* item = PySequence_GetItem(targets_obj, i);
+            targets[i] = (int)PyLong_AsLong(item);
+            Py_DECREF(item);
+        }
+    }
+    if (!targets) { PyErr_SetString(PyExc_RuntimeError, "Failed to parse targets"); return NULL; }
+    Tensor* result = op_nll_loss(input, targets, batch_size, num_classes, reduction);
+    free(targets);
+    if (!result) { PyErr_SetString(PyExc_RuntimeError, "op_nll_loss failed"); return NULL; }
+    return wrap_tensor_result(result);
+}
+
+static PyObject* PyTensor_op_cross_entropy_loss(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+    PyObject* targets_obj;
+    const char* reduction_str = "mean";
+    int from_logits = -1;
+    static char* kwlist[] = {"targets", "reduction", "from_logits", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|si", kwlist, &targets_obj, &reduction_str, &from_logits)) return NULL;
+    int reduction = parse_reduction(reduction_str);
+    if (reduction < 0) { PyErr_SetString(PyExc_ValueError, "reduction must be 'mean', 'sum', or 'none'"); return NULL; }
+    Tensor* input = self->tensor;
+    if (input->ndim != 2) { PyErr_SetString(PyExc_ValueError, "input must be 2D [batch, classes]"); return NULL; }
+    int batch_size = input->shape[0];
+    int num_classes = input->shape[1];
+    int* targets = NULL;
+    if (PyObject_TypeCheck(targets_obj, &PyTensorType)) {
+        targets = tensor_to_int_array(((PyTensorObject*)targets_obj)->tensor);
+    } else if (PySequence_Check(targets_obj)) {
+        Py_ssize_t n = PySequence_Size(targets_obj);
+        targets = (int*)malloc(n * sizeof(int));
+        for (Py_ssize_t i = 0; i < n; i++) {
+            PyObject* item = PySequence_GetItem(targets_obj, i);
+            targets[i] = (int)PyLong_AsLong(item);
+            Py_DECREF(item);
+        }
+    }
+    if (!targets) { PyErr_SetString(PyExc_RuntimeError, "Failed to parse targets"); return NULL; }
+    Tensor* result = op_cross_entropy_loss(input, targets, batch_size, num_classes, reduction, from_logits);
+    free(targets);
+    if (!result) { PyErr_SetString(PyExc_RuntimeError, "op_cross_entropy_loss failed"); return NULL; }
+    return wrap_tensor_result(result);
+}
+
 static PyObject* PyTensor_op_gather(PyTensorObject* self, PyObject* args) {
     if (self->tensor == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
@@ -2181,6 +2280,14 @@ static PyMethodDef PyTensor_methods[] = {
      "Sum along a dimension with autograd support"},
     {"op_mean_dim", (PyCFunction)PyTensor_op_mean_dim, METH_VARARGS | METH_KEYWORDS,
      "Mean along a dimension with autograd support"},
+    {"op_mse_loss", (PyCFunction)PyTensor_op_mse_loss, METH_VARARGS | METH_KEYWORDS,
+     "Mean squared error loss with autograd"},
+    {"op_bce_loss", (PyCFunction)PyTensor_op_bce_loss, METH_VARARGS | METH_KEYWORDS,
+     "Binary cross-entropy loss with autograd (auto-detects logits vs probs)"},
+    {"op_nll_loss", (PyCFunction)PyTensor_op_nll_loss, METH_VARARGS | METH_KEYWORDS,
+     "Negative log-likelihood loss with autograd"},
+    {"op_cross_entropy_loss", (PyCFunction)PyTensor_op_cross_entropy_loss, METH_VARARGS | METH_KEYWORDS,
+     "Cross-entropy loss with autograd (auto-detects logits vs probs)"},
     {"op_gather", (PyCFunction)PyTensor_op_gather, METH_VARARGS,
      "Gather elements along dim using index tensor"},
     {"op_softmax", (PyCFunction)PyTensor_op_softmax, METH_VARARGS | METH_KEYWORDS,

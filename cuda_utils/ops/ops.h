@@ -85,6 +85,15 @@ Tensor* op_matmul(Tensor* a, Tensor* b);
 
 Tensor* op_gather(Tensor* input, int dim, const int* indices, int index_ndim, const int* index_shape, size_t index_size);
 
+#define REDUCTION_NONE 0
+#define REDUCTION_MEAN 1
+#define REDUCTION_SUM 2
+
+Tensor* op_mse_loss(Tensor* pred, Tensor* target, int reduction);
+Tensor* op_bce_loss(Tensor* pred, Tensor* target, int reduction, int from_logits);
+Tensor* op_nll_loss(Tensor* input, const int* targets, int batch_size, int num_classes, int reduction);
+Tensor* op_cross_entropy_loss(Tensor* input, const int* targets, int batch_size, int num_classes, int reduction, int from_logits);
+
 int backwards_add_x1(const void* grad_c, void* grad_x1, size_t size, DType dtype, int device_id);
 int backwards_add_x2(const void* grad_c, void* grad_x2, size_t size, DType dtype, int device_id);
 

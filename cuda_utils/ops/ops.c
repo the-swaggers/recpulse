@@ -3481,6 +3481,689 @@ Tensor* op_gather(Tensor* input, int dim, const int* indices, int index_ndim, co
     return out;
 }
 
+void backward_softmax_fn(GradFn* self, Tensor* grad_output);
+void backward_log_softmax_fn(GradFn* self, Tensor* grad_output);
+void backward_sigmoid_fn(GradFn* self, Tensor* grad_output);
+
+typedef struct {
+    int reduction;
+    size_t input_size;
+} MSELossSavedData;
+
+void backward_mse_loss_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* pred = self->inputs[0];
+    Tensor* target = self->inputs[1];
+    MSELossSavedData* saved = (MSELossSavedData*)self->saved_data;
+    if (!saved || !pred->metadata || !pred->metadata->requires_grad) return;
+
+    Tensor* diff = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    if (!diff) return;
+    rp_sub(diff->data, pred->data, target->data, pred->size, pred->dtype, pred->device_id);
+
+    float scale_f32;
+    double scale_f64;
+    void* scale_ptr;
+
+    if (saved->reduction == REDUCTION_MEAN) {
+        scale_f32 = 2.0f / (float)saved->input_size;
+        scale_f64 = 2.0 / (double)saved->input_size;
+    } else {
+        scale_f32 = 2.0f;
+        scale_f64 = 2.0;
+    }
+    scale_ptr = (pred->dtype == DTYPE_FLOAT64) ? (void*)&scale_f64 : (void*)&scale_f32;
+
+    Tensor* grad = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    if (!grad) { free_tensor(diff); return; }
+    rp_mul_scalar(grad->data, diff->data, scale_ptr, pred->size, pred->dtype, pred->device_id);
+    free_tensor(diff);
+
+    if (saved->reduction != REDUCTION_NONE) {
+        float go_f32 = 0.0f; double go_f64 = 0.0;
+        if (grad_output->device_id == -1) {
+            if (grad_output->dtype == DTYPE_FLOAT64) go_f64 = *((double*)grad_output->data);
+            else go_f32 = *((float*)grad_output->data);
+        } else {
+            if (grad_output->dtype == DTYPE_FLOAT64) cudaMemcpy(&go_f64, grad_output->data, sizeof(double), cudaMemcpyDeviceToHost);
+            else cudaMemcpy(&go_f32, grad_output->data, sizeof(float), cudaMemcpyDeviceToHost);
+        }
+        void* go_ptr = (pred->dtype == DTYPE_FLOAT64) ? (void*)&go_f64 : (void*)&go_f32;
+        Tensor* scaled = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        if (scaled) {
+            rp_mul_scalar(scaled->data, grad->data, go_ptr, pred->size, pred->dtype, pred->device_id);
+            free_tensor(grad);
+            grad = scaled;
+        }
+    }
+
+    if (!pred->metadata->grad) {
+        pred->metadata->grad = grad;
+    } else {
+        rp_add(pred->metadata->grad->data, pred->metadata->grad->data, grad->data,
+               pred->size, pred->dtype, pred->device_id);
+        free_tensor(grad);
+    }
+}
+
+Tensor* op_mse_loss(Tensor* pred, Tensor* target, int reduction) {
+    if (!pred || !target) return NULL;
+    if (pred->size != target->size) return NULL;
+
+    Tensor* diff = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    if (!diff) return NULL;
+    rp_sub(diff->data, pred->data, target->data, pred->size, pred->dtype, pred->device_id);
+
+    Tensor* sq = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    if (!sq) { free_tensor(diff); return NULL; }
+    rp_mul(sq->data, diff->data, diff->data, pred->size, pred->dtype, pred->device_id);
+    free_tensor(diff);
+
+    Tensor* out;
+    if (reduction == REDUCTION_MEAN) {
+        int scalar_shape[] = {1};
+        out = zeros_tensor(pred->dtype, pred->device_id, 1, scalar_shape, NULL);
+        if (!out) { free_tensor(sq); return NULL; }
+        rp_mean_all(out->data, sq->data, sq->size, pred->dtype, pred->device_id);
+    } else if (reduction == REDUCTION_SUM) {
+        int scalar_shape[] = {1};
+        out = zeros_tensor(pred->dtype, pred->device_id, 1, scalar_shape, NULL);
+        if (!out) { free_tensor(sq); return NULL; }
+        rp_sum_all(out->data, sq->data, sq->size, pred->dtype, pred->device_id);
+    } else {
+        out = sq;
+        sq = NULL;
+    }
+    if (sq) free_tensor(sq);
+
+    bool requires_grad = (pred->metadata && pred->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) { free_tensor(out); return NULL; }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { free_tensor(out); return NULL; }
+        grad_fn->backward = backward_mse_loss_fn;
+        grad_fn->num_inputs = 2;
+        grad_fn->inputs = (Tensor**)malloc(2 * sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = pred;
+        grad_fn->inputs[1] = target;
+
+        MSELossSavedData* saved = (MSELossSavedData*)malloc(sizeof(MSELossSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); free_tensor(out); return NULL; }
+        saved->reduction = reduction;
+        saved->input_size = pred->size;
+        grad_fn->saved_data = saved;
+
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+typedef struct {
+    int reduction;
+    size_t input_size;
+    int from_logits;
+} BCELossSavedData;
+
+void backward_bce_loss_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* pred = self->inputs[0];
+    Tensor* target = self->inputs[1];
+    BCELossSavedData* saved = (BCELossSavedData*)self->saved_data;
+    if (!saved || !pred->metadata || !pred->metadata->requires_grad) return;
+
+    Tensor* probs = pred;
+    bool free_probs = false;
+
+    if (saved->from_logits) {
+        probs = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        if (!probs) return;
+        rp_sigmoid(probs->data, pred->data, pred->size, pred->dtype, pred->device_id);
+        free_probs = true;
+    }
+
+    Tensor* grad = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    if (!grad) { if (free_probs) free_tensor(probs); return; }
+
+    if (saved->from_logits) {
+        Tensor* diff = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        if (!diff) { free_tensor(grad); if (free_probs) free_tensor(probs); return; }
+        rp_sub(diff->data, probs->data, target->data, pred->size, pred->dtype, pred->device_id);
+        if (saved->reduction == REDUCTION_MEAN) {
+            float s_f32 = 1.0f / (float)saved->input_size;
+            double s_f64 = 1.0 / (double)saved->input_size;
+            void* sp = (pred->dtype == DTYPE_FLOAT64) ? (void*)&s_f64 : (void*)&s_f32;
+            rp_mul_scalar(grad->data, diff->data, sp, pred->size, pred->dtype, pred->device_id);
+        } else {
+            memcpy(grad->data, diff->data, pred->size * dtype_size(pred->dtype));
+        }
+        free_tensor(diff);
+    } else {
+        Tensor* one_minus_p = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        Tensor* one_minus_t = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        Tensor* term1 = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        Tensor* term2 = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        if (!one_minus_p || !one_minus_t || !term1 || !term2) {
+            if (one_minus_p) free_tensor(one_minus_p);
+            if (one_minus_t) free_tensor(one_minus_t);
+            if (term1) free_tensor(term1);
+            if (term2) free_tensor(term2);
+            free_tensor(grad);
+            return;
+        }
+        float one_f32 = 1.0f; double one_f64 = 1.0;
+        void* one_ptr = (pred->dtype == DTYPE_FLOAT64) ? (void*)&one_f64 : (void*)&one_f32;
+        rp_rsub_scalar(one_minus_p->data, one_ptr, probs->data, pred->size, pred->dtype, pred->device_id);
+        rp_rsub_scalar(one_minus_t->data, one_ptr, target->data, pred->size, pred->dtype, pred->device_id);
+        rp_divide(term1->data, target->data, probs->data, pred->size, pred->dtype, pred->device_id);
+        rp_divide(term2->data, one_minus_t->data, one_minus_p->data, pred->size, pred->dtype, pred->device_id);
+        rp_sub(grad->data, term2->data, term1->data, pred->size, pred->dtype, pred->device_id);
+
+        if (saved->reduction == REDUCTION_MEAN) {
+            float s_f32 = 1.0f / (float)saved->input_size;
+            double s_f64 = 1.0 / (double)saved->input_size;
+            void* sp = (pred->dtype == DTYPE_FLOAT64) ? (void*)&s_f64 : (void*)&s_f32;
+            Tensor* temp = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+            if (temp) {
+                rp_mul_scalar(temp->data, grad->data, sp, pred->size, pred->dtype, pred->device_id);
+                free_tensor(grad);
+                grad = temp;
+            }
+        }
+
+        free_tensor(one_minus_p); free_tensor(one_minus_t);
+        free_tensor(term1); free_tensor(term2);
+    }
+
+    if (free_probs) free_tensor(probs);
+
+    if (saved->reduction != REDUCTION_NONE) {
+        float go_f32 = 0.0f; double go_f64 = 0.0;
+        if (grad_output->device_id == -1) {
+            if (grad_output->dtype == DTYPE_FLOAT64) go_f64 = *((double*)grad_output->data);
+            else go_f32 = *((float*)grad_output->data);
+        } else {
+            if (grad_output->dtype == DTYPE_FLOAT64) cudaMemcpy(&go_f64, grad_output->data, sizeof(double), cudaMemcpyDeviceToHost);
+            else cudaMemcpy(&go_f32, grad_output->data, sizeof(float), cudaMemcpyDeviceToHost);
+        }
+        void* go_ptr = (pred->dtype == DTYPE_FLOAT64) ? (void*)&go_f64 : (void*)&go_f32;
+        Tensor* scaled = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        if (scaled) {
+            rp_mul_scalar(scaled->data, grad->data, go_ptr, pred->size, pred->dtype, pred->device_id);
+            free_tensor(grad);
+            grad = scaled;
+        }
+    }
+
+    if (!pred->metadata->grad) {
+        pred->metadata->grad = grad;
+    } else {
+        rp_add(pred->metadata->grad->data, pred->metadata->grad->data, grad->data,
+               pred->size, pred->dtype, pred->device_id);
+        free_tensor(grad);
+    }
+}
+
+Tensor* op_bce_loss(Tensor* pred, Tensor* target, int reduction, int from_logits) {
+    if (!pred || !target) return NULL;
+    if (pred->size != target->size) return NULL;
+
+    Tensor* probs = pred;
+    bool free_probs = false;
+
+    int detected_logits = from_logits;
+    if (from_logits == -1) {
+        detected_logits = !(pred->metadata && pred->metadata->grad_fn &&
+                           ((GradFn*)pred->metadata->grad_fn)->backward == backward_sigmoid_fn);
+    }
+
+    if (detected_logits) {
+        probs = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        if (!probs) return NULL;
+        rp_sigmoid(probs->data, pred->data, pred->size, pred->dtype, pred->device_id);
+        free_probs = true;
+    }
+
+    Tensor* log_p = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    Tensor* log_1mp = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    Tensor* one_minus_p = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    Tensor* one_minus_t = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    Tensor* term1 = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    Tensor* term2 = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+    Tensor* bce = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+
+    if (!log_p || !log_1mp || !one_minus_p || !one_minus_t || !term1 || !term2 || !bce) {
+        if (log_p) free_tensor(log_p); if (log_1mp) free_tensor(log_1mp);
+        if (one_minus_p) free_tensor(one_minus_p); if (one_minus_t) free_tensor(one_minus_t);
+        if (term1) free_tensor(term1); if (term2) free_tensor(term2);
+        if (bce) free_tensor(bce);
+        if (free_probs) free_tensor(probs);
+        return NULL;
+    }
+
+    float one_f32 = 1.0f; double one_f64 = 1.0;
+    void* one_ptr = (pred->dtype == DTYPE_FLOAT64) ? (void*)&one_f64 : (void*)&one_f32;
+    float neg_f32 = -1.0f; double neg_f64 = -1.0;
+    void* neg_ptr = (pred->dtype == DTYPE_FLOAT64) ? (void*)&neg_f64 : (void*)&neg_f32;
+
+    rp_log(log_p->data, probs->data, pred->size, pred->dtype, pred->device_id);
+    rp_rsub_scalar(one_minus_p->data, one_ptr, probs->data, pred->size, pred->dtype, pred->device_id);
+    rp_log(log_1mp->data, one_minus_p->data, pred->size, pred->dtype, pred->device_id);
+    rp_rsub_scalar(one_minus_t->data, one_ptr, target->data, pred->size, pred->dtype, pred->device_id);
+    rp_mul(term1->data, target->data, log_p->data, pred->size, pred->dtype, pred->device_id);
+    rp_mul(term2->data, one_minus_t->data, log_1mp->data, pred->size, pred->dtype, pred->device_id);
+    rp_add(bce->data, term1->data, term2->data, pred->size, pred->dtype, pred->device_id);
+    rp_mul_scalar(bce->data, bce->data, neg_ptr, pred->size, pred->dtype, pred->device_id);
+
+    free_tensor(log_p); free_tensor(log_1mp); free_tensor(one_minus_p);
+    free_tensor(one_minus_t); free_tensor(term1); free_tensor(term2);
+    if (free_probs) free_tensor(probs);
+
+    Tensor* out;
+    if (reduction == REDUCTION_MEAN) {
+        int s[] = {1};
+        out = zeros_tensor(pred->dtype, pred->device_id, 1, s, NULL);
+        if (!out) { free_tensor(bce); return NULL; }
+        rp_mean_all(out->data, bce->data, bce->size, pred->dtype, pred->device_id);
+        free_tensor(bce);
+    } else if (reduction == REDUCTION_SUM) {
+        int s[] = {1};
+        out = zeros_tensor(pred->dtype, pred->device_id, 1, s, NULL);
+        if (!out) { free_tensor(bce); return NULL; }
+        rp_sum_all(out->data, bce->data, bce->size, pred->dtype, pred->device_id);
+        free_tensor(bce);
+    } else {
+        out = bce;
+    }
+
+    bool requires_grad = (pred->metadata && pred->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) { free_tensor(out); return NULL; }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { free_tensor(out); return NULL; }
+        grad_fn->backward = backward_bce_loss_fn;
+        grad_fn->num_inputs = 2;
+        grad_fn->inputs = (Tensor**)malloc(2 * sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = pred;
+        grad_fn->inputs[1] = target;
+
+        BCELossSavedData* saved = (BCELossSavedData*)malloc(sizeof(BCELossSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); free_tensor(out); return NULL; }
+        saved->reduction = reduction;
+        saved->input_size = pred->size;
+        saved->from_logits = detected_logits;
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+typedef struct {
+    int reduction;
+    int* targets;
+    int batch_size;
+    int num_classes;
+    int from_logits;
+} CELossSavedData;
+
+void backward_nll_loss_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* input = self->inputs[0];
+    CELossSavedData* saved = (CELossSavedData*)self->saved_data;
+    if (!saved || !input->metadata || !input->metadata->requires_grad) return;
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (!input->metadata->grad) return;
+    }
+
+    Tensor* grad = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+    if (!grad) return;
+
+    float neg_f32; double neg_f64;
+    if (saved->reduction == REDUCTION_MEAN) {
+        neg_f32 = -1.0f / (float)saved->batch_size;
+        neg_f64 = -1.0 / (double)saved->batch_size;
+    } else {
+        neg_f32 = -1.0f;
+        neg_f64 = -1.0;
+    }
+
+    size_t elem_sz = dtype_size(input->dtype);
+    for (int b = 0; b < saved->batch_size; b++) {
+        int cls = saved->targets[b];
+        size_t offset = (size_t)b * saved->num_classes + cls;
+        if (input->device_id == -1) {
+            if (input->dtype == DTYPE_FLOAT32) ((float*)grad->data)[offset] = neg_f32;
+            else if (input->dtype == DTYPE_FLOAT64) ((double*)grad->data)[offset] = neg_f64;
+        } else {
+            if (input->dtype == DTYPE_FLOAT32) cudaMemcpy((char*)grad->data + offset * elem_sz, &neg_f32, sizeof(float), cudaMemcpyHostToDevice);
+            else if (input->dtype == DTYPE_FLOAT64) cudaMemcpy((char*)grad->data + offset * elem_sz, &neg_f64, sizeof(double), cudaMemcpyHostToDevice);
+        }
+    }
+
+    if (saved->reduction != REDUCTION_NONE) {
+        float go_f32 = 0.0f; double go_f64 = 0.0;
+        if (grad_output->device_id == -1) {
+            if (grad_output->dtype == DTYPE_FLOAT64) go_f64 = *((double*)grad_output->data);
+            else go_f32 = *((float*)grad_output->data);
+        } else {
+            if (grad_output->dtype == DTYPE_FLOAT64) cudaMemcpy(&go_f64, grad_output->data, sizeof(double), cudaMemcpyDeviceToHost);
+            else cudaMemcpy(&go_f32, grad_output->data, sizeof(float), cudaMemcpyDeviceToHost);
+        }
+        void* go_ptr = (input->dtype == DTYPE_FLOAT64) ? (void*)&go_f64 : (void*)&go_f32;
+        Tensor* scaled = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (scaled) {
+            rp_mul_scalar(scaled->data, grad->data, go_ptr, input->size, input->dtype, input->device_id);
+            free_tensor(grad);
+            grad = scaled;
+        }
+    }
+
+    rp_add(input->metadata->grad->data, input->metadata->grad->data, grad->data,
+           input->size, input->dtype, input->device_id);
+    free_tensor(grad);
+}
+
+Tensor* op_nll_loss(Tensor* input, const int* targets, int batch_size, int num_classes, int reduction) {
+    if (!input || !targets) return NULL;
+    if (input->ndim != 2 || input->shape[0] != batch_size || input->shape[1] != num_classes) return NULL;
+
+    float sum_f32 = 0.0f;
+    double sum_f64 = 0.0;
+
+    Tensor* host_input = input;
+    bool free_host = false;
+    if (input->device_id >= 0) {
+        host_input = tensor_to(input, -1, input->dtype, false);
+        if (!host_input) return NULL;
+        free_host = true;
+    }
+
+    for (int b = 0; b < batch_size; b++) {
+        size_t offset = (size_t)b * num_classes + targets[b];
+        if (input->dtype == DTYPE_FLOAT64) sum_f64 -= ((double*)host_input->data)[offset];
+        else sum_f64 -= (double)((float*)host_input->data)[offset];
+    }
+    sum_f32 = (float)sum_f64;
+    if (free_host) free_tensor(host_input);
+
+    if (reduction == REDUCTION_MEAN) {
+        sum_f32 /= (float)batch_size;
+        sum_f64 /= (double)batch_size;
+    }
+
+    Tensor* out;
+    if (reduction == REDUCTION_NONE) {
+        int shape[] = {batch_size};
+        out = zeros_tensor(input->dtype, input->device_id, 1, shape, NULL);
+        if (!out) return NULL;
+        if (input->device_id == -1) {
+            for (int b = 0; b < batch_size; b++) {
+                size_t offset = (size_t)b * num_classes + targets[b];
+                if (input->dtype == DTYPE_FLOAT32) ((float*)out->data)[b] = -((float*)input->data)[offset];
+                else ((double*)out->data)[b] = -((double*)input->data)[offset];
+            }
+        }
+    } else {
+        int shape[] = {1};
+        out = zeros_tensor(input->dtype, input->device_id, 1, shape, NULL);
+        if (!out) return NULL;
+        if (input->device_id == -1) {
+            if (input->dtype == DTYPE_FLOAT32) *((float*)out->data) = sum_f32;
+            else *((double*)out->data) = sum_f64;
+        } else {
+            if (input->dtype == DTYPE_FLOAT32) cudaMemcpy(out->data, &sum_f32, sizeof(float), cudaMemcpyHostToDevice);
+            else cudaMemcpy(out->data, &sum_f64, sizeof(double), cudaMemcpyHostToDevice);
+        }
+    }
+
+    bool requires_grad = (input->metadata && input->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) { free_tensor(out); return NULL; }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { free_tensor(out); return NULL; }
+        grad_fn->backward = backward_nll_loss_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = input;
+
+        CELossSavedData* saved = (CELossSavedData*)malloc(sizeof(CELossSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); free_tensor(out); return NULL; }
+        saved->reduction = reduction;
+        saved->batch_size = batch_size;
+        saved->num_classes = num_classes;
+        saved->from_logits = 0;
+        saved->targets = (int*)malloc(batch_size * sizeof(int));
+        memcpy(saved->targets, targets, batch_size * sizeof(int));
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+void backward_cross_entropy_loss_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* input = self->inputs[0];
+    Tensor* softmax_out = self->inputs[1];
+    CELossSavedData* saved = (CELossSavedData*)self->saved_data;
+    if (!saved || !input->metadata || !input->metadata->requires_grad) return;
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (!input->metadata->grad) return;
+    }
+
+    Tensor* grad = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+    if (!grad) return;
+
+    size_t total = (size_t)saved->batch_size * saved->num_classes;
+
+    Tensor* host_sm = softmax_out;
+    bool free_sm = false;
+    if (softmax_out->device_id >= 0) {
+        host_sm = tensor_to(softmax_out, -1, softmax_out->dtype, false);
+        if (!host_sm) { free_tensor(grad); return; }
+        free_sm = true;
+    }
+
+    float* grad_f32 = NULL;
+    if (input->dtype == DTYPE_FLOAT32 || input->dtype == DTYPE_FLOAT16 || input->dtype == DTYPE_BFLOAT16) {
+        grad_f32 = (float*)malloc(total * sizeof(float));
+        if (!grad_f32) { free_tensor(grad); if (free_sm) free_tensor(host_sm); return; }
+        const float* sm_data;
+        float* sm_f32_alloc = NULL;
+        if (host_sm->dtype == DTYPE_FLOAT32) {
+            sm_data = (const float*)host_sm->data;
+        } else {
+            sm_f32_alloc = (float*)malloc(total * sizeof(float));
+            half_to_fp32_array(host_sm->data, sm_f32_alloc, total, host_sm->dtype);
+            sm_data = sm_f32_alloc;
+        }
+        for (size_t i = 0; i < total; i++) grad_f32[i] = sm_data[i];
+        for (int b = 0; b < saved->batch_size; b++) {
+            grad_f32[(size_t)b * saved->num_classes + saved->targets[b]] -= 1.0f;
+        }
+        if (saved->reduction == REDUCTION_MEAN) {
+            float scale = 1.0f / (float)saved->batch_size;
+            for (size_t i = 0; i < total; i++) grad_f32[i] *= scale;
+        }
+        if (input->device_id == -1) {
+            if (input->dtype == DTYPE_FLOAT32) memcpy(grad->data, grad_f32, total * sizeof(float));
+            else fp32_to_half_array(grad_f32, grad->data, total, input->dtype);
+        } else {
+            if (input->dtype == DTYPE_FLOAT32) cudaMemcpy(grad->data, grad_f32, total * sizeof(float), cudaMemcpyHostToDevice);
+            else {
+                void* half_buf = malloc(total * dtype_size(input->dtype));
+                fp32_to_half_array(grad_f32, half_buf, total, input->dtype);
+                cudaMemcpy(grad->data, half_buf, total * dtype_size(input->dtype), cudaMemcpyHostToDevice);
+                free(half_buf);
+            }
+        }
+        free(grad_f32);
+        if (sm_f32_alloc) free(sm_f32_alloc);
+    } else {
+        double* grad_f64 = (double*)malloc(total * sizeof(double));
+        if (!grad_f64) { free_tensor(grad); if (free_sm) free_tensor(host_sm); return; }
+        const double* sm_data = (const double*)host_sm->data;
+        for (size_t i = 0; i < total; i++) grad_f64[i] = sm_data[i];
+        for (int b = 0; b < saved->batch_size; b++) {
+            grad_f64[(size_t)b * saved->num_classes + saved->targets[b]] -= 1.0;
+        }
+        if (saved->reduction == REDUCTION_MEAN) {
+            double scale = 1.0 / (double)saved->batch_size;
+            for (size_t i = 0; i < total; i++) grad_f64[i] *= scale;
+        }
+        if (input->device_id == -1) memcpy(grad->data, grad_f64, total * sizeof(double));
+        else cudaMemcpy(grad->data, grad_f64, total * sizeof(double), cudaMemcpyHostToDevice);
+        free(grad_f64);
+    }
+    if (free_sm) free_tensor(host_sm);
+
+    if (saved->reduction != REDUCTION_NONE) {
+        float go_f32 = 0.0f; double go_f64 = 0.0;
+        if (grad_output->device_id == -1) {
+            if (grad_output->dtype == DTYPE_FLOAT64) go_f64 = *((double*)grad_output->data);
+            else go_f32 = *((float*)grad_output->data);
+        } else {
+            if (grad_output->dtype == DTYPE_FLOAT64) cudaMemcpy(&go_f64, grad_output->data, sizeof(double), cudaMemcpyDeviceToHost);
+            else cudaMemcpy(&go_f32, grad_output->data, sizeof(float), cudaMemcpyDeviceToHost);
+        }
+        void* go_ptr = (input->dtype == DTYPE_FLOAT64) ? (void*)&go_f64 : (void*)&go_f32;
+        Tensor* scaled = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (scaled) {
+            rp_mul_scalar(scaled->data, grad->data, go_ptr, input->size, input->dtype, input->device_id);
+            free_tensor(grad);
+            grad = scaled;
+        }
+    }
+
+    rp_add(input->metadata->grad->data, input->metadata->grad->data, grad->data,
+           input->size, input->dtype, input->device_id);
+    free_tensor(grad);
+}
+
+Tensor* op_cross_entropy_loss(Tensor* input, const int* targets, int batch_size, int num_classes, int reduction, int from_logits) {
+    if (!input || !targets) return NULL;
+    if (input->ndim != 2 || input->shape[0] != batch_size || input->shape[1] != num_classes) return NULL;
+
+    int detected_logits = from_logits;
+    if (from_logits == -1) {
+        detected_logits = !(input->metadata && input->metadata->grad_fn &&
+                           ((GradFn*)input->metadata->grad_fn)->backward == backward_softmax_fn);
+    }
+
+    Tensor* log_probs;
+    Tensor* softmax_result = NULL;
+    bool free_log_probs = false;
+
+    if (detected_logits) {
+        int dim = input->ndim - 1;
+        size_t outer = 1;
+        for (int i = 0; i < dim; i++) outer *= input->shape[i];
+        size_t dim_size = input->shape[dim];
+        size_t inner = 1;
+
+        log_probs = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (!log_probs) return NULL;
+        rp_log_softmax(log_probs->data, input->data, outer, dim_size, inner, input->dtype, input->device_id);
+        free_log_probs = true;
+
+        softmax_result = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (!softmax_result) { free_tensor(log_probs); return NULL; }
+        rp_softmax(softmax_result->data, input->data, outer, dim_size, inner, input->dtype, input->device_id);
+    } else {
+        log_probs = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (!log_probs) return NULL;
+        rp_log(log_probs->data, input->data, input->size, input->dtype, input->device_id);
+        free_log_probs = true;
+
+        softmax_result = input;
+    }
+
+    Tensor* nll_result = op_nll_loss(log_probs, targets, batch_size, num_classes, reduction);
+    if (free_log_probs) free_tensor(log_probs);
+
+    if (!nll_result) {
+        if (softmax_result != input) free_tensor(softmax_result);
+        return NULL;
+    }
+
+    Tensor* out = nll_result;
+
+    bool requires_grad = (input->metadata && input->metadata->requires_grad);
+    if (requires_grad) {
+        if (out->metadata && out->metadata->grad_fn) {
+            free_grad_fn(out->metadata->grad_fn);
+        }
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) {
+                if (softmax_result != input) free_tensor(softmax_result);
+                free_tensor(out);
+                return NULL;
+            }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) {
+            if (softmax_result != input) free_tensor(softmax_result);
+            free_tensor(out);
+            return NULL;
+        }
+        grad_fn->backward = backward_cross_entropy_loss_fn;
+        grad_fn->num_inputs = 2;
+        grad_fn->inputs = (Tensor**)malloc(2 * sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); if (softmax_result != input) free_tensor(softmax_result); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = input;
+        grad_fn->inputs[1] = softmax_result;
+
+        CELossSavedData* saved = (CELossSavedData*)malloc(sizeof(CELossSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); if (softmax_result != input) free_tensor(softmax_result); free_tensor(out); return NULL; }
+        saved->reduction = reduction;
+        saved->batch_size = batch_size;
+        saved->num_classes = num_classes;
+        saved->from_logits = detected_logits;
+        saved->targets = (int*)malloc(batch_size * sizeof(int));
+        memcpy(saved->targets, targets, batch_size * sizeof(int));
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    } else {
+        if (softmax_result != input) free_tensor(softmax_result);
+    }
+
+    return out;
+}
+
 int backwards_softmax(const void* grad_c, const void* softmax_out, void* grad_x,
                       size_t outer_size, size_t dim_size, size_t inner_size,
                       DType dtype, int device_id) {
@@ -4933,6 +5616,10 @@ void free_grad_fn(GradFn* grad_fn) {
                    grad_fn->backward == backward_log_softmax_fn) {
             SumDimSavedData* saved = (SumDimSavedData*)grad_fn->saved_data;
             if (saved->input_shape) free(saved->input_shape);
+        } else if (grad_fn->backward == backward_nll_loss_fn ||
+                   grad_fn->backward == backward_cross_entropy_loss_fn) {
+            CELossSavedData* saved = (CELossSavedData*)grad_fn->saved_data;
+            if (saved->targets) free(saved->targets);
         } else if (grad_fn->backward == backward_gather_fn) {
             GatherSavedData* saved = (GatherSavedData*)grad_fn->saved_data;
             if (saved->indices) free(saved->indices);
