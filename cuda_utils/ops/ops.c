@@ -1,6 +1,7 @@
 #include "ops.h"
 #include "../functional/functional.h"
 #include "../core/half_precision.h"
+#include <cuda_runtime.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
@@ -3363,6 +3364,123 @@ void backward_sub_scalar_fn(GradFn* self, Tensor* grad_output) {
     }
 }
 
+typedef struct {
+    int dim;
+    int* indices;
+    int* d_indices;
+    int index_ndim;
+    int* index_shape;
+    int input_ndim;
+    int* input_shape;
+    size_t index_size;
+} GatherSavedData;
+
+void backward_gather_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* input = self->inputs[0];
+    GatherSavedData* saved = (GatherSavedData*)self->saved_data;
+    if (!saved) return;
+
+    if (input->metadata && input->metadata->requires_grad) {
+        if (!input->metadata->grad) {
+            input->metadata->grad = zeros_tensor(input->dtype, input->device_id,
+                                                  saved->input_ndim, saved->input_shape, NULL);
+            if (!input->metadata->grad) return;
+        }
+
+        const int* idx_ptr = saved->indices;
+        if (input->device_id >= 0 && saved->d_indices) {
+            idx_ptr = saved->d_indices;
+        }
+
+        Tensor* temp = zeros_tensor(input->dtype, input->device_id,
+                                     saved->input_ndim, saved->input_shape, NULL);
+        if (!temp) return;
+
+        rp_scatter_add(temp->data, grad_output->data, idx_ptr,
+                       saved->index_ndim, saved->input_shape, saved->index_shape,
+                       saved->dim, saved->index_size, input->dtype, input->device_id);
+
+        rp_add(input->metadata->grad->data, input->metadata->grad->data, temp->data,
+               input->size, input->dtype, input->device_id);
+        free_tensor(temp);
+    }
+}
+
+Tensor* op_gather(Tensor* input, int dim, const int* indices, int index_ndim, const int* index_shape, size_t index_size) {
+    if (!input || !indices || !index_shape) return NULL;
+
+    if (dim < 0) dim += input->ndim;
+    if (dim < 0 || dim >= input->ndim) return NULL;
+    if (index_ndim != input->ndim) return NULL;
+
+    Tensor* out = zeros_tensor(input->dtype, input->device_id, index_ndim, (int*)index_shape, NULL);
+    if (!out) return NULL;
+
+    const int* idx_ptr = indices;
+    int* d_indices = NULL;
+
+    if (input->device_id >= 0) {
+        cudaMalloc((void**)&d_indices, index_size * sizeof(int));
+        if (!d_indices) { free_tensor(out); return NULL; }
+        cudaMemcpy(d_indices, indices, index_size * sizeof(int), cudaMemcpyHostToDevice);
+        idx_ptr = d_indices;
+    }
+
+    int result = rp_gather(out->data, input->data, idx_ptr,
+                           input->ndim, input->shape, index_shape,
+                           dim, index_size, input->dtype, input->device_id);
+    if (result != 0) {
+        if (d_indices) cudaFree(d_indices);
+        free_tensor(out);
+        return NULL;
+    }
+
+    bool requires_grad = (input->metadata && input->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) { if (d_indices) cudaFree(d_indices); free_tensor(out); return NULL; }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { if (d_indices) cudaFree(d_indices); free_tensor(out); return NULL; }
+
+        grad_fn->backward = backward_gather_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(1 * sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); if (d_indices) cudaFree(d_indices); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = input;
+
+        GatherSavedData* saved = (GatherSavedData*)malloc(sizeof(GatherSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); if (d_indices) cudaFree(d_indices); free_tensor(out); return NULL; }
+        saved->dim = dim;
+        saved->index_ndim = index_ndim;
+        saved->index_size = index_size;
+        saved->input_ndim = input->ndim;
+
+        saved->indices = (int*)malloc(index_size * sizeof(int));
+        memcpy(saved->indices, indices, index_size * sizeof(int));
+        saved->d_indices = d_indices;
+
+        saved->index_shape = (int*)malloc(index_ndim * sizeof(int));
+        memcpy(saved->index_shape, index_shape, index_ndim * sizeof(int));
+
+        saved->input_shape = (int*)malloc(input->ndim * sizeof(int));
+        memcpy(saved->input_shape, input->shape, input->ndim * sizeof(int));
+
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    } else {
+        if (d_indices) cudaFree(d_indices);
+    }
+
+    return out;
+}
+
 int backwards_softmax(const void* grad_c, const void* softmax_out, void* grad_x,
                       size_t outer_size, size_t dim_size, size_t inner_size,
                       DType dtype, int device_id) {
@@ -4814,6 +4932,12 @@ void free_grad_fn(GradFn* grad_fn) {
                    grad_fn->backward == backward_softmax_fn ||
                    grad_fn->backward == backward_log_softmax_fn) {
             SumDimSavedData* saved = (SumDimSavedData*)grad_fn->saved_data;
+            if (saved->input_shape) free(saved->input_shape);
+        } else if (grad_fn->backward == backward_gather_fn) {
+            GatherSavedData* saved = (GatherSavedData*)grad_fn->saved_data;
+            if (saved->indices) free(saved->indices);
+            if (saved->d_indices) cudaFree(saved->d_indices);
+            if (saved->index_shape) free(saved->index_shape);
             if (saved->input_shape) free(saved->input_shape);
         } else if (grad_fn->backward == backward_repeat_fn) {
             RepeatSavedData* saved = (RepeatSavedData*)grad_fn->saved_data;

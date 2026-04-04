@@ -1136,3 +1136,98 @@ int log_softmax_kernel_host_f64(double* out, const double* x, size_t outer_size,
     }
     return 0;
 }
+
+static void linear_to_coords(size_t linear, const int* shape, int ndim, int* coords) {
+    for (int d = ndim - 1; d >= 0; d--) {
+        coords[d] = linear % shape[d];
+        linear /= shape[d];
+    }
+}
+
+static size_t coords_to_linear(const int* coords, const int* shape, int ndim) {
+    size_t idx = 0;
+    for (int d = 0; d < ndim; d++) {
+        idx = idx * shape[d] + coords[d];
+    }
+    return idx;
+}
+
+int gather_kernel_host_f32(float* out, const float* input, const int* indices,
+                           int ndim, const int* input_shape, const int* index_shape,
+                           int dim, size_t index_size) {
+    if (!out || !input || !indices) return -1;
+    int* coords = (int*)malloc(ndim * sizeof(int));
+    if (!coords) return -1;
+
+    for (size_t i = 0; i < index_size; i++) {
+        linear_to_coords(i, index_shape, ndim, coords);
+        int saved = coords[dim];
+        coords[dim] = indices[i];
+        size_t src_idx = coords_to_linear(coords, input_shape, ndim);
+        coords[dim] = saved;
+        out[i] = input[src_idx];
+    }
+
+    free(coords);
+    return 0;
+}
+
+int gather_kernel_host_f64(double* out, const double* input, const int* indices,
+                           int ndim, const int* input_shape, const int* index_shape,
+                           int dim, size_t index_size) {
+    if (!out || !input || !indices) return -1;
+    int* coords = (int*)malloc(ndim * sizeof(int));
+    if (!coords) return -1;
+
+    for (size_t i = 0; i < index_size; i++) {
+        linear_to_coords(i, index_shape, ndim, coords);
+        int saved = coords[dim];
+        coords[dim] = indices[i];
+        size_t src_idx = coords_to_linear(coords, input_shape, ndim);
+        coords[dim] = saved;
+        out[i] = input[src_idx];
+    }
+
+    free(coords);
+    return 0;
+}
+
+int scatter_add_kernel_host_f32(float* out, const float* src, const int* indices,
+                                int ndim, const int* out_shape, const int* index_shape,
+                                int dim, size_t index_size) {
+    if (!out || !src || !indices) return -1;
+    int* coords = (int*)malloc(ndim * sizeof(int));
+    if (!coords) return -1;
+
+    for (size_t i = 0; i < index_size; i++) {
+        linear_to_coords(i, index_shape, ndim, coords);
+        int saved = coords[dim];
+        coords[dim] = indices[i];
+        size_t dst_idx = coords_to_linear(coords, out_shape, ndim);
+        coords[dim] = saved;
+        out[dst_idx] += src[i];
+    }
+
+    free(coords);
+    return 0;
+}
+
+int scatter_add_kernel_host_f64(double* out, const double* src, const int* indices,
+                                int ndim, const int* out_shape, const int* index_shape,
+                                int dim, size_t index_size) {
+    if (!out || !src || !indices) return -1;
+    int* coords = (int*)malloc(ndim * sizeof(int));
+    if (!coords) return -1;
+
+    for (size_t i = 0; i < index_size; i++) {
+        linear_to_coords(i, index_shape, ndim, coords);
+        int saved = coords[dim];
+        coords[dim] = indices[i];
+        size_t dst_idx = coords_to_linear(coords, out_shape, ndim);
+        coords[dim] = saved;
+        out[dst_idx] += src[i];
+    }
+
+    free(coords);
+    return 0;
+}

@@ -67,6 +67,23 @@ int rp_mean_dim(void* out, const void* x, size_t outer_size, size_t dim_size, si
 int rp_softmax(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
 int rp_log_softmax(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
 
+int rp_gather(void* out, const void* input, const int* indices, int ndim, const int* input_shape, const int* index_shape, int dim, size_t index_size, DType dtype, int device_id);
+int rp_scatter_add(void* out, const void* src, const int* indices, int ndim, const int* out_shape, const int* index_shape, int dim, size_t index_size, DType dtype, int device_id);
+
+int gather_kernel_host_f32(float* out, const float* input, const int* indices, int ndim, const int* input_shape, const int* index_shape, int dim, size_t index_size);
+int gather_kernel_host_f64(double* out, const double* input, const int* indices, int ndim, const int* input_shape, const int* index_shape, int dim, size_t index_size);
+int scatter_add_kernel_host_f32(float* out, const float* src, const int* indices, int ndim, const int* out_shape, const int* index_shape, int dim, size_t index_size);
+int scatter_add_kernel_host_f64(double* out, const double* src, const int* indices, int ndim, const int* out_shape, const int* index_shape, int dim, size_t index_size);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+int gather_kernel_device(void* out, const void* input, const int* indices, int ndim, const int* input_shape, const int* index_shape, int dim, size_t index_size, DType dtype);
+int scatter_add_kernel_device(void* out, const void* src, const int* indices, int ndim, const int* out_shape, const int* index_shape, int dim, size_t index_size, DType dtype);
+#ifdef __cplusplus
+}
+#endif
+
 int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id);
 
 Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim);

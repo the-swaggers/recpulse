@@ -1564,3 +1564,100 @@ extern "C" int log_softmax_kernel_device(void* out, const void* x, size_t outer_
     else return -1;
     return cudaGetLastError() == cudaSuccess ? 0 : -1;
 }
+
+__device__ static void d_linear_to_coords(size_t linear, const int* shape, int ndim, int* coords) {
+    for (int d = ndim - 1; d >= 0; d--) {
+        coords[d] = linear % shape[d];
+        linear /= shape[d];
+    }
+}
+
+__device__ static size_t d_coords_to_linear(const int* coords, const int* shape, int ndim) {
+    size_t idx = 0;
+    for (int d = 0; d < ndim; d++) {
+        idx = idx * shape[d] + coords[d];
+    }
+    return idx;
+}
+
+template<typename T>
+__global__ void gather_kernel(const T* input, T* out, const int* indices,
+                              int ndim, const int* input_shape, const int* index_shape,
+                              int dim, size_t index_size) {
+    size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= index_size) return;
+
+    int coords[8];
+    d_linear_to_coords(i, index_shape, ndim, coords);
+    int saved = coords[dim];
+    coords[dim] = indices[i];
+    size_t src_idx = d_coords_to_linear(coords, input_shape, ndim);
+    coords[dim] = saved;
+    out[i] = input[src_idx];
+}
+
+template<typename T>
+__global__ void scatter_add_kernel(T* out, const T* src, const int* indices,
+                                   int ndim, const int* out_shape, const int* index_shape,
+                                   int dim, size_t index_size) {
+    size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= index_size) return;
+
+    int coords[8];
+    d_linear_to_coords(i, index_shape, ndim, coords);
+    int saved = coords[dim];
+    coords[dim] = indices[i];
+    size_t dst_idx = d_coords_to_linear(coords, out_shape, ndim);
+    coords[dim] = saved;
+    atomicAdd(&out[dst_idx], src[i]);
+}
+
+extern "C" int gather_kernel_device(void* out, const void* input, const int* indices,
+                                    int ndim, const int* input_shape, const int* index_shape,
+                                    int dim, size_t index_size, DType dtype) {
+    int* d_input_shape; int* d_index_shape;
+    cudaMalloc(&d_input_shape, ndim * sizeof(int));
+    cudaMalloc(&d_index_shape, ndim * sizeof(int));
+    cudaMemcpy(d_input_shape, input_shape, ndim * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_index_shape, index_shape, ndim * sizeof(int), cudaMemcpyHostToDevice);
+
+    int threads = 256;
+    int blocks = ((int)index_size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        gather_kernel<float><<<blocks, threads>>>((const float*)input, (float*)out, indices, ndim, d_input_shape, d_index_shape, dim, index_size);
+    else if (dtype == DTYPE_FLOAT64)
+        gather_kernel<double><<<blocks, threads>>>((const double*)input, (double*)out, indices, ndim, d_input_shape, d_index_shape, dim, index_size);
+    else if (dtype == DTYPE_FLOAT16)
+        gather_kernel<__half><<<blocks, threads>>>((const __half*)input, (__half*)out, indices, ndim, d_input_shape, d_index_shape, dim, index_size);
+    else if (dtype == DTYPE_BFLOAT16)
+        gather_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)input, (__nv_bfloat16*)out, indices, ndim, d_input_shape, d_index_shape, dim, index_size);
+    else { cudaFree(d_input_shape); cudaFree(d_index_shape); return -1; }
+
+    bool ok = cudaGetLastError() == cudaSuccess;
+    cudaFree(d_input_shape); cudaFree(d_index_shape);
+    return ok ? 0 : -1;
+}
+
+extern "C" int scatter_add_kernel_device(void* out, const void* src, const int* indices,
+                                         int ndim, const int* out_shape, const int* index_shape,
+                                         int dim, size_t index_size, DType dtype) {
+    int* d_out_shape; int* d_index_shape;
+    cudaMalloc(&d_out_shape, ndim * sizeof(int));
+    cudaMalloc(&d_index_shape, ndim * sizeof(int));
+    cudaMemcpy(d_out_shape, out_shape, ndim * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_index_shape, index_shape, ndim * sizeof(int), cudaMemcpyHostToDevice);
+
+    int threads = 256;
+    int blocks = ((int)index_size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        scatter_add_kernel<float><<<blocks, threads>>>((float*)out, (const float*)src, indices, ndim, d_out_shape, d_index_shape, dim, index_size);
+    else if (dtype == DTYPE_FLOAT64)
+        scatter_add_kernel<double><<<blocks, threads>>>((double*)out, (const double*)src, indices, ndim, d_out_shape, d_index_shape, dim, index_size);
+    else { cudaFree(d_out_shape); cudaFree(d_index_shape); return -1; }
+
+    bool ok = cudaGetLastError() == cudaSuccess;
+    cudaFree(d_out_shape); cudaFree(d_index_shape);
+    return ok ? 0 : -1;
+}

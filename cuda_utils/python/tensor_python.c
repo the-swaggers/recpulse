@@ -803,6 +803,72 @@ static PyObject* PyTensor_op_mean_dim(PyTensorObject* self, PyObject* args, PyOb
     return wrap_tensor_result(result);
 }
 
+static int* tensor_to_int_array(Tensor* t) {
+    Tensor* host_t = t;
+    bool need_free = false;
+    if (t->device_id >= 0) {
+        host_t = tensor_to(t, -1, t->dtype, false);
+        if (!host_t) return NULL;
+        need_free = true;
+    }
+    Tensor* f32_t = host_t;
+    bool need_free_f32 = false;
+    if (host_t->dtype != DTYPE_FLOAT32) {
+        f32_t = tensor_to(host_t, -1, DTYPE_FLOAT32, false);
+        if (!f32_t) { if (need_free) free_tensor(host_t); return NULL; }
+        need_free_f32 = true;
+    }
+    int* result = (int*)malloc(f32_t->size * sizeof(int));
+    if (result) {
+        const float* data = (const float*)f32_t->data;
+        for (size_t i = 0; i < f32_t->size; i++) {
+            result[i] = (int)data[i];
+        }
+    }
+    if (need_free_f32) free_tensor(f32_t);
+    if (need_free) free_tensor(host_t);
+    return result;
+}
+
+static PyObject* PyTensor_op_gather(PyTensorObject* self, PyObject* args) {
+    if (self->tensor == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
+        return NULL;
+    }
+
+    int dim;
+    PyObject* index_obj;
+    if (!PyArg_ParseTuple(args, "iO", &dim, &index_obj))
+        return NULL;
+
+    if (!PyObject_TypeCheck(index_obj, &PyTensorType)) {
+        PyErr_SetString(PyExc_TypeError, "index must be a Tensor");
+        return NULL;
+    }
+
+    PyTensorObject* index_py = (PyTensorObject*)index_obj;
+    if (!index_py->tensor) {
+        PyErr_SetString(PyExc_RuntimeError, "Index tensor is not initialized");
+        return NULL;
+    }
+
+    Tensor* index_t = index_py->tensor;
+    int* indices = tensor_to_int_array(index_t);
+    if (!indices) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to convert index tensor to int array");
+        return NULL;
+    }
+
+    Tensor* result = op_gather(self->tensor, dim, indices, index_t->ndim, index_t->shape, index_t->size);
+    free(indices);
+
+    if (result == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "op_gather operation failed");
+        return NULL;
+    }
+    return wrap_tensor_result(result);
+}
+
 static PyObject* PyTensor_op_softmax(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
     if (self->tensor == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
@@ -2115,6 +2181,8 @@ static PyMethodDef PyTensor_methods[] = {
      "Sum along a dimension with autograd support"},
     {"op_mean_dim", (PyCFunction)PyTensor_op_mean_dim, METH_VARARGS | METH_KEYWORDS,
      "Mean along a dimension with autograd support"},
+    {"op_gather", (PyCFunction)PyTensor_op_gather, METH_VARARGS,
+     "Gather elements along dim using index tensor"},
     {"op_softmax", (PyCFunction)PyTensor_op_softmax, METH_VARARGS | METH_KEYWORDS,
      "Softmax along a dimension with autograd support"},
     {"op_log_softmax", (PyCFunction)PyTensor_op_log_softmax, METH_VARARGS | METH_KEYWORDS,
