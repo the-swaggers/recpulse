@@ -830,6 +830,30 @@ static int* tensor_to_int_array(Tensor* t) {
     return result;
 }
 
+static PyObject* PyTensor_op_maxpool2d(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+    int kH, kW, stride_h = -1, stride_w = -1, pad_h = 0, pad_w = 0;
+    static char* kwlist[] = {"kernel_h", "kernel_w", "stride_h", "stride_w", "pad_h", "pad_w", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "ii|iiii", kwlist, &kH, &kW, &stride_h, &stride_w, &pad_h, &pad_w)) return NULL;
+    if (stride_h < 0) stride_h = kH;
+    if (stride_w < 0) stride_w = kW;
+    Tensor* result = op_maxpool2d(self->tensor, kH, kW, stride_h, stride_w, pad_h, pad_w);
+    if (!result) { PyErr_SetString(PyExc_RuntimeError, "op_maxpool2d failed"); return NULL; }
+    return wrap_tensor_result(result);
+}
+
+static PyObject* PyTensor_op_avgpool2d(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+    int kH, kW, stride_h = -1, stride_w = -1, pad_h = 0, pad_w = 0;
+    static char* kwlist[] = {"kernel_h", "kernel_w", "stride_h", "stride_w", "pad_h", "pad_w", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "ii|iiii", kwlist, &kH, &kW, &stride_h, &stride_w, &pad_h, &pad_w)) return NULL;
+    if (stride_h < 0) stride_h = kH;
+    if (stride_w < 0) stride_w = kW;
+    Tensor* result = op_avgpool2d(self->tensor, kH, kW, stride_h, stride_w, pad_h, pad_w);
+    if (!result) { PyErr_SetString(PyExc_RuntimeError, "op_avgpool2d failed"); return NULL; }
+    return wrap_tensor_result(result);
+}
+
 static PyObject* PyTensor_op_conv2d(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
     if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
 
@@ -2316,6 +2340,10 @@ static PyMethodDef PyTensor_methods[] = {
      "Mean along a dimension with autograd support"},
     {"op_conv2d", (PyCFunction)PyTensor_op_conv2d, METH_VARARGS | METH_KEYWORDS,
      "2D convolution with autograd (im2col + matmul)"},
+    {"op_maxpool2d", (PyCFunction)PyTensor_op_maxpool2d, METH_VARARGS | METH_KEYWORDS,
+     "2D max pooling with autograd"},
+    {"op_avgpool2d", (PyCFunction)PyTensor_op_avgpool2d, METH_VARARGS | METH_KEYWORDS,
+     "2D average pooling with autograd"},
     {"op_mse_loss", (PyCFunction)PyTensor_op_mse_loss, METH_VARARGS | METH_KEYWORDS,
      "Mean squared error loss with autograd"},
     {"op_bce_loss", (PyCFunction)PyTensor_op_bce_loss, METH_VARARGS | METH_KEYWORDS,

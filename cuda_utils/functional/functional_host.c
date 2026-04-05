@@ -1333,3 +1333,123 @@ int col2im_kernel_host_f64(double* im, const double* col, int C_in, int H, int W
     }
     return 0;
 }
+
+int maxpool2d_kernel_host_f32(float* out, int* max_indices, const float* input,
+                              int N, int C, int H, int W,
+                              int kH, int kW, int stride_h, int stride_w,
+                              int pad_h, int pad_w, int out_H, int out_W) {
+    if (!out || !max_indices || !input) return -1;
+    for (int n = 0; n < N; n++) {
+        for (int c = 0; c < C; c++) {
+            for (int oh = 0; oh < out_H; oh++) {
+                for (int ow = 0; ow < out_W; ow++) {
+                    float max_val = -FLT_MAX;
+                    int max_idx = -1;
+                    for (int kh_i = 0; kh_i < kH; kh_i++) {
+                        for (int kw_i = 0; kw_i < kW; kw_i++) {
+                            int h_in = oh * stride_h + kh_i - pad_h;
+                            int w_in = ow * stride_w + kw_i - pad_w;
+                            if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W) {
+                                int idx = ((n * C + c) * H + h_in) * W + w_in;
+                                if (input[idx] > max_val) { max_val = input[idx]; max_idx = idx; }
+                            }
+                        }
+                    }
+                    int out_idx = ((n * C + c) * out_H + oh) * out_W + ow;
+                    out[out_idx] = max_val;
+                    max_indices[out_idx] = max_idx;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int maxpool2d_kernel_host_f64(double* out, int* max_indices, const double* input,
+                              int N, int C, int H, int W,
+                              int kH, int kW, int stride_h, int stride_w,
+                              int pad_h, int pad_w, int out_H, int out_W) {
+    if (!out || !max_indices || !input) return -1;
+    for (int n = 0; n < N; n++) {
+        for (int c = 0; c < C; c++) {
+            for (int oh = 0; oh < out_H; oh++) {
+                for (int ow = 0; ow < out_W; ow++) {
+                    double max_val = -DBL_MAX;
+                    int max_idx = -1;
+                    for (int kh_i = 0; kh_i < kH; kh_i++) {
+                        for (int kw_i = 0; kw_i < kW; kw_i++) {
+                            int h_in = oh * stride_h + kh_i - pad_h;
+                            int w_in = ow * stride_w + kw_i - pad_w;
+                            if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W) {
+                                int idx = ((n * C + c) * H + h_in) * W + w_in;
+                                if (input[idx] > max_val) { max_val = input[idx]; max_idx = idx; }
+                            }
+                        }
+                    }
+                    int out_idx = ((n * C + c) * out_H + oh) * out_W + ow;
+                    out[out_idx] = max_val;
+                    max_indices[out_idx] = max_idx;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int avgpool2d_kernel_host_f32(float* out, const float* input,
+                              int N, int C, int H, int W,
+                              int kH, int kW, int stride_h, int stride_w,
+                              int pad_h, int pad_w, int out_H, int out_W) {
+    if (!out || !input) return -1;
+    for (int n = 0; n < N; n++) {
+        for (int c = 0; c < C; c++) {
+            for (int oh = 0; oh < out_H; oh++) {
+                for (int ow = 0; ow < out_W; ow++) {
+                    float sum = 0.0f;
+                    int count = 0;
+                    for (int kh_i = 0; kh_i < kH; kh_i++) {
+                        for (int kw_i = 0; kw_i < kW; kw_i++) {
+                            int h_in = oh * stride_h + kh_i - pad_h;
+                            int w_in = ow * stride_w + kw_i - pad_w;
+                            if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W) {
+                                sum += input[((n * C + c) * H + h_in) * W + w_in];
+                                count++;
+                            }
+                        }
+                    }
+                    out[((n * C + c) * out_H + oh) * out_W + ow] = (count > 0) ? sum / (float)count : 0.0f;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int avgpool2d_kernel_host_f64(double* out, const double* input,
+                              int N, int C, int H, int W,
+                              int kH, int kW, int stride_h, int stride_w,
+                              int pad_h, int pad_w, int out_H, int out_W) {
+    if (!out || !input) return -1;
+    for (int n = 0; n < N; n++) {
+        for (int c = 0; c < C; c++) {
+            for (int oh = 0; oh < out_H; oh++) {
+                for (int ow = 0; ow < out_W; ow++) {
+                    double sum = 0.0;
+                    int count = 0;
+                    for (int kh_i = 0; kh_i < kH; kh_i++) {
+                        for (int kw_i = 0; kw_i < kW; kw_i++) {
+                            int h_in = oh * stride_h + kh_i - pad_h;
+                            int w_in = ow * stride_w + kw_i - pad_w;
+                            if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W) {
+                                sum += input[((n * C + c) * H + h_in) * W + w_in];
+                                count++;
+                            }
+                        }
+                    }
+                    out[((n * C + c) * out_H + oh) * out_W + ow] = (count > 0) ? sum / (double)count : 0.0;
+                }
+            }
+        }
+    }
+    return 0;
+}

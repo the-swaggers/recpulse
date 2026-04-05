@@ -3486,6 +3486,289 @@ void backward_log_softmax_fn(GradFn* self, Tensor* grad_output);
 void backward_sigmoid_fn(GradFn* self, Tensor* grad_output);
 
 typedef struct {
+    int kH, kW;
+    int stride_h, stride_w;
+    int pad_h, pad_w;
+    int N, C, H, W;
+    int out_H, out_W;
+    int* max_indices;
+    int* d_max_indices;
+} MaxPool2dSavedData;
+
+typedef struct {
+    int kH, kW;
+    int stride_h, stride_w;
+    int pad_h, pad_w;
+    int N, C, H, W;
+    int out_H, out_W;
+} AvgPool2dSavedData;
+
+void backward_maxpool2d_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* input = self->inputs[0];
+    MaxPool2dSavedData* s = (MaxPool2dSavedData*)self->saved_data;
+    if (!s || !input->metadata || !input->metadata->requires_grad) return;
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (!input->metadata->grad) return;
+    }
+
+    size_t out_total = (size_t)s->N * s->C * s->out_H * s->out_W;
+    size_t in_total = (size_t)s->N * s->C * s->H * s->W;
+    size_t esz = dtype_size(input->dtype);
+
+    if (input->device_id == -1) {
+        if (input->dtype == DTYPE_FLOAT32) {
+            float* gi = (float*)input->metadata->grad->data;
+            const float* go = (const float*)grad_output->data;
+            for (size_t i = 0; i < out_total; i++) {
+                if (s->max_indices[i] >= 0) gi[s->max_indices[i]] += go[i];
+            }
+        } else if (input->dtype == DTYPE_FLOAT64) {
+            double* gi = (double*)input->metadata->grad->data;
+            const double* go = (const double*)grad_output->data;
+            for (size_t i = 0; i < out_total; i++) {
+                if (s->max_indices[i] >= 0) gi[s->max_indices[i]] += go[i];
+            }
+        } else {
+            float* gi_f32 = (float*)malloc(in_total * sizeof(float));
+            float* go_f32 = (float*)malloc(out_total * sizeof(float));
+            if (gi_f32 && go_f32) {
+                half_to_fp32_array(input->metadata->grad->data, gi_f32, in_total, input->dtype);
+                half_to_fp32_array(grad_output->data, go_f32, out_total, input->dtype);
+                for (size_t i = 0; i < out_total; i++) {
+                    if (s->max_indices[i] >= 0) gi_f32[s->max_indices[i]] += go_f32[i];
+                }
+                fp32_to_half_array(gi_f32, input->metadata->grad->data, in_total, input->dtype);
+            }
+            free(gi_f32); free(go_f32);
+        }
+    } else {
+        Tensor* go_host = tensor_to(grad_output, -1, input->dtype, false);
+        Tensor* gi_host = tensor_to(input->metadata->grad, -1, input->dtype, false);
+        if (go_host && gi_host) {
+            if (input->dtype == DTYPE_FLOAT32) {
+                float* gi = (float*)gi_host->data;
+                const float* go = (const float*)go_host->data;
+                for (size_t i = 0; i < out_total; i++) {
+                    if (s->max_indices[i] >= 0) gi[s->max_indices[i]] += go[i];
+                }
+            } else if (input->dtype == DTYPE_FLOAT64) {
+                double* gi = (double*)gi_host->data;
+                const double* go = (const double*)go_host->data;
+                for (size_t i = 0; i < out_total; i++) {
+                    if (s->max_indices[i] >= 0) gi[s->max_indices[i]] += go[i];
+                }
+            }
+            cudaMemcpy(input->metadata->grad->data, gi_host->data, in_total * esz, cudaMemcpyHostToDevice);
+        }
+        if (go_host) free_tensor(go_host);
+        if (gi_host) free_tensor(gi_host);
+    }
+}
+
+void backward_avgpool2d_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* input = self->inputs[0];
+    AvgPool2dSavedData* s = (AvgPool2dSavedData*)self->saved_data;
+    if (!s || !input->metadata || !input->metadata->requires_grad) return;
+
+    if (!input->metadata->grad) {
+        input->metadata->grad = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (!input->metadata->grad) return;
+    }
+
+    size_t out_total = (size_t)s->N * s->C * s->out_H * s->out_W;
+    size_t in_total = (size_t)s->N * s->C * s->H * s->W;
+    size_t esz = dtype_size(input->dtype);
+
+    Tensor* go_host = grad_output;
+    Tensor* gi_host = input->metadata->grad;
+    bool free_go = false, free_gi = false;
+
+    if (input->device_id >= 0) {
+        go_host = tensor_to(grad_output, -1, input->dtype, false);
+        gi_host = tensor_to(input->metadata->grad, -1, input->dtype, false);
+        if (!go_host || !gi_host) {
+            if (go_host) free_tensor(go_host);
+            if (gi_host) free_tensor(gi_host);
+            return;
+        }
+        free_go = true; free_gi = true;
+    }
+
+    float* gi_f32 = NULL; float* go_f32 = NULL;
+    bool is_half = (input->dtype == DTYPE_FLOAT16 || input->dtype == DTYPE_BFLOAT16);
+
+    if (is_half) {
+        gi_f32 = (float*)malloc(in_total * sizeof(float));
+        go_f32 = (float*)malloc(out_total * sizeof(float));
+        if (!gi_f32 || !go_f32) { free(gi_f32); free(go_f32); if (free_go) free_tensor(go_host); if (free_gi) free_tensor(gi_host); return; }
+        half_to_fp32_array(gi_host->data, gi_f32, in_total, input->dtype);
+        half_to_fp32_array(go_host->data, go_f32, out_total, input->dtype);
+    }
+
+    for (int n = 0; n < s->N; n++) {
+        for (int c = 0; c < s->C; c++) {
+            for (int oh = 0; oh < s->out_H; oh++) {
+                for (int ow = 0; ow < s->out_W; ow++) {
+                    int count = 0;
+                    for (int kh_i = 0; kh_i < s->kH; kh_i++) {
+                        for (int kw_i = 0; kw_i < s->kW; kw_i++) {
+                            int h_in = oh * s->stride_h + kh_i - s->pad_h;
+                            int w_in = ow * s->stride_w + kw_i - s->pad_w;
+                            if (h_in >= 0 && h_in < s->H && w_in >= 0 && w_in < s->W) count++;
+                        }
+                    }
+                    if (count == 0) continue;
+                    int out_idx = ((n * s->C + c) * s->out_H + oh) * s->out_W + ow;
+
+                    for (int kh_i = 0; kh_i < s->kH; kh_i++) {
+                        for (int kw_i = 0; kw_i < s->kW; kw_i++) {
+                            int h_in = oh * s->stride_h + kh_i - s->pad_h;
+                            int w_in = ow * s->stride_w + kw_i - s->pad_w;
+                            if (h_in >= 0 && h_in < s->H && w_in >= 0 && w_in < s->W) {
+                                int in_idx = ((n * s->C + c) * s->H + h_in) * s->W + w_in;
+                                if (is_half) {
+                                    gi_f32[in_idx] += go_f32[out_idx] / (float)count;
+                                } else if (input->dtype == DTYPE_FLOAT32) {
+                                    ((float*)gi_host->data)[in_idx] += ((float*)go_host->data)[out_idx] / (float)count;
+                                } else {
+                                    ((double*)gi_host->data)[in_idx] += ((double*)go_host->data)[out_idx] / (double)count;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (is_half) {
+        fp32_to_half_array(gi_f32, gi_host->data, in_total, input->dtype);
+        free(gi_f32); free(go_f32);
+    }
+
+    if (input->device_id >= 0) {
+        cudaMemcpy(input->metadata->grad->data, gi_host->data, in_total * esz, cudaMemcpyHostToDevice);
+    }
+    if (free_go) free_tensor(go_host);
+    if (free_gi) free_tensor(gi_host);
+}
+
+Tensor* op_maxpool2d(Tensor* input, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w) {
+    if (!input || input->ndim != 4) return NULL;
+
+    int N = input->shape[0], C = input->shape[1], H = input->shape[2], W = input->shape[3];
+    int out_H = (H + 2 * pad_h - kH) / stride_h + 1;
+    int out_W = (W + 2 * pad_w - kW) / stride_w + 1;
+    if (out_H <= 0 || out_W <= 0) return NULL;
+
+    int out_shape[] = {N, C, out_H, out_W};
+    size_t out_total = (size_t)N * C * out_H * out_W;
+
+    Tensor* out = zeros_tensor(input->dtype, input->device_id, 4, out_shape, NULL);
+    if (!out) return NULL;
+
+    int* max_indices;
+    int* d_max_indices = NULL;
+    if (input->device_id >= 0) {
+        max_indices = (int*)malloc(out_total * sizeof(int));
+        cudaMalloc((void**)&d_max_indices, out_total * sizeof(int));
+        if (!max_indices || !d_max_indices) { free(max_indices); if (d_max_indices) cudaFree(d_max_indices); free_tensor(out); return NULL; }
+        int ret = rp_maxpool2d(out->data, d_max_indices, input->data, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, input->dtype, input->device_id);
+        if (ret != 0) { free(max_indices); cudaFree(d_max_indices); free_tensor(out); return NULL; }
+        cudaMemcpy(max_indices, d_max_indices, out_total * sizeof(int), cudaMemcpyDeviceToHost);
+        cudaFree(d_max_indices);
+        d_max_indices = NULL;
+    } else {
+        max_indices = (int*)malloc(out_total * sizeof(int));
+        if (!max_indices) { free_tensor(out); return NULL; }
+        int ret = rp_maxpool2d(out->data, max_indices, input->data, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, input->dtype, input->device_id);
+        if (ret != 0) { free(max_indices); free_tensor(out); return NULL; }
+    }
+
+    bool requires_grad = (input->metadata && input->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) { out->metadata = (Meta*)calloc(1, sizeof(Meta)); }
+        if (!out->metadata) { free(max_indices); free_tensor(out); return NULL; }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { free(max_indices); free_tensor(out); return NULL; }
+        grad_fn->backward = backward_maxpool2d_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); free(max_indices); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = input;
+
+        MaxPool2dSavedData* saved = (MaxPool2dSavedData*)malloc(sizeof(MaxPool2dSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); free(max_indices); free_tensor(out); return NULL; }
+        saved->kH = kH; saved->kW = kW;
+        saved->stride_h = stride_h; saved->stride_w = stride_w;
+        saved->pad_h = pad_h; saved->pad_w = pad_w;
+        saved->N = N; saved->C = C; saved->H = H; saved->W = W;
+        saved->out_H = out_H; saved->out_W = out_W;
+        saved->max_indices = max_indices;
+        saved->d_max_indices = NULL;
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    } else {
+        free(max_indices);
+    }
+
+    return out;
+}
+
+Tensor* op_avgpool2d(Tensor* input, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w) {
+    if (!input || input->ndim != 4) return NULL;
+
+    int N = input->shape[0], C = input->shape[1], H = input->shape[2], W = input->shape[3];
+    int out_H = (H + 2 * pad_h - kH) / stride_h + 1;
+    int out_W = (W + 2 * pad_w - kW) / stride_w + 1;
+    if (out_H <= 0 || out_W <= 0) return NULL;
+
+    int out_shape[] = {N, C, out_H, out_W};
+    Tensor* out = zeros_tensor(input->dtype, input->device_id, 4, out_shape, NULL);
+    if (!out) return NULL;
+
+    int ret = rp_avgpool2d(out->data, input->data, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, input->dtype, input->device_id);
+    if (ret != 0) { free_tensor(out); return NULL; }
+
+    bool requires_grad = (input->metadata && input->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) { out->metadata = (Meta*)calloc(1, sizeof(Meta)); }
+        if (!out->metadata) { free_tensor(out); return NULL; }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { free_tensor(out); return NULL; }
+        grad_fn->backward = backward_avgpool2d_fn;
+        grad_fn->num_inputs = 1;
+        grad_fn->inputs = (Tensor**)malloc(sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = input;
+
+        AvgPool2dSavedData* saved = (AvgPool2dSavedData*)malloc(sizeof(AvgPool2dSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); free_tensor(out); return NULL; }
+        saved->kH = kH; saved->kW = kW;
+        saved->stride_h = stride_h; saved->stride_w = stride_w;
+        saved->pad_h = pad_h; saved->pad_w = pad_w;
+        saved->N = N; saved->C = C; saved->H = H; saved->W = W;
+        saved->out_H = out_H; saved->out_W = out_W;
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+typedef struct {
     int stride_h, stride_w;
     int pad_h, pad_w;
     int dilation_h, dilation_w;
@@ -5975,6 +6258,10 @@ void free_grad_fn(GradFn* grad_fn) {
                    grad_fn->backward == backward_log_softmax_fn) {
             SumDimSavedData* saved = (SumDimSavedData*)grad_fn->saved_data;
             if (saved->input_shape) free(saved->input_shape);
+        } else if (grad_fn->backward == backward_maxpool2d_fn) {
+            MaxPool2dSavedData* saved = (MaxPool2dSavedData*)grad_fn->saved_data;
+            if (saved->max_indices) free(saved->max_indices);
+            if (saved->d_max_indices) cudaFree(saved->d_max_indices);
         } else if (grad_fn->backward == backward_nll_loss_fn ||
                    grad_fn->backward == backward_cross_entropy_loss_fn) {
             CELossSavedData* saved = (CELossSavedData*)grad_fn->saved_data;

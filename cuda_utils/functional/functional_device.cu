@@ -1760,3 +1760,106 @@ extern "C" int col2im_kernel_device(void* im, const void* col, int C_in, int H, 
     else return -1;
     return cudaGetLastError() == cudaSuccess ? 0 : -1;
 }
+
+template<typename T>
+__global__ void maxpool2d_kernel(const T* input, T* out, int* max_indices,
+                                 int C, int H, int W, int kH, int kW,
+                                 int stride_h, int stride_w, int pad_h, int pad_w,
+                                 int out_H, int out_W, size_t total) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+
+    int ow = idx % out_W;
+    size_t tmp = idx / out_W;
+    int oh = tmp % out_H;
+    tmp /= out_H;
+    int c = tmp % C;
+    int n = tmp / C;
+
+    float max_val = -1e38f;
+    int max_idx = -1;
+    for (int kh_i = 0; kh_i < kH; kh_i++) {
+        for (int kw_i = 0; kw_i < kW; kw_i++) {
+            int h_in = oh * stride_h + kh_i - pad_h;
+            int w_in = ow * stride_w + kw_i - pad_w;
+            if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W) {
+                int i_idx = ((n * C + c) * H + h_in) * W + w_in;
+                float v = (float)input[i_idx];
+                if (v > max_val) { max_val = v; max_idx = i_idx; }
+            }
+        }
+    }
+    out[idx] = T(max_val);
+    max_indices[idx] = max_idx;
+}
+
+template<typename T>
+__global__ void avgpool2d_kernel(const T* input, T* out,
+                                 int C, int H, int W, int kH, int kW,
+                                 int stride_h, int stride_w, int pad_h, int pad_w,
+                                 int out_H, int out_W, size_t total) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+
+    int ow = idx % out_W;
+    size_t tmp = idx / out_W;
+    int oh = tmp % out_H;
+    tmp /= out_H;
+    int c = tmp % C;
+    int n = tmp / C;
+
+    float sum = 0.0f;
+    int count = 0;
+    for (int kh_i = 0; kh_i < kH; kh_i++) {
+        for (int kw_i = 0; kw_i < kW; kw_i++) {
+            int h_in = oh * stride_h + kh_i - pad_h;
+            int w_in = ow * stride_w + kw_i - pad_w;
+            if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W) {
+                sum += (float)input[((n * C + c) * H + h_in) * W + w_in];
+                count++;
+            }
+        }
+    }
+    out[idx] = T(count > 0 ? sum / (float)count : 0.0f);
+}
+
+#define POOL_DEVICE_LAUNCH(kernel, T, ...) \
+    kernel<T><<<blocks, threads>>>(__VA_ARGS__);
+
+extern "C" int maxpool2d_kernel_device(void* out, int* max_indices, const void* input,
+                                       int N, int C, int H, int W, int kH, int kW,
+                                       int stride_h, int stride_w, int pad_h, int pad_w,
+                                       int out_H, int out_W, DType dtype) {
+    size_t total = (size_t)N * C * out_H * out_W;
+    int threads = 256;
+    int blocks = ((int)total + threads - 1) / threads;
+    if (dtype == DTYPE_FLOAT32)
+        maxpool2d_kernel<float><<<blocks, threads>>>((const float*)input, (float*)out, max_indices, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, total);
+    else if (dtype == DTYPE_FLOAT64)
+        maxpool2d_kernel<double><<<blocks, threads>>>((const double*)input, (double*)out, max_indices, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, total);
+    else if (dtype == DTYPE_FLOAT16)
+        maxpool2d_kernel<__half><<<blocks, threads>>>((const __half*)input, (__half*)out, max_indices, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, total);
+    else if (dtype == DTYPE_BFLOAT16)
+        maxpool2d_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)input, (__nv_bfloat16*)out, max_indices, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, total);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}
+
+extern "C" int avgpool2d_kernel_device(void* out, const void* input,
+                                       int N, int C, int H, int W, int kH, int kW,
+                                       int stride_h, int stride_w, int pad_h, int pad_w,
+                                       int out_H, int out_W, DType dtype) {
+    size_t total = (size_t)N * C * out_H * out_W;
+    int threads = 256;
+    int blocks = ((int)total + threads - 1) / threads;
+    if (dtype == DTYPE_FLOAT32)
+        avgpool2d_kernel<float><<<blocks, threads>>>((const float*)input, (float*)out, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, total);
+    else if (dtype == DTYPE_FLOAT64)
+        avgpool2d_kernel<double><<<blocks, threads>>>((const double*)input, (double*)out, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, total);
+    else if (dtype == DTYPE_FLOAT16)
+        avgpool2d_kernel<__half><<<blocks, threads>>>((const __half*)input, (__half*)out, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, total);
+    else if (dtype == DTYPE_BFLOAT16)
+        avgpool2d_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)input, (__nv_bfloat16*)out, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, total);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}

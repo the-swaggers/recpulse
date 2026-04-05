@@ -722,6 +722,68 @@ int rp_col2im_2d(void* im, const void* col, int C_in, int H, int W,
     return col2im_kernel_device(im, col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, dtype);
 }
 
+int rp_maxpool2d(void* out, int* max_indices, const void* input,
+                 int N, int C, int H, int W,
+                 int kH, int kW, int stride_h, int stride_w,
+                 int pad_h, int pad_w, int out_H, int out_W,
+                 DType dtype, int device_id) {
+    if (!out || !max_indices || !input) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return maxpool2d_kernel_host_f32((float*)out, max_indices, (const float*)input, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return maxpool2d_kernel_host_f64((double*)out, max_indices, (const double*)input, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            size_t in_size = (size_t)N * C * H * W;
+            size_t out_size = (size_t)N * C * out_H * out_W;
+            float* in_f32 = (float*)malloc(in_size * sizeof(float));
+            float* out_f32 = (float*)malloc(out_size * sizeof(float));
+            if (!in_f32 || !out_f32) { free(in_f32); free(out_f32); return -1; }
+            half_to_fp32_array(input, in_f32, in_size, dtype);
+            int ret = maxpool2d_kernel_host_f32(out_f32, max_indices, in_f32, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W);
+            if (ret == 0) fp32_to_half_array(out_f32, out, out_size, dtype);
+            free(in_f32); free(out_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return maxpool2d_kernel_device(out, max_indices, input, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, dtype);
+}
+
+int rp_avgpool2d(void* out, const void* input,
+                 int N, int C, int H, int W,
+                 int kH, int kW, int stride_h, int stride_w,
+                 int pad_h, int pad_w, int out_H, int out_W,
+                 DType dtype, int device_id) {
+    if (!out || !input) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return avgpool2d_kernel_host_f32((float*)out, (const float*)input, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return avgpool2d_kernel_host_f64((double*)out, (const double*)input, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            size_t in_size = (size_t)N * C * H * W;
+            size_t out_size = (size_t)N * C * out_H * out_W;
+            float* in_f32 = (float*)malloc(in_size * sizeof(float));
+            float* out_f32 = (float*)malloc(out_size * sizeof(float));
+            if (!in_f32 || !out_f32) { free(in_f32); free(out_f32); return -1; }
+            half_to_fp32_array(input, in_f32, in_size, dtype);
+            int ret = avgpool2d_kernel_host_f32(out_f32, in_f32, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W);
+            if (ret == 0) fp32_to_half_array(out_f32, out, out_size, dtype);
+            free(in_f32); free(out_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return avgpool2d_kernel_device(out, input, N, C, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, out_H, out_W, dtype);
+}
+
 int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id) {
     if (!C || !A || !B || m <= 0 || k <= 0 || n <= 0) return -1;
 

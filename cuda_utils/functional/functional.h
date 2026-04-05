@@ -125,6 +125,31 @@ int col2im_kernel_device(void* im, const void* col, int C_in, int H, int W,
 }
 #endif
 
+int rp_maxpool2d(void* out, int* max_indices, const void* input,
+                 int N, int C, int H, int W,
+                 int kH, int kW, int stride_h, int stride_w,
+                 int pad_h, int pad_w, int out_H, int out_W,
+                 DType dtype, int device_id);
+int rp_avgpool2d(void* out, const void* input,
+                 int N, int C, int H, int W,
+                 int kH, int kW, int stride_h, int stride_w,
+                 int pad_h, int pad_w, int out_H, int out_W,
+                 DType dtype, int device_id);
+
+int maxpool2d_kernel_host_f32(float* out, int* max_indices, const float* input, int N, int C, int H, int W, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w, int out_H, int out_W);
+int maxpool2d_kernel_host_f64(double* out, int* max_indices, const double* input, int N, int C, int H, int W, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w, int out_H, int out_W);
+int avgpool2d_kernel_host_f32(float* out, const float* input, int N, int C, int H, int W, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w, int out_H, int out_W);
+int avgpool2d_kernel_host_f64(double* out, const double* input, int N, int C, int H, int W, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w, int out_H, int out_W);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+int maxpool2d_kernel_device(void* out, int* max_indices, const void* input, int N, int C, int H, int W, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w, int out_H, int out_W, DType dtype);
+int avgpool2d_kernel_device(void* out, const void* input, int N, int C, int H, int W, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w, int out_H, int out_W, DType dtype);
+#ifdef __cplusplus
+}
+#endif
+
 int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id);
 
 Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim);
