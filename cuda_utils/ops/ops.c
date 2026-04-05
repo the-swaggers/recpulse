@@ -3486,6 +3486,365 @@ void backward_log_softmax_fn(GradFn* self, Tensor* grad_output);
 void backward_sigmoid_fn(GradFn* self, Tensor* grad_output);
 
 typedef struct {
+    int stride_h, stride_w;
+    int pad_h, pad_w;
+    int dilation_h, dilation_w;
+    int N, C_in, H, W;
+    int C_out, kH, kW;
+    int out_H, out_W;
+    int has_bias;
+} Conv2dSavedData;
+
+void backward_conv2d_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* input = self->inputs[0];
+    Tensor* weight = self->inputs[1];
+    Conv2dSavedData* s = (Conv2dSavedData*)self->saved_data;
+    if (!s) return;
+
+    DType dtype = input->dtype;
+    int dev = input->device_id;
+    size_t esz = dtype_size(dtype);
+    int col_rows = s->C_in * s->kH * s->kW;
+    int col_cols = s->out_H * s->out_W;
+
+    if (input->metadata && input->metadata->requires_grad) {
+        if (!input->metadata->grad) {
+            input->metadata->grad = zeros_tensor(dtype, dev, input->ndim, input->shape, NULL);
+            if (!input->metadata->grad) return;
+        }
+
+        void* col_buf = calloc(1, (size_t)col_rows * col_cols * esz);
+        void* wt_buf = calloc(1, (size_t)s->C_out * col_rows * esz);
+        void* grad_im = calloc(1, (size_t)s->C_in * s->H * s->W * esz);
+        if (!col_buf || !wt_buf || !grad_im) { free(col_buf); free(wt_buf); free(grad_im); return; }
+        if (dev >= 0) {
+            void* d1; void* d2; void* d3;
+            cudaMalloc(&d1, (size_t)col_rows * col_cols * esz);
+            cudaMalloc(&d2, (size_t)s->C_out * col_rows * esz);
+            cudaMalloc(&d3, (size_t)s->C_in * s->H * s->W * esz);
+            free(col_buf); free(wt_buf); free(grad_im);
+            col_buf = d1; wt_buf = d2; grad_im = d3;
+        }
+
+        if (dev == -1) {
+            if (dtype == DTYPE_FLOAT32) {
+                float* ws = (float*)weight->data;
+                float* wd = (float*)wt_buf;
+                for (int r = 0; r < s->C_out; r++)
+                    for (int c = 0; c < col_rows; c++)
+                        wd[c * s->C_out + r] = ws[r * col_rows + c];
+            } else if (dtype == DTYPE_FLOAT64) {
+                double* ws = (double*)weight->data;
+                double* wd = (double*)wt_buf;
+                for (int r = 0; r < s->C_out; r++)
+                    for (int c = 0; c < col_rows; c++)
+                        wd[c * s->C_out + r] = ws[r * col_rows + c];
+            }
+        } else {
+            int wt_shape[] = {s->C_out, col_rows};
+            int wt_strides[] = {col_rows, 1};
+            Tensor tmp_w = {.dtype = dtype, .data = weight->data, .ndim = 2,
+                            .size = (size_t)s->C_out * col_rows,
+                            .shape = wt_shape, .strides = wt_strides, .device_id = dev,
+                            .owns_data = false, .base_tensor = NULL, .data_offset = 0, .metadata = NULL};
+            Tensor* wt_t = rp_transpose(&tmp_w, 0, 1);
+            if (wt_t) {
+                Tensor* wt_c = rp_contiguous(wt_t);
+                if (wt_c) {
+                    cudaMemcpy(wt_buf, wt_c->data, (size_t)s->C_out * col_rows * esz, cudaMemcpyDeviceToDevice);
+                    free(wt_c->shape); free(wt_c->strides); free(wt_c);
+                }
+                free(wt_t->shape); free(wt_t->strides); free(wt_t);
+            }
+        }
+
+        for (int n = 0; n < s->N; n++) {
+            void* grad_out_n = (char*)grad_output->data + (size_t)n * s->C_out * col_cols * esz;
+
+            rp_matmul(col_buf, wt_buf, grad_out_n, col_rows, s->C_out, col_cols, dtype, dev);
+
+            if (dev >= 0) cudaMemset(grad_im, 0, (size_t)s->C_in * s->H * s->W * esz);
+            else memset(grad_im, 0, (size_t)s->C_in * s->H * s->W * esz);
+
+            rp_col2im_2d(grad_im, col_buf, s->C_in, s->H, s->W, s->kH, s->kW,
+                         s->stride_h, s->stride_w, s->pad_h, s->pad_w,
+                         s->dilation_h, s->dilation_w, s->out_H, s->out_W, dtype, dev);
+
+            void* grad_ptr = (char*)input->metadata->grad->data + (size_t)n * s->C_in * s->H * s->W * esz;
+            rp_add(grad_ptr, grad_ptr, grad_im, (size_t)s->C_in * s->H * s->W, dtype, dev);
+        }
+
+        if (dev >= 0) { cudaFree(col_buf); cudaFree(wt_buf); cudaFree(grad_im); }
+        else { free(col_buf); free(wt_buf); free(grad_im); }
+    }
+
+    if (weight->metadata && weight->metadata->requires_grad) {
+        if (!weight->metadata->grad) {
+            weight->metadata->grad = zeros_tensor(dtype, dev, weight->ndim, weight->shape, NULL);
+            if (!weight->metadata->grad) return;
+        }
+
+        void* col_buf = calloc(1, (size_t)col_rows * col_cols * esz);
+        void* col_t_buf = calloc(1, (size_t)col_rows * col_cols * esz);
+        void* grad_w_tmp = calloc(1, (size_t)s->C_out * col_rows * esz);
+        if (!col_buf || !col_t_buf || !grad_w_tmp) { free(col_buf); free(col_t_buf); free(grad_w_tmp); return; }
+        if (dev >= 0) {
+            void* d1; void* d2; void* d3;
+            cudaMalloc(&d1, (size_t)col_rows * col_cols * esz);
+            cudaMalloc(&d2, (size_t)col_rows * col_cols * esz);
+            cudaMalloc(&d3, (size_t)s->C_out * col_rows * esz);
+            free(col_buf); free(col_t_buf); free(grad_w_tmp);
+            col_buf = d1; col_t_buf = d2; grad_w_tmp = d3;
+        }
+
+        int col_t_shape[] = {col_rows, col_cols};
+        int col_t_strides[] = {col_cols, 1};
+
+        for (int n = 0; n < s->N; n++) {
+            void* input_n = (char*)input->data + (size_t)n * s->C_in * s->H * s->W * esz;
+            void* grad_out_n = (char*)grad_output->data + (size_t)n * s->C_out * col_cols * esz;
+
+            rp_im2col_2d(col_buf, input_n, s->C_in, s->H, s->W, s->kH, s->kW,
+                         s->stride_h, s->stride_w, s->pad_h, s->pad_w,
+                         s->dilation_h, s->dilation_w, s->out_H, s->out_W, dtype, dev);
+
+            if (dev == -1) {
+                if (dtype == DTYPE_FLOAT32) {
+                    float* src = (float*)col_buf;
+                    float* dst = (float*)col_t_buf;
+                    for (int r = 0; r < col_rows; r++)
+                        for (int c = 0; c < col_cols; c++)
+                            dst[c * col_rows + r] = src[r * col_cols + c];
+                } else if (dtype == DTYPE_FLOAT64) {
+                    double* src = (double*)col_buf;
+                    double* dst = (double*)col_t_buf;
+                    for (int r = 0; r < col_rows; r++)
+                        for (int c = 0; c < col_cols; c++)
+                            dst[c * col_rows + r] = src[r * col_cols + c];
+                }
+            } else {
+                Tensor tmp_src = {.dtype = dtype, .data = col_buf, .ndim = 2, .size = (size_t)col_rows * col_cols,
+                                  .shape = col_t_shape, .strides = col_t_strides, .device_id = dev,
+                                  .owns_data = false, .base_tensor = NULL, .data_offset = 0, .metadata = NULL};
+                Tensor* transposed = rp_transpose(&tmp_src, 0, 1);
+                if (transposed) {
+                    Tensor* contig = rp_contiguous(transposed);
+                    if (contig) {
+                        cudaMemcpy(col_t_buf, contig->data, (size_t)col_rows * col_cols * esz, cudaMemcpyDeviceToDevice);
+                        free(contig->shape); free(contig->strides); free(contig);
+                    }
+                    free(transposed->shape); free(transposed->strides); free(transposed);
+                }
+            }
+
+            rp_matmul(grad_w_tmp, grad_out_n, col_t_buf, s->C_out, col_cols, col_rows, dtype, dev);
+
+            rp_add(weight->metadata->grad->data, weight->metadata->grad->data, grad_w_tmp,
+                   (size_t)s->C_out * col_rows, dtype, dev);
+        }
+
+        if (dev >= 0) { cudaFree(col_buf); cudaFree(col_t_buf); cudaFree(grad_w_tmp); }
+        else { free(col_buf); free(col_t_buf); free(grad_w_tmp); }
+    }
+
+    if (s->has_bias && self->num_inputs > 2) {
+        Tensor* bias = self->inputs[2];
+        if (bias && bias->metadata && bias->metadata->requires_grad) {
+            if (!bias->metadata->grad) {
+                bias->metadata->grad = zeros_tensor(dtype, dev, bias->ndim, bias->shape, NULL);
+                if (!bias->metadata->grad) return;
+            }
+
+            Tensor* host_go = grad_output;
+            bool free_host = false;
+            if (dev >= 0) {
+                host_go = tensor_to(grad_output, -1, dtype, false);
+                if (!host_go) return;
+                free_host = true;
+            }
+
+            float* bias_grad_f32 = (float*)calloc(s->C_out, sizeof(float));
+            if (dtype == DTYPE_FLOAT32 || dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+                const float* go_data;
+                float* go_f32 = NULL;
+                if (dtype != DTYPE_FLOAT32) {
+                    go_f32 = (float*)malloc(grad_output->size * sizeof(float));
+                    half_to_fp32_array(host_go->data, go_f32, grad_output->size, dtype);
+                    go_data = go_f32;
+                } else {
+                    go_data = (const float*)host_go->data;
+                }
+                for (int n = 0; n < s->N; n++) {
+                    for (int c = 0; c < s->C_out; c++) {
+                        for (int hw = 0; hw < col_cols; hw++) {
+                            bias_grad_f32[c] += go_data[(size_t)n * s->C_out * col_cols + c * col_cols + hw];
+                        }
+                    }
+                }
+                if (dev == -1) {
+                    float* bg = (float*)bias->metadata->grad->data;
+                    for (int c = 0; c < s->C_out; c++) bg[c] += bias_grad_f32[c];
+                } else {
+                    if (dtype == DTYPE_FLOAT32) {
+                        float* bg_host = (float*)malloc(s->C_out * sizeof(float));
+                        cudaMemcpy(bg_host, bias->metadata->grad->data, s->C_out * sizeof(float), cudaMemcpyDeviceToHost);
+                        for (int c = 0; c < s->C_out; c++) bg_host[c] += bias_grad_f32[c];
+                        cudaMemcpy(bias->metadata->grad->data, bg_host, s->C_out * sizeof(float), cudaMemcpyHostToDevice);
+                        free(bg_host);
+                    }
+                }
+                if (go_f32) free(go_f32);
+            } else {
+                const double* go_data = (const double*)host_go->data;
+                double* bias_grad_f64 = (double*)calloc(s->C_out, sizeof(double));
+                for (int n = 0; n < s->N; n++) {
+                    for (int c = 0; c < s->C_out; c++) {
+                        for (int hw = 0; hw < col_cols; hw++) {
+                            bias_grad_f64[c] += go_data[(size_t)n * s->C_out * col_cols + c * col_cols + hw];
+                        }
+                    }
+                }
+                double* bg = (double*)bias->metadata->grad->data;
+                for (int c = 0; c < s->C_out; c++) bg[c] += bias_grad_f64[c];
+                free(bias_grad_f64);
+            }
+            free(bias_grad_f32);
+            if (free_host) free_tensor(host_go);
+        }
+    }
+}
+
+Tensor* op_conv2d(Tensor* input, Tensor* weight, Tensor* bias,
+                  int stride_h, int stride_w, int pad_h, int pad_w,
+                  int dilation_h, int dilation_w) {
+    if (!input || !weight) return NULL;
+    if (input->ndim != 4 || weight->ndim != 4) return NULL;
+
+    int N = input->shape[0];
+    int C_in = input->shape[1];
+    int H = input->shape[2];
+    int W = input->shape[3];
+    int C_out = weight->shape[0];
+    int kH = weight->shape[2];
+    int kW = weight->shape[3];
+
+    if (weight->shape[1] != C_in) return NULL;
+
+    int out_H = (H + 2 * pad_h - dilation_h * (kH - 1) - 1) / stride_h + 1;
+    int out_W = (W + 2 * pad_w - dilation_w * (kW - 1) - 1) / stride_w + 1;
+    if (out_H <= 0 || out_W <= 0) return NULL;
+
+    DType dtype = input->dtype;
+    int dev = input->device_id;
+    size_t esz = dtype_size(dtype);
+    int col_rows = C_in * kH * kW;
+    int col_cols = out_H * out_W;
+
+    int out_shape[] = {N, C_out, out_H, out_W};
+    Tensor* out = zeros_tensor(dtype, dev, 4, out_shape, NULL);
+    if (!out) return NULL;
+
+    void* col_buf;
+    if (dev >= 0) {
+        if (cudaMalloc(&col_buf, (size_t)col_rows * col_cols * esz) != cudaSuccess) { free_tensor(out); return NULL; }
+    } else {
+        col_buf = malloc((size_t)col_rows * col_cols * esz);
+        if (!col_buf) { free_tensor(out); return NULL; }
+    }
+
+    for (int n = 0; n < N; n++) {
+        void* input_n = (char*)input->data + (size_t)n * C_in * H * W * esz;
+        void* out_n = (char*)out->data + (size_t)n * C_out * col_cols * esz;
+
+        rp_im2col_2d(col_buf, input_n, C_in, H, W, kH, kW,
+                     stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w,
+                     out_H, out_W, dtype, dev);
+
+        rp_matmul(out_n, weight->data, col_buf, C_out, col_rows, col_cols, dtype, dev);
+    }
+
+    if (dev >= 0) cudaFree(col_buf);
+    else free(col_buf);
+
+    if (bias) {
+        size_t spatial = (size_t)out_H * out_W;
+        if (dev == -1) {
+            if (dtype == DTYPE_FLOAT32) {
+                float* od = (float*)out->data;
+                const float* bd = (const float*)bias->data;
+                for (int n = 0; n < N; n++)
+                    for (int c = 0; c < C_out; c++)
+                        for (size_t hw = 0; hw < spatial; hw++)
+                            od[(size_t)n * C_out * spatial + c * spatial + hw] += bd[c];
+            } else if (dtype == DTYPE_FLOAT64) {
+                double* od = (double*)out->data;
+                const double* bd = (const double*)bias->data;
+                for (int n = 0; n < N; n++)
+                    for (int c = 0; c < C_out; c++)
+                        for (size_t hw = 0; hw < spatial; hw++)
+                            od[(size_t)n * C_out * spatial + c * spatial + hw] += bd[c];
+            }
+        } else {
+            Tensor* host_out = tensor_to(out, -1, dtype, false);
+            Tensor* host_bias = tensor_to(bias, -1, dtype, false);
+            if (host_out && host_bias) {
+                if (dtype == DTYPE_FLOAT32) {
+                    float* od = (float*)host_out->data;
+                    const float* bd = (const float*)host_bias->data;
+                    for (int n = 0; n < N; n++)
+                        for (int c = 0; c < C_out; c++)
+                            for (size_t hw = 0; hw < spatial; hw++)
+                                od[(size_t)n * C_out * spatial + c * spatial + hw] += bd[c];
+                }
+                cudaMemcpy(out->data, host_out->data, out->size * esz, cudaMemcpyHostToDevice);
+            }
+            if (host_out) free_tensor(host_out);
+            if (host_bias) free_tensor(host_bias);
+        }
+    }
+
+    bool requires_grad = (input->metadata && input->metadata->requires_grad) ||
+                          (weight->metadata && weight->metadata->requires_grad) ||
+                          (bias && bias->metadata && bias->metadata->requires_grad);
+
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) { free_tensor(out); return NULL; }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        int num_inputs = bias ? 3 : 2;
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { free_tensor(out); return NULL; }
+        grad_fn->backward = backward_conv2d_fn;
+        grad_fn->num_inputs = num_inputs;
+        grad_fn->inputs = (Tensor**)malloc(num_inputs * sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); free_tensor(out); return NULL; }
+        grad_fn->inputs[0] = input;
+        grad_fn->inputs[1] = weight;
+        if (bias) grad_fn->inputs[2] = bias;
+
+        Conv2dSavedData* saved = (Conv2dSavedData*)malloc(sizeof(Conv2dSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); free_tensor(out); return NULL; }
+        saved->stride_h = stride_h; saved->stride_w = stride_w;
+        saved->pad_h = pad_h; saved->pad_w = pad_w;
+        saved->dilation_h = dilation_h; saved->dilation_w = dilation_w;
+        saved->N = N; saved->C_in = C_in; saved->H = H; saved->W = W;
+        saved->C_out = C_out; saved->kH = kH; saved->kW = kW;
+        saved->out_H = out_H; saved->out_W = out_W;
+        saved->has_bias = bias ? 1 : 0;
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    }
+
+    return out;
+}
+
+typedef struct {
     int reduction;
     size_t input_size;
 } MSELossSavedData;

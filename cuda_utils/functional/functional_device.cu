@@ -1661,3 +1661,102 @@ extern "C" int scatter_add_kernel_device(void* out, const void* src, const int* 
     cudaFree(d_out_shape); cudaFree(d_index_shape);
     return ok ? 0 : -1;
 }
+
+template<typename T>
+__global__ void im2col_2d_kernel(const T* im, T* col,
+                                  int C_in, int H, int W,
+                                  int kH, int kW, int stride_h, int stride_w,
+                                  int pad_h, int pad_w, int dilation_h, int dilation_w,
+                                  int out_H, int out_W, size_t total) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+
+    int col_cols = out_H * out_W;
+    int ow = idx % out_W;
+    size_t tmp = idx / out_W;
+    int oh = tmp % out_H;
+    tmp /= out_H;
+    int kw = tmp % kW;
+    tmp /= kW;
+    int kh = tmp % kH;
+    int c = tmp / kH;
+
+    int h_in = oh * stride_h + kh * dilation_h - pad_h;
+    int w_in = ow * stride_w + kw * dilation_w - pad_w;
+
+    int row = (c * kH + kh) * kW + kw;
+    int col_idx = row * col_cols + oh * out_W + ow;
+
+    if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W)
+        col[col_idx] = im[c * H * W + h_in * W + w_in];
+    else
+        col[col_idx] = T(0);
+}
+
+template<typename T>
+__global__ void col2im_2d_kernel(T* im, const T* col,
+                                  int C_in, int H, int W,
+                                  int kH, int kW, int stride_h, int stride_w,
+                                  int pad_h, int pad_w, int dilation_h, int dilation_w,
+                                  int out_H, int out_W, size_t total) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+
+    int col_cols = out_H * out_W;
+    int ow = idx % out_W;
+    size_t tmp = idx / out_W;
+    int oh = tmp % out_H;
+    tmp /= out_H;
+    int kw = tmp % kW;
+    tmp /= kW;
+    int kh = tmp % kH;
+    int c = tmp / kH;
+
+    int h_in = oh * stride_h + kh * dilation_h - pad_h;
+    int w_in = ow * stride_w + kw * dilation_w - pad_w;
+
+    if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W) {
+        int row = (c * kH + kh) * kW + kw;
+        atomicAdd(&im[c * H * W + h_in * W + w_in], col[row * col_cols + oh * out_W + ow]);
+    }
+}
+
+extern "C" int im2col_kernel_device(void* col, const void* im, int C_in, int H, int W,
+                                    int kH, int kW, int stride_h, int stride_w,
+                                    int pad_h, int pad_w, int dilation_h, int dilation_w,
+                                    int out_H, int out_W, DType dtype) {
+    size_t total = (size_t)C_in * kH * kW * out_H * out_W;
+    int threads = 256;
+    int blocks = ((int)total + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        im2col_2d_kernel<float><<<blocks, threads>>>((const float*)im, (float*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, total);
+    else if (dtype == DTYPE_FLOAT64)
+        im2col_2d_kernel<double><<<blocks, threads>>>((const double*)im, (double*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, total);
+    else if (dtype == DTYPE_FLOAT16)
+        im2col_2d_kernel<__half><<<blocks, threads>>>((const __half*)im, (__half*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, total);
+    else if (dtype == DTYPE_BFLOAT16)
+        im2col_2d_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)im, (__nv_bfloat16*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, total);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}
+
+extern "C" int col2im_kernel_device(void* im, const void* col, int C_in, int H, int W,
+                                    int kH, int kW, int stride_h, int stride_w,
+                                    int pad_h, int pad_w, int dilation_h, int dilation_w,
+                                    int out_H, int out_W, DType dtype) {
+    size_t total = (size_t)C_in * kH * kW * out_H * out_W;
+    int threads = 256;
+    int blocks = ((int)total + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        col2im_2d_kernel<float><<<blocks, threads>>>((float*)im, (const float*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, total);
+    else if (dtype == DTYPE_FLOAT64)
+        col2im_2d_kernel<double><<<blocks, threads>>>((double*)im, (const double*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, total);
+    else if (dtype == DTYPE_FLOAT16)
+        col2im_2d_kernel<__half><<<blocks, threads>>>((__half*)im, (const __half*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, total);
+    else if (dtype == DTYPE_BFLOAT16)
+        col2im_2d_kernel<__nv_bfloat16><<<blocks, threads>>>((__nv_bfloat16*)im, (const __nv_bfloat16*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, total);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}

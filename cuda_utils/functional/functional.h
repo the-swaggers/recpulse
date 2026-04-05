@@ -84,6 +84,47 @@ int scatter_add_kernel_device(void* out, const void* src, const int* indices, in
 }
 #endif
 
+int rp_im2col_2d(void* col, const void* im, int C_in, int H, int W,
+                 int kH, int kW, int stride_h, int stride_w,
+                 int pad_h, int pad_w, int dilation_h, int dilation_w,
+                 int out_H, int out_W, DType dtype, int device_id);
+int rp_col2im_2d(void* im, const void* col, int C_in, int H, int W,
+                 int kH, int kW, int stride_h, int stride_w,
+                 int pad_h, int pad_w, int dilation_h, int dilation_w,
+                 int out_H, int out_W, DType dtype, int device_id);
+
+int im2col_kernel_host_f32(float* col, const float* im, int C_in, int H, int W,
+                           int kH, int kW, int stride_h, int stride_w,
+                           int pad_h, int pad_w, int dilation_h, int dilation_w,
+                           int out_H, int out_W);
+int im2col_kernel_host_f64(double* col, const double* im, int C_in, int H, int W,
+                           int kH, int kW, int stride_h, int stride_w,
+                           int pad_h, int pad_w, int dilation_h, int dilation_w,
+                           int out_H, int out_W);
+int col2im_kernel_host_f32(float* im, const float* col, int C_in, int H, int W,
+                           int kH, int kW, int stride_h, int stride_w,
+                           int pad_h, int pad_w, int dilation_h, int dilation_w,
+                           int out_H, int out_W);
+int col2im_kernel_host_f64(double* im, const double* col, int C_in, int H, int W,
+                           int kH, int kW, int stride_h, int stride_w,
+                           int pad_h, int pad_w, int dilation_h, int dilation_w,
+                           int out_H, int out_W);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+int im2col_kernel_device(void* col, const void* im, int C_in, int H, int W,
+                         int kH, int kW, int stride_h, int stride_w,
+                         int pad_h, int pad_w, int dilation_h, int dilation_w,
+                         int out_H, int out_W, DType dtype);
+int col2im_kernel_device(void* im, const void* col, int C_in, int H, int W,
+                         int kH, int kW, int stride_h, int stride_w,
+                         int pad_h, int pad_w, int dilation_h, int dilation_w,
+                         int out_H, int out_W, DType dtype);
+#ifdef __cplusplus
+}
+#endif
+
 int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id);
 
 Tensor* rp_cat(Tensor** tensors, int num_tensors, int dim);

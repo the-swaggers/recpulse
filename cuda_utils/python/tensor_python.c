@@ -830,6 +830,40 @@ static int* tensor_to_int_array(Tensor* t) {
     return result;
 }
 
+static PyObject* PyTensor_op_conv2d(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+
+    PyObject* weight_obj;
+    PyObject* bias_obj = Py_None;
+    int stride_h = 1, stride_w = 1;
+    int pad_h = 0, pad_w = 0;
+    int dilation_h = 1, dilation_w = 1;
+
+    static char* kwlist[] = {"weight", "bias", "stride_h", "stride_w", "pad_h", "pad_w", "dilation_h", "dilation_w", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|Oiiiiii", kwlist,
+            &weight_obj, &bias_obj, &stride_h, &stride_w, &pad_h, &pad_w, &dilation_h, &dilation_w))
+        return NULL;
+
+    if (!PyObject_TypeCheck(weight_obj, &PyTensorType)) {
+        PyErr_SetString(PyExc_TypeError, "weight must be a Tensor");
+        return NULL;
+    }
+
+    Tensor* weight = ((PyTensorObject*)weight_obj)->tensor;
+    Tensor* bias = NULL;
+    if (bias_obj != Py_None) {
+        if (!PyObject_TypeCheck(bias_obj, &PyTensorType)) {
+            PyErr_SetString(PyExc_TypeError, "bias must be a Tensor or None");
+            return NULL;
+        }
+        bias = ((PyTensorObject*)bias_obj)->tensor;
+    }
+
+    Tensor* result = op_conv2d(self->tensor, weight, bias, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w);
+    if (!result) { PyErr_SetString(PyExc_RuntimeError, "op_conv2d failed"); return NULL; }
+    return wrap_tensor_result(result);
+}
+
 static int parse_reduction(const char* s) {
     if (!s || strcmp(s, "mean") == 0) return REDUCTION_MEAN;
     if (strcmp(s, "sum") == 0) return REDUCTION_SUM;
@@ -2280,6 +2314,8 @@ static PyMethodDef PyTensor_methods[] = {
      "Sum along a dimension with autograd support"},
     {"op_mean_dim", (PyCFunction)PyTensor_op_mean_dim, METH_VARARGS | METH_KEYWORDS,
      "Mean along a dimension with autograd support"},
+    {"op_conv2d", (PyCFunction)PyTensor_op_conv2d, METH_VARARGS | METH_KEYWORDS,
+     "2D convolution with autograd (im2col + matmul)"},
     {"op_mse_loss", (PyCFunction)PyTensor_op_mse_loss, METH_VARARGS | METH_KEYWORDS,
      "Mean squared error loss with autograd"},
     {"op_bce_loss", (PyCFunction)PyTensor_op_bce_loss, METH_VARARGS | METH_KEYWORDS,

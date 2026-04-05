@@ -661,6 +661,67 @@ int rp_scatter_add(void* out, const void* src, const int* indices, int ndim, con
     return scatter_add_kernel_device(out, src, indices, ndim, out_shape, index_shape, dim, index_size, dtype);
 }
 
+int rp_im2col_2d(void* col, const void* im, int C_in, int H, int W,
+                 int kH, int kW, int stride_h, int stride_w,
+                 int pad_h, int pad_w, int dilation_h, int dilation_w,
+                 int out_H, int out_W, DType dtype, int device_id) {
+    if (!col || !im) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return im2col_kernel_host_f32((float*)col, (const float*)im, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return im2col_kernel_host_f64((double*)col, (const double*)im, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            size_t im_size = (size_t)C_in * H * W;
+            size_t col_size = (size_t)C_in * kH * kW * out_H * out_W;
+            float* im_f32 = (float*)malloc(im_size * sizeof(float));
+            float* col_f32 = (float*)malloc(col_size * sizeof(float));
+            if (!im_f32 || !col_f32) { free(im_f32); free(col_f32); return -1; }
+            half_to_fp32_array(im, im_f32, im_size, dtype);
+            int ret = im2col_kernel_host_f32(col_f32, im_f32, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W);
+            if (ret == 0) fp32_to_half_array(col_f32, col, col_size, dtype);
+            free(im_f32); free(col_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return im2col_kernel_device(col, im, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, dtype);
+}
+
+int rp_col2im_2d(void* im, const void* col, int C_in, int H, int W,
+                 int kH, int kW, int stride_h, int stride_w,
+                 int pad_h, int pad_w, int dilation_h, int dilation_w,
+                 int out_H, int out_W, DType dtype, int device_id) {
+    if (!im || !col) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return col2im_kernel_host_f32((float*)im, (const float*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return col2im_kernel_host_f64((double*)im, (const double*)col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            size_t im_size = (size_t)C_in * H * W;
+            size_t col_size = (size_t)C_in * kH * kW * out_H * out_W;
+            float* im_f32 = (float*)calloc(im_size, sizeof(float));
+            float* col_f32 = (float*)malloc(col_size * sizeof(float));
+            if (!im_f32 || !col_f32) { free(im_f32); free(col_f32); return -1; }
+            half_to_fp32_array(col, col_f32, col_size, dtype);
+            half_to_fp32_array(im, im_f32, im_size, dtype);
+            int ret = col2im_kernel_host_f32(im_f32, col_f32, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W);
+            if (ret == 0) fp32_to_half_array(im_f32, im, im_size, dtype);
+            free(im_f32); free(col_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return col2im_kernel_device(im, col, C_in, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, out_H, out_W, dtype);
+}
+
 int rp_matmul(void* C, const void* A, const void* B, int m, int k, int n, DType dtype, int device_id) {
     if (!C || !A || !B || m <= 0 || k <= 0 || n <= 0) return -1;
 

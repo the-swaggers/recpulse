@@ -1231,3 +1231,105 @@ int scatter_add_kernel_host_f64(double* out, const double* src, const int* indic
     free(coords);
     return 0;
 }
+
+int im2col_kernel_host_f32(float* col, const float* im, int C_in, int H, int W,
+                           int kH, int kW, int stride_h, int stride_w,
+                           int pad_h, int pad_w, int dilation_h, int dilation_w,
+                           int out_H, int out_W) {
+    if (!col || !im) return -1;
+    int col_cols = out_H * out_W;
+    for (int c = 0; c < C_in; c++) {
+        for (int kh = 0; kh < kH; kh++) {
+            for (int kw = 0; kw < kW; kw++) {
+                int row = (c * kH + kh) * kW + kw;
+                for (int oh = 0; oh < out_H; oh++) {
+                    for (int ow = 0; ow < out_W; ow++) {
+                        int h_in = oh * stride_h + kh * dilation_h - pad_h;
+                        int w_in = ow * stride_w + kw * dilation_w - pad_w;
+                        int col_idx = row * col_cols + oh * out_W + ow;
+                        if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W)
+                            col[col_idx] = im[c * H * W + h_in * W + w_in];
+                        else
+                            col[col_idx] = 0.0f;
+                    }
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int im2col_kernel_host_f64(double* col, const double* im, int C_in, int H, int W,
+                           int kH, int kW, int stride_h, int stride_w,
+                           int pad_h, int pad_w, int dilation_h, int dilation_w,
+                           int out_H, int out_W) {
+    if (!col || !im) return -1;
+    int col_cols = out_H * out_W;
+    for (int c = 0; c < C_in; c++) {
+        for (int kh = 0; kh < kH; kh++) {
+            for (int kw = 0; kw < kW; kw++) {
+                int row = (c * kH + kh) * kW + kw;
+                for (int oh = 0; oh < out_H; oh++) {
+                    for (int ow = 0; ow < out_W; ow++) {
+                        int h_in = oh * stride_h + kh * dilation_h - pad_h;
+                        int w_in = ow * stride_w + kw * dilation_w - pad_w;
+                        int col_idx = row * col_cols + oh * out_W + ow;
+                        if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W)
+                            col[col_idx] = im[c * H * W + h_in * W + w_in];
+                        else
+                            col[col_idx] = 0.0;
+                    }
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int col2im_kernel_host_f32(float* im, const float* col, int C_in, int H, int W,
+                           int kH, int kW, int stride_h, int stride_w,
+                           int pad_h, int pad_w, int dilation_h, int dilation_w,
+                           int out_H, int out_W) {
+    if (!im || !col) return -1;
+    int col_cols = out_H * out_W;
+    for (int c = 0; c < C_in; c++) {
+        for (int kh = 0; kh < kH; kh++) {
+            for (int kw = 0; kw < kW; kw++) {
+                int row = (c * kH + kh) * kW + kw;
+                for (int oh = 0; oh < out_H; oh++) {
+                    for (int ow = 0; ow < out_W; ow++) {
+                        int h_in = oh * stride_h + kh * dilation_h - pad_h;
+                        int w_in = ow * stride_w + kw * dilation_w - pad_w;
+                        if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W)
+                            im[c * H * W + h_in * W + w_in] += col[row * col_cols + oh * out_W + ow];
+                    }
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int col2im_kernel_host_f64(double* im, const double* col, int C_in, int H, int W,
+                           int kH, int kW, int stride_h, int stride_w,
+                           int pad_h, int pad_w, int dilation_h, int dilation_w,
+                           int out_H, int out_W) {
+    if (!im || !col) return -1;
+    int col_cols = out_H * out_W;
+    for (int c = 0; c < C_in; c++) {
+        for (int kh = 0; kh < kH; kh++) {
+            for (int kw = 0; kw < kW; kw++) {
+                int row = (c * kH + kh) * kW + kw;
+                for (int oh = 0; oh < out_H; oh++) {
+                    for (int ow = 0; ow < out_W; ow++) {
+                        int h_in = oh * stride_h + kh * dilation_h - pad_h;
+                        int w_in = ow * stride_w + kw * dilation_w - pad_w;
+                        if (h_in >= 0 && h_in < H && w_in >= 0 && w_in < W)
+                            im[c * H * W + h_in * W + w_in] += col[row * col_cols + oh * out_W + ow];
+                    }
+                }
+            }
+        }
+    }
+    return 0;
+}

@@ -85,6 +85,10 @@ Tensor* op_matmul(Tensor* a, Tensor* b);
 
 Tensor* op_gather(Tensor* input, int dim, const int* indices, int index_ndim, const int* index_shape, size_t index_size);
 
+Tensor* op_conv2d(Tensor* input, Tensor* weight, Tensor* bias,
+                  int stride_h, int stride_w, int pad_h, int pad_w,
+                  int dilation_h, int dilation_w);
+
 #define REDUCTION_NONE 0
 #define REDUCTION_MEAN 1
 #define REDUCTION_SUM 2
