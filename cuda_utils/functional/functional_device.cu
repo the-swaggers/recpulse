@@ -1931,3 +1931,127 @@ extern "C" int dropout_kernel_device(void* out, void* mask, const void* x, size_
     else return -1;
     return cudaGetLastError() == cudaSuccess ? 0 : -1;
 }
+
+template<typename T>
+__global__ void layer_norm_kernel_fwd(const T* x, T* out, T* mean_out, T* rstd_out,
+                                       const T* weight, const T* bias,
+                                       size_t outer_size, size_t norm_size, float eps) {
+    size_t o = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (o >= outer_size) return;
+
+    const T* row = x + o * norm_size;
+    T* out_row = out + o * norm_size;
+
+    float sum = 0.0f;
+    for (size_t i = 0; i < norm_size; i++) sum += (float)row[i];
+    float mean = sum / (float)norm_size;
+
+    float var_sum = 0.0f;
+    for (size_t i = 0; i < norm_size; i++) {
+        float d = (float)row[i] - mean;
+        var_sum += d * d;
+    }
+    float rstd = 1.0f / sqrtf(var_sum / (float)norm_size + eps);
+
+    if (mean_out) mean_out[o] = T(mean);
+    if (rstd_out) rstd_out[o] = T(rstd);
+
+    for (size_t i = 0; i < norm_size; i++) {
+        float normed = ((float)row[i] - mean) * rstd;
+        if (weight) normed = normed * (float)weight[i];
+        if (bias) normed = normed + (float)bias[i];
+        out_row[i] = T(normed);
+    }
+}
+
+template<typename T>
+__global__ void batch_norm_kernel_fwd(const T* x, T* out, T* save_mean, T* save_rstd,
+                                       const T* weight, const T* bias,
+                                       T* running_mean, T* running_var,
+                                       int N, int C, int spatial, float eps, float momentum, int training) {
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= C) return;
+
+    size_t count = (size_t)N * spatial;
+    float mean, var, rstd;
+
+    if (training) {
+        float sum = 0.0f;
+        for (int n = 0; n < N; n++)
+            for (int s = 0; s < spatial; s++)
+                sum += (float)x[((size_t)n * C + c) * spatial + s];
+        mean = sum / (float)count;
+
+        float var_sum = 0.0f;
+        for (int n = 0; n < N; n++)
+            for (int s = 0; s < spatial; s++) {
+                float d = (float)x[((size_t)n * C + c) * spatial + s] - mean;
+                var_sum += d * d;
+            }
+        var = var_sum / (float)count;
+        rstd = 1.0f / sqrtf(var + eps);
+
+        if (save_mean) save_mean[c] = T(mean);
+        if (save_rstd) save_rstd[c] = T(rstd);
+        if (running_mean) running_mean[c] = T((float)running_mean[c] * (1.0f - momentum) + mean * momentum);
+        if (running_var) running_var[c] = T((float)running_var[c] * (1.0f - momentum) + var * momentum);
+    } else {
+        mean = running_mean ? (float)running_mean[c] : 0.0f;
+        var = running_var ? (float)running_var[c] : 1.0f;
+        rstd = 1.0f / sqrtf(var + eps);
+    }
+
+    float w = weight ? (float)weight[c] : 1.0f;
+    float b = bias ? (float)bias[c] : 0.0f;
+
+    for (int n = 0; n < N; n++)
+        for (int s = 0; s < spatial; s++) {
+            size_t idx = ((size_t)n * C + c) * spatial + s;
+            out[idx] = T(((float)x[idx] - mean) * rstd * w + b);
+        }
+}
+
+#define NORM_DEVICE_DISPATCH(kernel, ...) \
+    if (dtype == DTYPE_FLOAT32) kernel<float><<<blocks, threads>>>(__VA_ARGS__); \
+    else if (dtype == DTYPE_FLOAT64) kernel<double><<<blocks, threads>>>(__VA_ARGS__); \
+    else if (dtype == DTYPE_FLOAT16) kernel<__half><<<blocks, threads>>>(__VA_ARGS__); \
+    else if (dtype == DTYPE_BFLOAT16) kernel<__nv_bfloat16><<<blocks, threads>>>(__VA_ARGS__); \
+    else return -1;
+
+extern "C" int layer_norm_kernel_device(void* out, void* mean_out, void* rstd_out, const void* x,
+                                        const void* weight, const void* bias,
+                                        size_t outer_size, size_t norm_size, float eps, DType dtype) {
+    int threads = 256;
+    int blocks = ((int)outer_size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        layer_norm_kernel_fwd<float><<<blocks, threads>>>((const float*)x, (float*)out, (float*)mean_out, (float*)rstd_out, (const float*)weight, (const float*)bias, outer_size, norm_size, eps);
+    else if (dtype == DTYPE_FLOAT64)
+        layer_norm_kernel_fwd<double><<<blocks, threads>>>((const double*)x, (double*)out, (double*)mean_out, (double*)rstd_out, (const double*)weight, (const double*)bias, outer_size, norm_size, eps);
+    else if (dtype == DTYPE_FLOAT16)
+        layer_norm_kernel_fwd<__half><<<blocks, threads>>>((const __half*)x, (__half*)out, (__half*)mean_out, (__half*)rstd_out, (const __half*)weight, (const __half*)bias, outer_size, norm_size, eps);
+    else if (dtype == DTYPE_BFLOAT16)
+        layer_norm_kernel_fwd<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)x, (__nv_bfloat16*)out, (__nv_bfloat16*)mean_out, (__nv_bfloat16*)rstd_out, (const __nv_bfloat16*)weight, (const __nv_bfloat16*)bias, outer_size, norm_size, eps);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}
+
+extern "C" int batch_norm_kernel_device(void* out, void* save_mean, void* save_rstd,
+                                        const void* x, const void* weight, const void* bias,
+                                        void* running_mean, void* running_var,
+                                        int N, int C, int spatial, float eps, float momentum,
+                                        int training, DType dtype) {
+    int threads = 256;
+    int blocks = (C + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        batch_norm_kernel_fwd<float><<<blocks, threads>>>((const float*)x, (float*)out, (float*)save_mean, (float*)save_rstd, (const float*)weight, (const float*)bias, (float*)running_mean, (float*)running_var, N, C, spatial, eps, momentum, training);
+    else if (dtype == DTYPE_FLOAT64)
+        batch_norm_kernel_fwd<double><<<blocks, threads>>>((const double*)x, (double*)out, (double*)save_mean, (double*)save_rstd, (const double*)weight, (const double*)bias, (double*)running_mean, (double*)running_var, N, C, spatial, eps, momentum, training);
+    else if (dtype == DTYPE_FLOAT16)
+        batch_norm_kernel_fwd<__half><<<blocks, threads>>>((const __half*)x, (__half*)out, (__half*)save_mean, (__half*)save_rstd, (const __half*)weight, (const __half*)bias, (__half*)running_mean, (__half*)running_var, N, C, spatial, eps, momentum, training);
+    else if (dtype == DTYPE_BFLOAT16)
+        batch_norm_kernel_fwd<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)x, (__nv_bfloat16*)out, (__nv_bfloat16*)save_mean, (__nv_bfloat16*)save_rstd, (const __nv_bfloat16*)weight, (const __nv_bfloat16*)bias, (__nv_bfloat16*)running_mean, (__nv_bfloat16*)running_var, N, C, spatial, eps, momentum, training);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}

@@ -1487,3 +1487,167 @@ int dropout_kernel_host_f64(double* out, double* mask, const double* x, size_t s
     }
     return 0;
 }
+
+int layer_norm_kernel_host_f32(float* out, float* mean_out, float* rstd_out, const float* x,
+                               const float* weight, const float* bias,
+                               size_t outer_size, size_t norm_size, float eps) {
+    if (!out || !x) return -1;
+    for (size_t o = 0; o < outer_size; o++) {
+        const float* row = x + o * norm_size;
+        float* out_row = out + o * norm_size;
+
+        float sum = 0.0f;
+        for (size_t i = 0; i < norm_size; i++) sum += row[i];
+        float mean = sum / (float)norm_size;
+
+        float var_sum = 0.0f;
+        for (size_t i = 0; i < norm_size; i++) {
+            float d = row[i] - mean;
+            var_sum += d * d;
+        }
+        float var = var_sum / (float)norm_size;
+        float rstd = 1.0f / sqrtf(var + eps);
+
+        if (mean_out) mean_out[o] = mean;
+        if (rstd_out) rstd_out[o] = rstd;
+
+        for (size_t i = 0; i < norm_size; i++) {
+            float normed = (row[i] - mean) * rstd;
+            if (weight) normed = normed * weight[i];
+            if (bias) normed = normed + bias[i];
+            out_row[i] = normed;
+        }
+    }
+    return 0;
+}
+
+int layer_norm_kernel_host_f64(double* out, double* mean_out, double* rstd_out, const double* x,
+                               const double* weight, const double* bias,
+                               size_t outer_size, size_t norm_size, float eps) {
+    if (!out || !x) return -1;
+    for (size_t o = 0; o < outer_size; o++) {
+        const double* row = x + o * norm_size;
+        double* out_row = out + o * norm_size;
+
+        double sum = 0.0;
+        for (size_t i = 0; i < norm_size; i++) sum += row[i];
+        double mean = sum / (double)norm_size;
+
+        double var_sum = 0.0;
+        for (size_t i = 0; i < norm_size; i++) {
+            double d = row[i] - mean;
+            var_sum += d * d;
+        }
+        double var = var_sum / (double)norm_size;
+        double rstd = 1.0 / sqrt(var + (double)eps);
+
+        if (mean_out) mean_out[o] = mean;
+        if (rstd_out) rstd_out[o] = rstd;
+
+        for (size_t i = 0; i < norm_size; i++) {
+            double normed = (row[i] - mean) * rstd;
+            if (weight) normed = normed * weight[i];
+            if (bias) normed = normed + bias[i];
+            out_row[i] = normed;
+        }
+    }
+    return 0;
+}
+
+int batch_norm_kernel_host_f32(float* out, float* save_mean, float* save_rstd,
+                               const float* x, const float* weight, const float* bias,
+                               float* running_mean, float* running_var,
+                               int N, int C, int spatial, float eps, float momentum, int training) {
+    if (!out || !x) return -1;
+    size_t count = (size_t)N * spatial;
+
+    for (int c = 0; c < C; c++) {
+        float mean, var, rstd;
+
+        if (training) {
+            float sum = 0.0f;
+            for (int n = 0; n < N; n++)
+                for (int s = 0; s < spatial; s++)
+                    sum += x[((size_t)n * C + c) * spatial + s];
+            mean = sum / (float)count;
+
+            float var_sum = 0.0f;
+            for (int n = 0; n < N; n++)
+                for (int s = 0; s < spatial; s++) {
+                    float d = x[((size_t)n * C + c) * spatial + s] - mean;
+                    var_sum += d * d;
+                }
+            var = var_sum / (float)count;
+            rstd = 1.0f / sqrtf(var + eps);
+
+            if (save_mean) save_mean[c] = mean;
+            if (save_rstd) save_rstd[c] = rstd;
+
+            if (running_mean) running_mean[c] = running_mean[c] * (1.0f - momentum) + mean * momentum;
+            if (running_var) running_var[c] = running_var[c] * (1.0f - momentum) + var * momentum;
+        } else {
+            mean = running_mean ? running_mean[c] : 0.0f;
+            var = running_var ? running_var[c] : 1.0f;
+            rstd = 1.0f / sqrtf(var + eps);
+        }
+
+        float w = weight ? weight[c] : 1.0f;
+        float b = bias ? bias[c] : 0.0f;
+
+        for (int n = 0; n < N; n++)
+            for (int s = 0; s < spatial; s++) {
+                size_t idx = ((size_t)n * C + c) * spatial + s;
+                out[idx] = (x[idx] - mean) * rstd * w + b;
+            }
+    }
+    return 0;
+}
+
+int batch_norm_kernel_host_f64(double* out, double* save_mean, double* save_rstd,
+                               const double* x, const double* weight, const double* bias,
+                               double* running_mean, double* running_var,
+                               int N, int C, int spatial, float eps, float momentum, int training) {
+    if (!out || !x) return -1;
+    size_t count = (size_t)N * spatial;
+
+    for (int c = 0; c < C; c++) {
+        double mean, var, rstd;
+
+        if (training) {
+            double sum = 0.0;
+            for (int n = 0; n < N; n++)
+                for (int s = 0; s < spatial; s++)
+                    sum += x[((size_t)n * C + c) * spatial + s];
+            mean = sum / (double)count;
+
+            double var_sum = 0.0;
+            for (int n = 0; n < N; n++)
+                for (int s = 0; s < spatial; s++) {
+                    double d = x[((size_t)n * C + c) * spatial + s] - mean;
+                    var_sum += d * d;
+                }
+            var = var_sum / (double)count;
+            rstd = 1.0 / sqrt(var + (double)eps);
+
+            if (save_mean) save_mean[c] = mean;
+            if (save_rstd) save_rstd[c] = rstd;
+
+            if (running_mean) running_mean[c] = running_mean[c] * (1.0 - (double)momentum) + mean * (double)momentum;
+            if (running_var) running_var[c] = running_var[c] * (1.0 - (double)momentum) + var * (double)momentum;
+        } else {
+            mean = running_mean ? running_mean[c] : 0.0;
+            var = running_var ? running_var[c] : 1.0;
+            rstd = 1.0 / sqrt(var + (double)eps);
+        }
+
+        double w = weight ? weight[c] : 1.0;
+        double b = bias ? bias[c] : 0.0;
+
+        for (int n = 0; n < N; n++)
+            for (int s = 0; s < spatial; s++) {
+                size_t idx = ((size_t)n * C + c) * spatial + s;
+                out[idx] = (x[idx] - mean) * rstd * w + b;
+            }
+    }
+    return 0;
+}

@@ -1,2 +1,2 @@
 from recpulse import optim
-from recpulse.module import Module, Linear, Conv2d, MaxPool2d, AvgPool2d, Dropout, LayerNorm, BatchNorm2d
+from recpulse.module import Module, Linear, Conv2d, MaxPool2d, AvgPool2d, Embedding, Dropout, LayerNorm, BatchNorm2d

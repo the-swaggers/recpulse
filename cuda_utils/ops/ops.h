@@ -90,6 +90,14 @@ Tensor* op_conv2d(Tensor* input, Tensor* weight, Tensor* bias,
                   int dilation_h, int dilation_w);
 
 Tensor* op_dropout(Tensor* x, float p);
+
+Tensor* op_layer_norm(Tensor* x, const void* weight, const void* bias,
+                      int norm_ndim, const int* norm_shape, float eps,
+                      DType dtype, int device_id);
+Tensor* op_batch_norm(Tensor* x, const void* weight, const void* bias,
+                      void* running_mean, void* running_var,
+                      float eps, float momentum, int training,
+                      DType dtype, int device_id);
 Tensor* op_maxpool2d(Tensor* input, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w);
 Tensor* op_avgpool2d(Tensor* input, int kH, int kW, int stride_h, int stride_w, int pad_h, int pad_w);
 

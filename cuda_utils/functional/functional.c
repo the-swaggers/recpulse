@@ -639,6 +639,94 @@ int rp_dropout(void* out, void* mask, const void* x, size_t size, float p, DType
     return ret;
 }
 
+int rp_layer_norm(void* out, void* mean_out, void* rstd_out, const void* x,
+                  const void* weight, const void* bias,
+                  size_t outer_size, size_t norm_size, float eps,
+                  DType dtype, int device_id) {
+    if (!out || !x) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return layer_norm_kernel_host_f32((float*)out, (float*)mean_out, (float*)rstd_out,
+                (const float*)x, (const float*)weight, (const float*)bias, outer_size, norm_size, eps);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return layer_norm_kernel_host_f64((double*)out, (double*)mean_out, (double*)rstd_out,
+                (const double*)x, (const double*)weight, (const double*)bias, outer_size, norm_size, eps);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            size_t total = outer_size * norm_size;
+            float* x_f32 = (float*)malloc(total * sizeof(float));
+            float* out_f32 = (float*)malloc(total * sizeof(float));
+            float* mean_f32 = (float*)malloc(outer_size * sizeof(float));
+            float* rstd_f32 = (float*)malloc(outer_size * sizeof(float));
+            float* w_f32 = NULL; float* b_f32 = NULL;
+            if (weight) { w_f32 = (float*)malloc(norm_size * sizeof(float)); half_to_fp32_array(weight, w_f32, norm_size, dtype); }
+            if (bias) { b_f32 = (float*)malloc(norm_size * sizeof(float)); half_to_fp32_array(bias, b_f32, norm_size, dtype); }
+            if (!x_f32 || !out_f32 || !mean_f32 || !rstd_f32) { free(x_f32); free(out_f32); free(mean_f32); free(rstd_f32); free(w_f32); free(b_f32); return -1; }
+            half_to_fp32_array(x, x_f32, total, dtype);
+            int ret = layer_norm_kernel_host_f32(out_f32, mean_f32, rstd_f32, x_f32, w_f32, b_f32, outer_size, norm_size, eps);
+            if (ret == 0) {
+                fp32_to_half_array(out_f32, out, total, dtype);
+                if (mean_out) fp32_to_half_array(mean_f32, mean_out, outer_size, dtype);
+                if (rstd_out) fp32_to_half_array(rstd_f32, rstd_out, outer_size, dtype);
+            }
+            free(x_f32); free(out_f32); free(mean_f32); free(rstd_f32); free(w_f32); free(b_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return layer_norm_kernel_device(out, mean_out, rstd_out, x, weight, bias, outer_size, norm_size, eps, dtype);
+}
+
+int rp_batch_norm(void* out, void* save_mean, void* save_rstd,
+                  const void* x, const void* weight, const void* bias,
+                  void* running_mean, void* running_var,
+                  int N, int C, int spatial, float eps, float momentum,
+                  int training, DType dtype, int device_id) {
+    if (!out || !x) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return batch_norm_kernel_host_f32((float*)out, (float*)save_mean, (float*)save_rstd,
+                (const float*)x, (const float*)weight, (const float*)bias,
+                (float*)running_mean, (float*)running_var, N, C, spatial, eps, momentum, training);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return batch_norm_kernel_host_f64((double*)out, (double*)save_mean, (double*)save_rstd,
+                (const double*)x, (const double*)weight, (const double*)bias,
+                (double*)running_mean, (double*)running_var, N, C, spatial, eps, momentum, training);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            size_t total = (size_t)N * C * spatial;
+            float* x_f32 = (float*)malloc(total * sizeof(float));
+            float* out_f32 = (float*)malloc(total * sizeof(float));
+            float* sm_f32 = (float*)malloc(C * sizeof(float));
+            float* sr_f32 = (float*)malloc(C * sizeof(float));
+            float* w_f32 = NULL; float* b_f32 = NULL;
+            float* rm_f32 = NULL; float* rv_f32 = NULL;
+            if (weight) { w_f32 = (float*)malloc(C * sizeof(float)); half_to_fp32_array(weight, w_f32, C, dtype); }
+            if (bias) { b_f32 = (float*)malloc(C * sizeof(float)); half_to_fp32_array(bias, b_f32, C, dtype); }
+            if (running_mean) { rm_f32 = (float*)malloc(C * sizeof(float)); half_to_fp32_array(running_mean, rm_f32, C, dtype); }
+            if (running_var) { rv_f32 = (float*)malloc(C * sizeof(float)); half_to_fp32_array(running_var, rv_f32, C, dtype); }
+            if (!x_f32 || !out_f32) { free(x_f32); free(out_f32); free(sm_f32); free(sr_f32); free(w_f32); free(b_f32); free(rm_f32); free(rv_f32); return -1; }
+            half_to_fp32_array(x, x_f32, total, dtype);
+            int ret = batch_norm_kernel_host_f32(out_f32, sm_f32, sr_f32, x_f32, w_f32, b_f32, rm_f32, rv_f32, N, C, spatial, eps, momentum, training);
+            if (ret == 0) {
+                fp32_to_half_array(out_f32, out, total, dtype);
+                if (save_mean) fp32_to_half_array(sm_f32, save_mean, C, dtype);
+                if (save_rstd) fp32_to_half_array(sr_f32, save_rstd, C, dtype);
+                if (running_mean && rm_f32) fp32_to_half_array(rm_f32, running_mean, C, dtype);
+                if (running_var && rv_f32) fp32_to_half_array(rv_f32, running_var, C, dtype);
+            }
+            free(x_f32); free(out_f32); free(sm_f32); free(sr_f32); free(w_f32); free(b_f32); free(rm_f32); free(rv_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    return batch_norm_kernel_device(out, save_mean, save_rstd, x, weight, bias, running_mean, running_var, N, C, spatial, eps, momentum, training, dtype);
+}
+
 int rp_gather(void* out, const void* input, const int* indices, int ndim, const int* input_shape, const int* index_shape, int dim, size_t index_size, DType dtype, int device_id) {
     if (!out || !input || !indices || !input_shape || !index_shape) return -1;
 

@@ -69,6 +69,48 @@ int rp_log_softmax(void* out, const void* x, size_t outer_size, size_t dim_size,
 
 int rp_dropout(void* out, void* mask, const void* x, size_t size, float p, DType dtype, int device_id);
 
+int rp_layer_norm(void* out, void* mean_out, void* rstd_out, const void* x,
+                  const void* weight, const void* bias,
+                  size_t outer_size, size_t norm_size, float eps,
+                  DType dtype, int device_id);
+
+int layer_norm_kernel_host_f32(float* out, float* mean_out, float* rstd_out, const float* x,
+                               const float* weight, const float* bias,
+                               size_t outer_size, size_t norm_size, float eps);
+int layer_norm_kernel_host_f64(double* out, double* mean_out, double* rstd_out, const double* x,
+                               const double* weight, const double* bias,
+                               size_t outer_size, size_t norm_size, float eps);
+
+int rp_batch_norm(void* out, void* save_mean, void* save_rstd,
+                  const void* x, const void* weight, const void* bias,
+                  void* running_mean, void* running_var,
+                  int N, int C, int spatial, float eps, float momentum,
+                  int training, DType dtype, int device_id);
+
+int batch_norm_kernel_host_f32(float* out, float* save_mean, float* save_rstd,
+                               const float* x, const float* weight, const float* bias,
+                               float* running_mean, float* running_var,
+                               int N, int C, int spatial, float eps, float momentum, int training);
+int batch_norm_kernel_host_f64(double* out, double* save_mean, double* save_rstd,
+                               const double* x, const double* weight, const double* bias,
+                               double* running_mean, double* running_var,
+                               int N, int C, int spatial, float eps, float momentum, int training);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+int layer_norm_kernel_device(void* out, void* mean_out, void* rstd_out, const void* x,
+                             const void* weight, const void* bias,
+                             size_t outer_size, size_t norm_size, float eps, DType dtype);
+int batch_norm_kernel_device(void* out, void* save_mean, void* save_rstd,
+                             const void* x, const void* weight, const void* bias,
+                             void* running_mean, void* running_var,
+                             int N, int C, int spatial, float eps, float momentum,
+                             int training, DType dtype);
+#ifdef __cplusplus
+}
+#endif
+
 int dropout_kernel_host_f32(float* out, float* mask, const float* x, size_t size, float p);
 int dropout_kernel_host_f64(double* out, double* mask, const double* x, size_t size, float p);
 int dropout_kernel_device(void* out, void* mask, const void* x, size_t size, float p, DType dtype, unsigned long long counter, unsigned long long key);

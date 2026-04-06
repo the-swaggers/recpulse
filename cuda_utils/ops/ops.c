@@ -3365,6 +3365,262 @@ void backward_sub_scalar_fn(GradFn* self, Tensor* grad_output) {
 }
 
 typedef struct {
+    size_t outer_size;
+    size_t norm_size;
+    float eps;
+    int input_ndim;
+    int* input_shape;
+} LayerNormSavedData;
+
+typedef struct {
+    int N, C, spatial;
+    float eps, momentum;
+    int input_ndim;
+    int* input_shape;
+} BatchNormSavedData;
+
+void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+    Tensor* out_tensor = self->inputs[1];
+    Tensor* mean_tensor = self->inputs[2];
+    Tensor* rstd_tensor = self->inputs[3];
+    LayerNormSavedData* saved = (LayerNormSavedData*)self->saved_data;
+    if (!saved) return;
+
+    Tensor* weight_t = (self->num_inputs > 4) ? self->inputs[4] : NULL;
+    Tensor* bias_t = (self->num_inputs > 5) ? self->inputs[5] : NULL;
+    size_t outer = saved->outer_size;
+    size_t norm = saved->norm_size;
+    size_t total = outer * norm;
+    DType dtype = x->dtype;
+    int dev = x->device_id;
+    size_t esz = dtype_size(dtype);
+
+    Tensor* host_go = grad_output;
+    Tensor* host_x = x;
+    Tensor* host_mean = mean_tensor;
+    Tensor* host_rstd = rstd_tensor;
+    Tensor* host_w = weight_t;
+    bool free_go = false, free_x = false, free_mean = false, free_rstd = false, free_w = false;
+
+    if (dev >= 0) {
+        host_go = tensor_to(grad_output, -1, dtype, false); free_go = true;
+        host_x = tensor_to(x, -1, dtype, false); free_x = true;
+        host_mean = tensor_to(mean_tensor, -1, dtype, false); free_mean = true;
+        host_rstd = tensor_to(rstd_tensor, -1, dtype, false); free_rstd = true;
+        if (weight_t) { host_w = tensor_to(weight_t, -1, dtype, false); free_w = true; }
+    }
+
+    if (x->metadata && x->metadata->requires_grad) {
+        if (!x->metadata->grad) {
+            x->metadata->grad = zeros_tensor(dtype, dev, x->ndim, x->shape, NULL);
+            if (!x->metadata->grad) goto ln_cleanup;
+        }
+
+        float* gx_f32 = (float*)calloc(total, sizeof(float));
+        float* go_f32 = (float*)malloc(total * sizeof(float));
+        float* x_f32 = (float*)malloc(total * sizeof(float));
+        float* mean_f32 = (float*)malloc(outer * sizeof(float));
+        float* rstd_f32 = (float*)malloc(outer * sizeof(float));
+        float* w_f32 = NULL;
+
+        if (dtype == DTYPE_FLOAT32) {
+            memcpy(go_f32, host_go->data, total * sizeof(float));
+            memcpy(x_f32, host_x->data, total * sizeof(float));
+            memcpy(mean_f32, host_mean->data, outer * sizeof(float));
+            memcpy(rstd_f32, host_rstd->data, outer * sizeof(float));
+            if (host_w) { w_f32 = (float*)malloc(norm * sizeof(float)); memcpy(w_f32, host_w->data, norm * sizeof(float)); }
+        } else if (dtype == DTYPE_FLOAT64) {
+            for (size_t i = 0; i < total; i++) { go_f32[i] = (float)((double*)host_go->data)[i]; x_f32[i] = (float)((double*)host_x->data)[i]; }
+            for (size_t i = 0; i < outer; i++) { mean_f32[i] = (float)((double*)host_mean->data)[i]; rstd_f32[i] = (float)((double*)host_rstd->data)[i]; }
+            if (host_w) { w_f32 = (float*)malloc(norm * sizeof(float)); for (size_t i = 0; i < norm; i++) w_f32[i] = (float)((double*)host_w->data)[i]; }
+        } else {
+            half_to_fp32_array(host_go->data, go_f32, total, dtype);
+            half_to_fp32_array(host_x->data, x_f32, total, dtype);
+            half_to_fp32_array(host_mean->data, mean_f32, outer, dtype);
+            half_to_fp32_array(host_rstd->data, rstd_f32, outer, dtype);
+            if (host_w) { w_f32 = (float*)malloc(norm * sizeof(float)); half_to_fp32_array(host_w->data, w_f32, norm, dtype); }
+        }
+
+        for (size_t o = 0; o < outer; o++) {
+            float m = mean_f32[o];
+            float rs = rstd_f32[o];
+            float* go_row = go_f32 + o * norm;
+            float* x_row = x_f32 + o * norm;
+            float* gx_row = gx_f32 + o * norm;
+
+            float sum_go_w = 0.0f;
+            float sum_go_w_norm = 0.0f;
+            for (size_t i = 0; i < norm; i++) {
+                float g = go_row[i];
+                if (w_f32) g *= w_f32[i];
+                float normed = (x_row[i] - m) * rs;
+                sum_go_w += g;
+                sum_go_w_norm += g * normed;
+            }
+
+            float inv_n = 1.0f / (float)norm;
+            for (size_t i = 0; i < norm; i++) {
+                float g = go_row[i];
+                if (w_f32) g *= w_f32[i];
+                float normed = (x_row[i] - m) * rs;
+                gx_row[i] = rs * (g - inv_n * sum_go_w - inv_n * normed * sum_go_w_norm);
+            }
+        }
+
+        Tensor* grad_x_host = zeros_tensor(dtype, -1, x->ndim, x->shape, NULL);
+        if (grad_x_host) {
+            if (dtype == DTYPE_FLOAT32) memcpy(grad_x_host->data, gx_f32, total * sizeof(float));
+            else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < total; i++) ((double*)grad_x_host->data)[i] = (double)gx_f32[i]; }
+            else fp32_to_half_array(gx_f32, grad_x_host->data, total, dtype);
+
+            if (dev >= 0) {
+                Tensor* grad_x_dev = tensor_to(grad_x_host, dev, dtype, false);
+                if (grad_x_dev) {
+                    rp_add(x->metadata->grad->data, x->metadata->grad->data, grad_x_dev->data, total, dtype, dev);
+                    free_tensor(grad_x_dev);
+                }
+                free_tensor(grad_x_host);
+            } else {
+                rp_add(x->metadata->grad->data, x->metadata->grad->data, grad_x_host->data, total, dtype, -1);
+                free_tensor(grad_x_host);
+            }
+        }
+
+        free(gx_f32); free(go_f32); free(x_f32); free(mean_f32); free(rstd_f32); free(w_f32);
+    }
+
+    if (weight_t && weight_t->metadata && weight_t->metadata->requires_grad) {
+        if (!weight_t->metadata->grad) {
+            weight_t->metadata->grad = zeros_tensor(dtype, dev, weight_t->ndim, weight_t->shape, NULL);
+        }
+        if (weight_t->metadata->grad) {
+            float* gw_f32 = (float*)calloc(norm, sizeof(float));
+            for (size_t o = 0; o < outer; o++) {
+                float m, rs;
+                if (dtype == DTYPE_FLOAT32) { m = ((float*)host_mean->data)[o]; rs = ((float*)host_rstd->data)[o]; }
+                else if (dtype == DTYPE_FLOAT64) { m = (float)((double*)host_mean->data)[o]; rs = (float)((double*)host_rstd->data)[o]; }
+                else { float tmp[2]; half_to_fp32_array((char*)host_mean->data + o * esz, &tmp[0], 1, dtype); half_to_fp32_array((char*)host_rstd->data + o * esz, &tmp[1], 1, dtype); m = tmp[0]; rs = tmp[1]; }
+                for (size_t i = 0; i < norm; i++) {
+                    float xv, gov;
+                    if (dtype == DTYPE_FLOAT32) { xv = ((float*)host_x->data)[o*norm+i]; gov = ((float*)host_go->data)[o*norm+i]; }
+                    else if (dtype == DTYPE_FLOAT64) { xv = (float)((double*)host_x->data)[o*norm+i]; gov = (float)((double*)host_go->data)[o*norm+i]; }
+                    else { half_to_fp32_array((char*)host_x->data + (o*norm+i)*esz, &xv, 1, dtype); half_to_fp32_array((char*)host_go->data + (o*norm+i)*esz, &gov, 1, dtype); }
+                    gw_f32[i] += gov * (xv - m) * rs;
+                }
+            }
+            Tensor* gw = zeros_tensor(dtype, dev, weight_t->ndim, weight_t->shape, NULL);
+            if (gw) {
+                if (dtype == DTYPE_FLOAT32) memcpy(gw->data, gw_f32, norm * sizeof(float));
+                else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < norm; i++) ((double*)gw->data)[i] = (double)gw_f32[i]; }
+                else fp32_to_half_array(gw_f32, gw->data, norm, dtype);
+                rp_add(weight_t->metadata->grad->data, weight_t->metadata->grad->data, gw->data, norm, dtype, dev);
+                free_tensor(gw);
+            }
+            free(gw_f32);
+        }
+    }
+
+    if (bias_t && bias_t->metadata && bias_t->metadata->requires_grad) {
+        if (!bias_t->metadata->grad) {
+            bias_t->metadata->grad = zeros_tensor(dtype, dev, bias_t->ndim, bias_t->shape, NULL);
+        }
+        if (bias_t->metadata->grad) {
+            float* gb_f32 = (float*)calloc(norm, sizeof(float));
+            for (size_t o = 0; o < outer; o++) {
+                for (size_t i = 0; i < norm; i++) {
+                    float gov;
+                    if (dtype == DTYPE_FLOAT32) gov = ((float*)host_go->data)[o*norm+i];
+                    else if (dtype == DTYPE_FLOAT64) gov = (float)((double*)host_go->data)[o*norm+i];
+                    else { half_to_fp32_array((char*)host_go->data + (o*norm+i)*esz, &gov, 1, dtype); }
+                    gb_f32[i] += gov;
+                }
+            }
+            Tensor* gb = zeros_tensor(dtype, dev, bias_t->ndim, bias_t->shape, NULL);
+            if (gb) {
+                if (dtype == DTYPE_FLOAT32) memcpy(gb->data, gb_f32, norm * sizeof(float));
+                else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < norm; i++) ((double*)gb->data)[i] = (double)gb_f32[i]; }
+                else fp32_to_half_array(gb_f32, gb->data, norm, dtype);
+                rp_add(bias_t->metadata->grad->data, bias_t->metadata->grad->data, gb->data, norm, dtype, dev);
+                free_tensor(gb);
+            }
+            free(gb_f32);
+        }
+    }
+
+ln_cleanup:
+    if (free_go) free_tensor(host_go);
+    if (free_x) free_tensor(host_x);
+    if (free_mean) free_tensor(host_mean);
+    if (free_rstd) free_tensor(host_rstd);
+    if (free_w) free_tensor(host_w);
+}
+
+Tensor* op_layer_norm(Tensor* x, const void* weight, const void* bias,
+                      int norm_ndim, const int* norm_shape, float eps,
+                      DType dtype, int device_id) {
+    if (!x) return NULL;
+
+    size_t norm_size = 1;
+    for (int i = 0; i < norm_ndim; i++) norm_size *= norm_shape[i];
+    size_t outer_size = x->size / norm_size;
+
+    Tensor* out = zeros_tensor(dtype, device_id, x->ndim, x->shape, NULL);
+    int mean_shape[] = {(int)outer_size};
+    Tensor* mean_t = zeros_tensor(dtype, device_id, 1, mean_shape, NULL);
+    Tensor* rstd_t = zeros_tensor(dtype, device_id, 1, mean_shape, NULL);
+    if (!out || !mean_t || !rstd_t) {
+        if (out) free_tensor(out);
+        if (mean_t) free_tensor(mean_t);
+        if (rstd_t) free_tensor(rstd_t);
+        return NULL;
+    }
+
+    int ret = rp_layer_norm(out->data, mean_t->data, rstd_t->data, x->data,
+                            weight, bias, outer_size, norm_size, eps, dtype, device_id);
+    if (ret != 0) { free_tensor(out); free_tensor(mean_t); free_tensor(rstd_t); return NULL; }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) out->metadata = (Meta*)calloc(1, sizeof(Meta));
+        if (!out->metadata) { free_tensor(out); free_tensor(mean_t); free_tensor(rstd_t); return NULL; }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        int num_inputs = 4;
+        Tensor* w_tensor = NULL;
+        Tensor* b_tensor = NULL;
+
+        GradFn* gf = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!gf) { free_tensor(out); free_tensor(mean_t); free_tensor(rstd_t); return NULL; }
+        gf->backward = backward_layer_norm_fn;
+        gf->num_inputs = num_inputs;
+        gf->inputs = (Tensor**)calloc(6, sizeof(Tensor*));
+        gf->inputs[0] = x;
+        gf->inputs[1] = out;
+        gf->inputs[2] = mean_t;
+        gf->inputs[3] = rstd_t;
+
+        LayerNormSavedData* saved = (LayerNormSavedData*)malloc(sizeof(LayerNormSavedData));
+        saved->outer_size = outer_size;
+        saved->norm_size = norm_size;
+        saved->eps = eps;
+        saved->input_ndim = x->ndim;
+        saved->input_shape = (int*)malloc(x->ndim * sizeof(int));
+        memcpy(saved->input_shape, x->shape, x->ndim * sizeof(int));
+        gf->saved_data = saved;
+        out->metadata->grad_fn = gf;
+    } else {
+        free_tensor(mean_t);
+        free_tensor(rstd_t);
+    }
+
+    return out;
+}
+
+typedef struct {
     float p;
 } DropoutSavedData;
 
@@ -6337,6 +6593,13 @@ void free_grad_fn(GradFn* grad_fn) {
                    grad_fn->backward == backward_log_softmax_fn) {
             SumDimSavedData* saved = (SumDimSavedData*)grad_fn->saved_data;
             if (saved->input_shape) free(saved->input_shape);
+        } else if (grad_fn->backward == backward_layer_norm_fn) {
+            LayerNormSavedData* saved = (LayerNormSavedData*)grad_fn->saved_data;
+            if (saved->input_shape) free(saved->input_shape);
+            if (grad_fn->inputs[2]) free_tensor(grad_fn->inputs[2]);
+            if (grad_fn->inputs[3]) free_tensor(grad_fn->inputs[3]);
+            grad_fn->inputs[2] = NULL;
+            grad_fn->inputs[3] = NULL;
         } else if (grad_fn->backward == backward_dropout_fn) {
             if (grad_fn->num_inputs > 1 && grad_fn->inputs[1]) {
                 free_tensor(grad_fn->inputs[1]);

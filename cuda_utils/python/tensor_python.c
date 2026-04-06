@@ -830,6 +830,105 @@ static int* tensor_to_int_array(Tensor* t) {
     return result;
 }
 
+static PyObject* PyTensor_op_layer_norm(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+
+    PyObject* norm_shape_obj;
+    PyObject* weight_obj = Py_None;
+    PyObject* bias_obj = Py_None;
+    float eps = 1e-5f;
+
+    static char* kwlist[] = {"normalized_shape", "weight", "bias", "eps", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|OOf", kwlist, &norm_shape_obj, &weight_obj, &bias_obj, &eps))
+        return NULL;
+
+    if (!PySequence_Check(norm_shape_obj)) { PyErr_SetString(PyExc_TypeError, "normalized_shape must be a sequence"); return NULL; }
+    Py_ssize_t norm_ndim = PySequence_Size(norm_shape_obj);
+    int* norm_shape = (int*)malloc(norm_ndim * sizeof(int));
+    for (Py_ssize_t i = 0; i < norm_ndim; i++) {
+        PyObject* item = PySequence_GetItem(norm_shape_obj, i);
+        norm_shape[i] = (int)PyLong_AsLong(item);
+        Py_DECREF(item);
+    }
+
+    Tensor* x = self->tensor;
+    const void* w_ptr = NULL;
+    const void* b_ptr = NULL;
+    Tensor* w_t = NULL;
+    Tensor* b_t = NULL;
+
+    if (weight_obj != Py_None && PyObject_TypeCheck(weight_obj, &PyTensorType)) {
+        w_t = ((PyTensorObject*)weight_obj)->tensor;
+        w_ptr = w_t->data;
+    }
+    if (bias_obj != Py_None && PyObject_TypeCheck(bias_obj, &PyTensorType)) {
+        b_t = ((PyTensorObject*)bias_obj)->tensor;
+        b_ptr = b_t->data;
+    }
+
+    Tensor* result = op_layer_norm(x, w_ptr, b_ptr, (int)norm_ndim, norm_shape, eps, x->dtype, x->device_id);
+    free(norm_shape);
+
+    if (!result) { PyErr_SetString(PyExc_RuntimeError, "op_layer_norm failed"); return NULL; }
+
+    if (result->metadata && result->metadata->grad_fn) {
+        GradFn* gf = (GradFn*)result->metadata->grad_fn;
+        if (w_t) { gf->inputs[4] = w_t; gf->num_inputs = 5; }
+        if (b_t) { gf->inputs[5] = b_t; gf->num_inputs = 6; }
+    }
+
+    return wrap_tensor_result(result);
+}
+
+static PyObject* PyTensor_op_batch_norm(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+
+    PyObject* weight_obj = Py_None;
+    PyObject* bias_obj = Py_None;
+    PyObject* rm_obj = Py_None;
+    PyObject* rv_obj = Py_None;
+    float eps = 1e-5f;
+    float momentum = 0.1f;
+    int training = 1;
+
+    static char* kwlist[] = {"weight", "bias", "running_mean", "running_var", "eps", "momentum", "training", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOOffp", kwlist,
+            &weight_obj, &bias_obj, &rm_obj, &rv_obj, &eps, &momentum, &training))
+        return NULL;
+
+    Tensor* x = self->tensor;
+    if (x->ndim != 4 && x->ndim != 2) { PyErr_SetString(PyExc_ValueError, "input must be 2D or 4D"); return NULL; }
+
+    int N = x->shape[0];
+    int C = x->shape[1];
+    int spatial = 1;
+    for (int i = 2; i < x->ndim; i++) spatial *= x->shape[i];
+
+    const void* w_ptr = NULL; const void* b_ptr = NULL;
+    void* rm_ptr = NULL; void* rv_ptr = NULL;
+    if (weight_obj != Py_None && PyObject_TypeCheck(weight_obj, &PyTensorType)) w_ptr = ((PyTensorObject*)weight_obj)->tensor->data;
+    if (bias_obj != Py_None && PyObject_TypeCheck(bias_obj, &PyTensorType)) b_ptr = ((PyTensorObject*)bias_obj)->tensor->data;
+    if (rm_obj != Py_None && PyObject_TypeCheck(rm_obj, &PyTensorType)) rm_ptr = ((PyTensorObject*)rm_obj)->tensor->data;
+    if (rv_obj != Py_None && PyObject_TypeCheck(rv_obj, &PyTensorType)) rv_ptr = ((PyTensorObject*)rv_obj)->tensor->data;
+
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!out) { PyErr_SetString(PyExc_RuntimeError, "allocation failed"); return NULL; }
+
+    int sm_shape[] = {C};
+    Tensor* save_mean = zeros_tensor(x->dtype, x->device_id, 1, sm_shape, NULL);
+    Tensor* save_rstd = zeros_tensor(x->dtype, x->device_id, 1, sm_shape, NULL);
+
+    int ret = rp_batch_norm(out->data, save_mean ? save_mean->data : NULL, save_rstd ? save_rstd->data : NULL,
+                            x->data, w_ptr, b_ptr, rm_ptr, rv_ptr, N, C, spatial, eps, momentum, training,
+                            x->dtype, x->device_id);
+
+    if (save_mean) free_tensor(save_mean);
+    if (save_rstd) free_tensor(save_rstd);
+
+    if (ret != 0) { free_tensor(out); PyErr_SetString(PyExc_RuntimeError, "batch_norm failed"); return NULL; }
+    return wrap_tensor_result(out);
+}
+
 static PyObject* PyTensor_op_dropout(PyTensorObject* self, PyObject* args) {
     if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
     float p = 0.5f;
@@ -2349,6 +2448,10 @@ static PyMethodDef PyTensor_methods[] = {
      "Mean along a dimension with autograd support"},
     {"op_conv2d", (PyCFunction)PyTensor_op_conv2d, METH_VARARGS | METH_KEYWORDS,
      "2D convolution with autograd (im2col + matmul)"},
+    {"op_layer_norm", (PyCFunction)PyTensor_op_layer_norm, METH_VARARGS | METH_KEYWORDS,
+     "Layer normalization with fused C/CUDA kernel"},
+    {"op_batch_norm", (PyCFunction)PyTensor_op_batch_norm, METH_VARARGS | METH_KEYWORDS,
+     "Batch normalization with fused C/CUDA kernel"},
     {"op_dropout", (PyCFunction)PyTensor_op_dropout, METH_VARARGS,
      "Dropout with autograd (single CUDA kernel)"},
     {"op_maxpool2d", (PyCFunction)PyTensor_op_maxpool2d, METH_VARARGS | METH_KEYWORDS,

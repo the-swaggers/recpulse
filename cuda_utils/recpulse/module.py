@@ -184,6 +184,54 @@ class AvgPool2d(Module):
         )
 
 
+class Embedding(Module):
+    def __init__(self, num_embeddings, embedding_dim):
+        super().__init__()
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+
+        self.weight = rp.randn([num_embeddings, embedding_dim]).mul_scalar(0.01)
+        self.weight.requires_grad_(True)
+        self.track("weight", self.weight)
+
+    def forward(self, indices):
+        if isinstance(indices, (list, tuple)):
+            idx_flat = [float(i) for i in indices]
+            indices_t = rp.values(idx_flat)
+        else:
+            indices_t = indices
+
+        input_shape = list(indices_t.shape)
+        num_indices = indices_t.size
+
+        expanded = []
+        if indices_t.device_id == -1:
+            t32 = indices_t.to(dtype='float32') if indices_t.dtype != 'float32' else indices_t
+            for i in range(num_indices):
+                val = rp.values([0.0]).op_add(t32.slice([i], [i+1], [1])).sum_all()
+                for _ in range(self.embedding_dim):
+                    expanded.append(val)
+        else:
+            host_t = indices_t.to(device='cpu', dtype='float32')
+            for i in range(num_indices):
+                val = rp.values([0.0]).op_add(host_t.slice([i], [i+1], [1])).sum_all()
+                for _ in range(self.embedding_dim):
+                    expanded.append(val)
+
+        idx_expanded = rp.values(expanded)
+        self.keep(idx_expanded)
+        idx_nd = idx_expanded.reshape([num_indices, self.embedding_dim])
+        self.keep(idx_nd)
+
+        result = self.weight.op_gather(0, idx_nd)
+
+        if len(input_shape) > 1:
+            out_shape = input_shape + [self.embedding_dim]
+            result = self.keep(result.reshape(out_shape))
+
+        return result
+
+
 class Dropout(Module):
     def __init__(self, p=0.5):
         super().__init__()
@@ -219,29 +267,12 @@ class LayerNorm(Module):
             self.bias = None
 
     def forward(self, x):
-        ndim_norm = len(self.normalized_shape)
-        reduce_dims = list(range(x.ndim - ndim_norm, x.ndim))
-
-        current = x
-        for d in reversed(reduce_dims):
-            mean = self.keep(current.op_mean_dim(d, keepdim=True))
-            current = self.keep(current.op_sub(mean))
-            sq = self.keep(current.op_square())
-            var = self.keep(sq.op_mean_dim(d, keepdim=True))
-            var_eps = self.keep(var.op_add_scalar(self.eps))
-            std = self.keep(var_eps.op_sqrt())
-            current = self.keep(current.op_div(std))
-
-        if self.elementwise_affine:
-            w = self.weight
-            b = self.bias
-            if len(self.normalized_shape) > 1:
-                w = self.keep(w.reshape(self.normalized_shape))
-                b = self.keep(b.reshape(self.normalized_shape))
-            current = self.keep(current.op_mul(w))
-            current = self.keep(current.op_add(b))
-
-        return current
+        return x.op_layer_norm(
+            self.normalized_shape,
+            weight=self.weight,
+            bias=self.bias,
+            eps=self.eps
+        )
 
 
 class BatchNorm2d(Module):
@@ -269,87 +300,58 @@ class BatchNorm2d(Module):
         self.track("running_var", self.running_var)
 
     def forward(self, x):
-        if x.ndim != 4:
-            return self._forward_flat(x)
-        return self._forward_4d(x)
+        if not self._training:
+            return x.op_batch_norm(
+                weight=self.weight,
+                bias=self.bias,
+                running_mean=self.running_mean,
+                running_var=self.running_var,
+                eps=self.eps,
+                momentum=self.momentum,
+                training=False
+            )
 
-    def _forward_4d(self, x):
-        N, C, H, W = x.shape[0], x.shape[1], x.shape[2], x.shape[3]
+        C = x.shape[1]
+        spatial = 1
+        for i in range(2, x.ndim):
+            spatial *= x.shape[i]
+        N = x.shape[0]
+        count = N * spatial
 
-        if self._training:
-            x_transposed = self.keep(x.permute([1, 0, 2, 3]))
-            x_flat = self.keep(x_transposed.reshape([C, N * H * W]))
+        x_transposed = self.keep(x.permute([1, 0] + list(range(2, x.ndim))))
+        x_flat = self.keep(x_transposed.reshape([C, count]))
 
-            mean = self.keep(x_flat.op_mean_dim(1, keepdim=True))
-            diff = self.keep(x_flat.op_sub(mean))
-            sq = self.keep(diff.op_square())
-            var = self.keep(sq.op_mean_dim(1, keepdim=True))
+        mean = self.keep(x_flat.op_mean_dim(1, keepdim=True))
+        diff = self.keep(x_flat.op_sub(mean))
+        sq = self.keep(diff.op_square())
+        var = self.keep(sq.op_mean_dim(1, keepdim=True))
 
-            mean_1d = self.keep(mean.reshape([C]))
-            var_1d = self.keep(var.reshape([C]))
+        mean_1d = mean.reshape([C])
+        var_1d = var.reshape([C])
+        self.keep(mean_1d)
+        self.keep(var_1d)
 
-            self._update_running_stats(mean_1d, var_1d, N * H * W)
-
-            var_eps = self.keep(var.op_add_scalar(self.eps))
-            std = self.keep(var_eps.op_sqrt())
-            normed_flat = self.keep(diff.op_div(std))
-
-            normed_transposed = self.keep(normed_flat.reshape([C, N, H, W]))
-            normed = self.keep(normed_transposed.permute([1, 0, 2, 3]))
-        else:
-            mean_shape = [1, C, 1, 1]
-            rm = self.keep(self.running_mean.reshape(mean_shape))
-            rv = self.keep(self.running_var.reshape(mean_shape))
-
-            diff = self.keep(x.op_sub(rm))
-            rv_eps = self.keep(rv.op_add_scalar(self.eps))
-            std = self.keep(rv_eps.op_sqrt())
-            normed = self.keep(diff.op_div(std))
-
-        if self.affine:
-            w = self.keep(self.weight.reshape([1, C, 1, 1]))
-            b = self.keep(self.bias.reshape([1, C, 1, 1]))
-            normed = self.keep(normed.op_mul(w))
-            normed = self.keep(normed.op_add(b))
-
-        return normed
-
-    def _forward_flat(self, x):
-        C = x.shape[-1]
-
-        if self._training:
-            mean = self.keep(x.op_mean_dim(0, keepdim=True))
-            diff = self.keep(x.op_sub(mean))
-            sq = self.keep(diff.op_square())
-            var = self.keep(sq.op_mean_dim(0, keepdim=True))
-
-            mean_1d = self.keep(mean.reshape([C]))
-            var_1d = self.keep(var.reshape([C]))
-
-            self._update_running_stats(mean_1d, var_1d, x.shape[0])
-
-            var_eps = self.keep(var.op_add_scalar(self.eps))
-            std = self.keep(var_eps.op_sqrt())
-            normed = self.keep(diff.op_div(std))
-        else:
-            diff = self.keep(x.op_sub(self.running_mean))
-            rv_eps = self.keep(self.running_var.op_add_scalar(self.eps))
-            std = self.keep(rv_eps.op_sqrt())
-            normed = self.keep(diff.op_div(std))
-
-        if self.affine:
-            normed = self.keep(normed.op_mul(self.weight))
-            normed = self.keep(normed.op_add(self.bias))
-
-        return normed
-
-    def _update_running_stats(self, batch_mean, batch_var, count):
         alpha = self.momentum
-        bm = batch_mean.copy()
-        bv = batch_var.copy()
-        new_rm = self.running_mean.mul_scalar(1.0 - alpha).add(bm.mul_scalar(alpha))
-        new_rv = self.running_var.mul_scalar(1.0 - alpha).add(bv.mul_scalar(alpha))
+        new_rm = self.running_mean.mul_scalar(1.0 - alpha).add(mean_1d.copy().mul_scalar(alpha))
+        new_rv = self.running_var.mul_scalar(1.0 - alpha).add(var_1d.copy().mul_scalar(alpha))
         self.running_mean = new_rm
         self.tracked["running_mean"] = new_rm
         self.running_var = new_rv
         self.tracked["running_var"] = new_rv
+
+        var_eps = self.keep(var.op_add_scalar(self.eps))
+        std = self.keep(var_eps.op_sqrt())
+        normed_flat = self.keep(diff.op_div(std))
+
+        out_shape = [C, N] + [x.shape[i] for i in range(2, x.ndim)]
+        normed_t = self.keep(normed_flat.reshape(out_shape))
+        normed = self.keep(normed_t.permute([1, 0] + list(range(2, x.ndim))))
+
+        if self.affine:
+            reshape_dims = [1, C] + [1] * (x.ndim - 2)
+            w = self.keep(self.weight.reshape(reshape_dims))
+            b = self.keep(self.bias.reshape(reshape_dims))
+            normed = self.keep(normed.op_mul(w))
+            normed = self.keep(normed.op_add(b))
+
+        return normed
