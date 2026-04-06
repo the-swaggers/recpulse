@@ -3365,6 +3365,85 @@ void backward_sub_scalar_fn(GradFn* self, Tensor* grad_output) {
 }
 
 typedef struct {
+    float p;
+} DropoutSavedData;
+
+void backward_dropout_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* x = self->inputs[0];
+    Tensor* mask_tensor = self->inputs[1];
+    DropoutSavedData* saved = (DropoutSavedData*)self->saved_data;
+    if (!saved || !x->metadata || !x->metadata->requires_grad) return;
+
+    float scale_f32 = 1.0f / (1.0f - saved->p);
+    double scale_f64 = 1.0 / (1.0 - (double)saved->p);
+    void* scale_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&scale_f64 : (void*)&scale_f32;
+
+    Tensor* grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!grad) return;
+
+    rp_mul(grad->data, grad_output->data, mask_tensor->data, x->size, x->dtype, x->device_id);
+
+    Tensor* grad_scaled = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!grad_scaled) { free_tensor(grad); return; }
+    rp_mul_scalar(grad_scaled->data, grad->data, scale_ptr, x->size, x->dtype, x->device_id);
+    free_tensor(grad);
+
+    if (!x->metadata->grad) {
+        x->metadata->grad = grad_scaled;
+    } else {
+        rp_add(x->metadata->grad->data, x->metadata->grad->data, grad_scaled->data,
+               x->size, x->dtype, x->device_id);
+        free_tensor(grad_scaled);
+    }
+}
+
+Tensor* op_dropout(Tensor* x, float p) {
+    if (!x) return NULL;
+    if (p <= 0.0f) return tensor_copy(x);
+    if (p >= 1.0f) return zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+
+    Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!out) return NULL;
+
+    Tensor* mask_tensor = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
+    if (!mask_tensor) { free_tensor(out); return NULL; }
+
+    int ret = rp_dropout(out->data, mask_tensor->data, x->data, x->size, p, x->dtype, x->device_id);
+    if (ret != 0) { free_tensor(out); free_tensor(mask_tensor); return NULL; }
+
+    bool requires_grad = (x->metadata && x->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) {
+            out->metadata = (Meta*)calloc(1, sizeof(Meta));
+            if (!out->metadata) { free_tensor(out); free_tensor(mask_tensor); return NULL; }
+        }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* grad_fn = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!grad_fn) { free_tensor(out); free_tensor(mask_tensor); return NULL; }
+        grad_fn->backward = backward_dropout_fn;
+        grad_fn->num_inputs = 2;
+        grad_fn->inputs = (Tensor**)malloc(2 * sizeof(Tensor*));
+        if (!grad_fn->inputs) { free(grad_fn); free_tensor(out); free_tensor(mask_tensor); return NULL; }
+        grad_fn->inputs[0] = x;
+        grad_fn->inputs[1] = mask_tensor;
+
+        DropoutSavedData* saved = (DropoutSavedData*)malloc(sizeof(DropoutSavedData));
+        if (!saved) { free(grad_fn->inputs); free(grad_fn); free_tensor(out); free_tensor(mask_tensor); return NULL; }
+        saved->p = p;
+        grad_fn->saved_data = saved;
+        out->metadata->grad_fn = grad_fn;
+    } else {
+        free_tensor(mask_tensor);
+    }
+
+    return out;
+}
+
+typedef struct {
     int dim;
     int* indices;
     int* d_indices;
@@ -6258,6 +6337,11 @@ void free_grad_fn(GradFn* grad_fn) {
                    grad_fn->backward == backward_log_softmax_fn) {
             SumDimSavedData* saved = (SumDimSavedData*)grad_fn->saved_data;
             if (saved->input_shape) free(saved->input_shape);
+        } else if (grad_fn->backward == backward_dropout_fn) {
+            if (grad_fn->num_inputs > 1 && grad_fn->inputs[1]) {
+                free_tensor(grad_fn->inputs[1]);
+                grad_fn->inputs[1] = NULL;
+            }
         } else if (grad_fn->backward == backward_maxpool2d_fn) {
             MaxPool2dSavedData* saved = (MaxPool2dSavedData*)grad_fn->saved_data;
             if (saved->max_indices) free(saved->max_indices);

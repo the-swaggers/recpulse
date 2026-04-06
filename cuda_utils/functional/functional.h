@@ -67,6 +67,12 @@ int rp_mean_dim(void* out, const void* x, size_t outer_size, size_t dim_size, si
 int rp_softmax(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
 int rp_log_softmax(void* out, const void* x, size_t outer_size, size_t dim_size, size_t inner_size, DType dtype, int device_id);
 
+int rp_dropout(void* out, void* mask, const void* x, size_t size, float p, DType dtype, int device_id);
+
+int dropout_kernel_host_f32(float* out, float* mask, const float* x, size_t size, float p);
+int dropout_kernel_host_f64(double* out, double* mask, const double* x, size_t size, float p);
+int dropout_kernel_device(void* out, void* mask, const void* x, size_t size, float p, DType dtype, unsigned long long counter, unsigned long long key);
+
 int rp_gather(void* out, const void* input, const int* indices, int ndim, const int* input_shape, const int* index_shape, int dim, size_t index_size, DType dtype, int device_id);
 int rp_scatter_add(void* out, const void* src, const int* indices, int ndim, const int* out_shape, const int* index_shape, int dim, size_t index_size, DType dtype, int device_id);
 

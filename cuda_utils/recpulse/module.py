@@ -192,13 +192,7 @@ class Dropout(Module):
     def forward(self, x):
         if not self._training or self.p == 0.0:
             return x
-        r = rp.rand(list(x.shape), dtype=x.dtype, device=x.device)
-        self.keep(r)
-        mask = r.sub_scalar(self.p).relu().ceil()
-        self.keep(mask)
-        scale = 1.0 / (1.0 - self.p)
-        dropped = self.keep(x.op_mul(mask))
-        return self.keep(dropped.op_mul_scalar(scale))
+        return x.op_dropout(self.p)
 
 
 class LayerNorm(Module):

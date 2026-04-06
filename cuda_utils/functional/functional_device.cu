@@ -1863,3 +1863,71 @@ extern "C" int avgpool2d_kernel_device(void* out, const void* input,
     else return -1;
     return cudaGetLastError() == cudaSuccess ? 0 : -1;
 }
+
+__device__ static inline unsigned int dropout_philox_round(unsigned int c0, unsigned int c1, unsigned int c2, unsigned int c3,
+                                                            unsigned int k0, unsigned int k1) {
+    unsigned int hi0 = __umulhi(0xD2511F53U, c0);
+    unsigned int lo0 = 0xD2511F53U * c0;
+    unsigned int hi1 = __umulhi(0xCD9E8D57U, c2);
+    unsigned int lo1 = 0xCD9E8D57U * c2;
+    return 0;
+}
+
+template<typename T>
+__global__ void dropout_kernel(const T* x, T* out, T* mask, size_t size, float p, float scale,
+                               unsigned long long counter, unsigned long long key) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    size_t base = idx * 4;
+    if (base >= size) return;
+
+    unsigned int c0 = (unsigned int)(counter + idx);
+    unsigned int c1 = (unsigned int)((counter + idx) >> 32);
+    unsigned int c2 = (unsigned int)idx;
+    unsigned int c3 = 0;
+    unsigned int k0 = (unsigned int)key;
+    unsigned int k1 = (unsigned int)(key >> 32);
+
+    for (int round = 0; round < 10; round++) {
+        unsigned int hi0 = __umulhi(0xD2511F53U, c0);
+        unsigned int lo0 = 0xD2511F53U * c0;
+        unsigned int hi1 = __umulhi(0xCD9E8D57U, c2);
+        unsigned int lo1 = 0xCD9E8D57U * c2;
+        c0 = hi1 ^ c1 ^ k0;
+        c1 = lo1;
+        c2 = hi0 ^ c3 ^ k1;
+        c3 = lo0;
+        k0 += 0x9E3779B9U;
+        k1 += 0xBB67AE85U;
+    }
+
+    unsigned int rands[4] = {c0, c1, c2, c3};
+
+    for (int i = 0; i < 4 && base + i < size; i++) {
+        float r = (float)(rands[i] >> 8) * (1.0f / 16777216.0f);
+        if (r >= p) {
+            mask[base + i] = T(1.0f);
+            out[base + i] = T((float)x[base + i] * scale);
+        } else {
+            mask[base + i] = T(0.0f);
+            out[base + i] = T(0.0f);
+        }
+    }
+}
+
+extern "C" int dropout_kernel_device(void* out, void* mask, const void* x, size_t size, float p,
+                                     DType dtype, unsigned long long counter, unsigned long long key) {
+    int threads = 256;
+    int blocks = ((int)size + threads * 4 - 1) / (threads * 4);
+    float scale = 1.0f / (1.0f - p);
+
+    if (dtype == DTYPE_FLOAT32)
+        dropout_kernel<float><<<blocks, threads>>>((const float*)x, (float*)out, (float*)mask, size, p, scale, counter, key);
+    else if (dtype == DTYPE_FLOAT64)
+        dropout_kernel<double><<<blocks, threads>>>((const double*)x, (double*)out, (double*)mask, size, p, scale, counter, key);
+    else if (dtype == DTYPE_FLOAT16)
+        dropout_kernel<__half><<<blocks, threads>>>((const __half*)x, (__half*)out, (__half*)mask, size, p, scale, counter, key);
+    else if (dtype == DTYPE_BFLOAT16)
+        dropout_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)x, (__nv_bfloat16*)out, (__nv_bfloat16*)mask, size, p, scale, counter, key);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}

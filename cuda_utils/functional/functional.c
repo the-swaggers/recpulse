@@ -1,6 +1,7 @@
 #include "functional.h"
 #include "../core/cuda_helpers.h"
 #include "../core/half_precision.h"
+#include "../rand/rand.h"
 #include <cuda_runtime.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -602,6 +603,40 @@ int rp_log_softmax(void* out, const void* x, size_t outer_size, size_t dim_size,
 
     if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
     return log_softmax_kernel_device(out, x, outer_size, dim_size, inner_size, dtype);
+}
+
+int rp_dropout(void* out, void* mask, const void* x, size_t size, float p, DType dtype, int device_id) {
+    if (!out || !mask || !x || size == 0) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return dropout_kernel_host_f32((float*)out, (float*)mask, (const float*)x, size, p);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return dropout_kernel_host_f64((double*)out, (double*)mask, (const double*)x, size, p);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            float* x_f32 = (float*)malloc(size * sizeof(float));
+            float* out_f32 = (float*)malloc(size * sizeof(float));
+            float* mask_f32 = (float*)malloc(size * sizeof(float));
+            if (!x_f32 || !out_f32 || !mask_f32) { free(x_f32); free(out_f32); free(mask_f32); return -1; }
+            half_to_fp32_array(x, x_f32, size, dtype);
+            int ret = dropout_kernel_host_f32(out_f32, mask_f32, x_f32, size, p);
+            if (ret == 0) {
+                fp32_to_half_array(out_f32, out, size, dtype);
+                fp32_to_half_array(mask_f32, mask, size, dtype);
+            }
+            free(x_f32); free(out_f32); free(mask_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    Xoshiro256State* cpu_state = rp_get_cpu_state();
+    uint64_t counter = cpu_state->s[0];
+    uint64_t key = cpu_state->s[1];
+    int ret = dropout_kernel_device(out, mask, x, size, p, dtype, counter, key);
+    cpu_state->s[0] += (size + 3) / 4;
+    return ret;
 }
 
 int rp_gather(void* out, const void* input, const int* indices, int ndim, const int* input_shape, const int* index_shape, int dim, size_t index_size, DType dtype, int device_id) {

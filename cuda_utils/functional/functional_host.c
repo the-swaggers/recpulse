@@ -1,8 +1,10 @@
 #include "functional.h"
 #include "../core/half_precision.h"
+#include "../rand/rand.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <float.h>
 #include <float.h>
 
 int add_kernel_host_f32(float* out, const float* x1, const float* x2, size_t size) {
@@ -1449,6 +1451,38 @@ int avgpool2d_kernel_host_f64(double* out, const double* input,
                     out[((n * C + c) * out_H + oh) * out_W + ow] = (count > 0) ? sum / (double)count : 0.0;
                 }
             }
+        }
+    }
+    return 0;
+}
+
+int dropout_kernel_host_f32(float* out, float* mask, const float* x, size_t size, float p) {
+    if (!out || !mask || !x) return -1;
+    float scale = 1.0f / (1.0f - p);
+    rand_fill_host_f32(mask, size);
+    for (size_t i = 0; i < size; i++) {
+        if (mask[i] >= p) {
+            mask[i] = 1.0f;
+            out[i] = x[i] * scale;
+        } else {
+            mask[i] = 0.0f;
+            out[i] = 0.0f;
+        }
+    }
+    return 0;
+}
+
+int dropout_kernel_host_f64(double* out, double* mask, const double* x, size_t size, float p) {
+    if (!out || !mask || !x) return -1;
+    double scale = 1.0 / (1.0 - (double)p);
+    rand_fill_host_f64(mask, size);
+    for (size_t i = 0; i < size; i++) {
+        if (mask[i] >= (double)p) {
+            mask[i] = 1.0;
+            out[i] = x[i] * scale;
+        } else {
+            mask[i] = 0.0;
+            out[i] = 0.0;
         }
     }
     return 0;
