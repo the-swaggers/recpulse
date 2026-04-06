@@ -182,3 +182,163 @@ class AvgPool2d(Module):
             stride_h=self.stride[0], stride_w=self.stride[1],
             pad_h=self.padding[0], pad_w=self.padding[1]
         )
+
+
+class LayerNorm(Module):
+    def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
+        super().__init__()
+        if isinstance(normalized_shape, int):
+            normalized_shape = [normalized_shape]
+        self.normalized_shape = list(normalized_shape)
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+
+        if elementwise_affine:
+            total = 1
+            for s in normalized_shape:
+                total *= s
+            self.weight = rp.ones([total])
+            self.weight.requires_grad_(True)
+            self.track("weight", self.weight)
+            self.bias = rp.zeros([total])
+            self.bias.requires_grad_(True)
+            self.track("bias", self.bias)
+        else:
+            self.weight = None
+            self.bias = None
+
+    def forward(self, x):
+        ndim_norm = len(self.normalized_shape)
+        reduce_dims = list(range(x.ndim - ndim_norm, x.ndim))
+
+        current = x
+        for d in reversed(reduce_dims):
+            mean = self.keep(current.op_mean_dim(d, keepdim=True))
+            current = self.keep(current.op_sub(mean))
+            sq = self.keep(current.op_square())
+            var = self.keep(sq.op_mean_dim(d, keepdim=True))
+            var_eps = self.keep(var.op_add_scalar(self.eps))
+            std = self.keep(var_eps.op_sqrt())
+            current = self.keep(current.op_div(std))
+
+        if self.elementwise_affine:
+            w = self.weight
+            b = self.bias
+            if len(self.normalized_shape) > 1:
+                w = self.keep(w.reshape(self.normalized_shape))
+                b = self.keep(b.reshape(self.normalized_shape))
+            current = self.keep(current.op_mul(w))
+            current = self.keep(current.op_add(b))
+
+        return current
+
+
+class BatchNorm2d(Module):
+    def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True):
+        super().__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.momentum = momentum
+        self.affine = affine
+
+        if affine:
+            self.weight = rp.ones([num_features])
+            self.weight.requires_grad_(True)
+            self.track("weight", self.weight)
+            self.bias = rp.zeros([num_features])
+            self.bias.requires_grad_(True)
+            self.track("bias", self.bias)
+        else:
+            self.weight = None
+            self.bias = None
+
+        self.running_mean = rp.zeros([num_features])
+        self.track("running_mean", self.running_mean)
+        self.running_var = rp.ones([num_features])
+        self.track("running_var", self.running_var)
+
+    def forward(self, x):
+        if x.ndim != 4:
+            return self._forward_flat(x)
+        return self._forward_4d(x)
+
+    def _forward_4d(self, x):
+        N, C, H, W = x.shape[0], x.shape[1], x.shape[2], x.shape[3]
+
+        if self._training:
+            x_transposed = self.keep(x.permute([1, 0, 2, 3]))
+            x_flat = self.keep(x_transposed.reshape([C, N * H * W]))
+
+            mean = self.keep(x_flat.op_mean_dim(1, keepdim=True))
+            diff = self.keep(x_flat.op_sub(mean))
+            sq = self.keep(diff.op_square())
+            var = self.keep(sq.op_mean_dim(1, keepdim=True))
+
+            mean_1d = self.keep(mean.reshape([C]))
+            var_1d = self.keep(var.reshape([C]))
+
+            self._update_running_stats(mean_1d, var_1d, N * H * W)
+
+            var_eps = self.keep(var.op_add_scalar(self.eps))
+            std = self.keep(var_eps.op_sqrt())
+            normed_flat = self.keep(diff.op_div(std))
+
+            normed_transposed = self.keep(normed_flat.reshape([C, N, H, W]))
+            normed = self.keep(normed_transposed.permute([1, 0, 2, 3]))
+        else:
+            mean_shape = [1, C, 1, 1]
+            rm = self.keep(self.running_mean.reshape(mean_shape))
+            rv = self.keep(self.running_var.reshape(mean_shape))
+
+            diff = self.keep(x.op_sub(rm))
+            rv_eps = self.keep(rv.op_add_scalar(self.eps))
+            std = self.keep(rv_eps.op_sqrt())
+            normed = self.keep(diff.op_div(std))
+
+        if self.affine:
+            w = self.keep(self.weight.reshape([1, C, 1, 1]))
+            b = self.keep(self.bias.reshape([1, C, 1, 1]))
+            normed = self.keep(normed.op_mul(w))
+            normed = self.keep(normed.op_add(b))
+
+        return normed
+
+    def _forward_flat(self, x):
+        C = x.shape[-1]
+
+        if self._training:
+            mean = self.keep(x.op_mean_dim(0, keepdim=True))
+            diff = self.keep(x.op_sub(mean))
+            sq = self.keep(diff.op_square())
+            var = self.keep(sq.op_mean_dim(0, keepdim=True))
+
+            mean_1d = self.keep(mean.reshape([C]))
+            var_1d = self.keep(var.reshape([C]))
+
+            self._update_running_stats(mean_1d, var_1d, x.shape[0])
+
+            var_eps = self.keep(var.op_add_scalar(self.eps))
+            std = self.keep(var_eps.op_sqrt())
+            normed = self.keep(diff.op_div(std))
+        else:
+            diff = self.keep(x.op_sub(self.running_mean))
+            rv_eps = self.keep(self.running_var.op_add_scalar(self.eps))
+            std = self.keep(rv_eps.op_sqrt())
+            normed = self.keep(diff.op_div(std))
+
+        if self.affine:
+            normed = self.keep(normed.op_mul(self.weight))
+            normed = self.keep(normed.op_add(self.bias))
+
+        return normed
+
+    def _update_running_stats(self, batch_mean, batch_var, count):
+        alpha = self.momentum
+        bm = batch_mean.copy()
+        bv = batch_var.copy()
+        new_rm = self.running_mean.mul_scalar(1.0 - alpha).add(bm.mul_scalar(alpha))
+        new_rv = self.running_var.mul_scalar(1.0 - alpha).add(bv.mul_scalar(alpha))
+        self.running_mean = new_rm
+        self.tracked["running_mean"] = new_rm
+        self.running_var = new_rv
+        self.tracked["running_var"] = new_rv
