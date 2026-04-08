@@ -3621,6 +3621,80 @@ Tensor* op_layer_norm(Tensor* x, const void* weight, const void* bias,
 }
 
 typedef struct {
+    int* indices;
+    int num_indices;
+    int num_embeddings;
+    int embedding_dim;
+} EmbeddingSavedData;
+
+void backward_embedding_fn(GradFn* self, Tensor* grad_output) {
+    if (!self || !grad_output) return;
+
+    Tensor* weight = self->inputs[0];
+    EmbeddingSavedData* saved = (EmbeddingSavedData*)self->saved_data;
+    if (!saved || !weight->metadata || !weight->metadata->requires_grad) return;
+
+    if (!weight->metadata->grad) {
+        weight->metadata->grad = zeros_tensor(weight->dtype, weight->device_id, weight->ndim, weight->shape, NULL);
+        if (!weight->metadata->grad) return;
+    }
+
+    Tensor* temp = zeros_tensor(weight->dtype, weight->device_id, weight->ndim, weight->shape, NULL);
+    if (!temp) return;
+
+    rp_embedding_backward(temp->data, grad_output->data, saved->indices,
+                          saved->num_indices, saved->num_embeddings, saved->embedding_dim,
+                          weight->dtype, weight->device_id);
+
+    rp_add(weight->metadata->grad->data, weight->metadata->grad->data, temp->data,
+           weight->size, weight->dtype, weight->device_id);
+    free_tensor(temp);
+}
+
+Tensor* op_embedding(Tensor* weight, const int* indices, int num_indices) {
+    if (!weight || !indices || weight->ndim != 2) return NULL;
+
+    int num_embeddings = weight->shape[0];
+    int embedding_dim = weight->shape[1];
+
+    int out_shape[] = {num_indices, embedding_dim};
+    Tensor* out = zeros_tensor(weight->dtype, weight->device_id, 2, out_shape, NULL);
+    if (!out) return NULL;
+
+    int ret = rp_embedding(out->data, weight->data, indices, num_indices, embedding_dim,
+                           weight->dtype, weight->device_id);
+    if (ret != 0) { free_tensor(out); return NULL; }
+
+    bool requires_grad = (weight->metadata && weight->metadata->requires_grad);
+    if (requires_grad) {
+        if (!out->metadata) out->metadata = (Meta*)calloc(1, sizeof(Meta));
+        if (!out->metadata) { free_tensor(out); return NULL; }
+        out->metadata->requires_grad = true;
+        out->metadata->is_leaf = false;
+
+        GradFn* gf = (GradFn*)calloc(1, sizeof(GradFn));
+        if (!gf) { free_tensor(out); return NULL; }
+        gf->backward = backward_embedding_fn;
+        gf->num_inputs = 1;
+        gf->inputs = (Tensor**)malloc(sizeof(Tensor*));
+        if (!gf->inputs) { free(gf); free_tensor(out); return NULL; }
+        gf->inputs[0] = weight;
+
+        EmbeddingSavedData* saved = (EmbeddingSavedData*)malloc(sizeof(EmbeddingSavedData));
+        if (!saved) { free(gf->inputs); free(gf); free_tensor(out); return NULL; }
+        saved->indices = (int*)malloc(num_indices * sizeof(int));
+        memcpy(saved->indices, indices, num_indices * sizeof(int));
+        saved->num_indices = num_indices;
+        saved->num_embeddings = num_embeddings;
+        saved->embedding_dim = embedding_dim;
+        gf->saved_data = saved;
+        out->metadata->grad_fn = gf;
+    }
+
+    return out;
+}
+
+typedef struct {
     float p;
 } DropoutSavedData;
 
@@ -6593,6 +6667,9 @@ void free_grad_fn(GradFn* grad_fn) {
                    grad_fn->backward == backward_log_softmax_fn) {
             SumDimSavedData* saved = (SumDimSavedData*)grad_fn->saved_data;
             if (saved->input_shape) free(saved->input_shape);
+        } else if (grad_fn->backward == backward_embedding_fn) {
+            EmbeddingSavedData* saved = (EmbeddingSavedData*)grad_fn->saved_data;
+            if (saved->indices) free(saved->indices);
         } else if (grad_fn->backward == backward_layer_norm_fn) {
             LayerNormSavedData* saved = (LayerNormSavedData*)grad_fn->saved_data;
             if (saved->input_shape) free(saved->input_shape);

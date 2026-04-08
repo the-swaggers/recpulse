@@ -639,6 +639,74 @@ int rp_dropout(void* out, void* mask, const void* x, size_t size, float p, DType
     return ret;
 }
 
+int rp_embedding(void* out, const void* weight, const int* indices,
+                 int num_indices, int embedding_dim, DType dtype, int device_id) {
+    if (!out || !weight || !indices) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return embedding_kernel_host_f32((float*)out, (const float*)weight, indices, num_indices, embedding_dim);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return embedding_kernel_host_f64((double*)out, (const double*)weight, indices, num_indices, embedding_dim);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            size_t w_total = 0;
+            for (int i = 0; i < num_indices; i++) if (indices[i] + 1 > (int)w_total) w_total = indices[i] + 1;
+            w_total *= embedding_dim;
+            size_t out_total = (size_t)num_indices * embedding_dim;
+            float* w_f32 = (float*)malloc(w_total * sizeof(float));
+            float* out_f32 = (float*)malloc(out_total * sizeof(float));
+            if (!w_f32 || !out_f32) { free(w_f32); free(out_f32); return -1; }
+            half_to_fp32_array(weight, w_f32, w_total, dtype);
+            int ret = embedding_kernel_host_f32(out_f32, w_f32, indices, num_indices, embedding_dim);
+            if (ret == 0) fp32_to_half_array(out_f32, out, out_total, dtype);
+            free(w_f32); free(out_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    int* d_indices;
+    cudaMalloc((void**)&d_indices, num_indices * sizeof(int));
+    cudaMemcpy(d_indices, indices, num_indices * sizeof(int), cudaMemcpyHostToDevice);
+    int ret = embedding_kernel_device(out, weight, d_indices, num_indices, embedding_dim, dtype);
+    cudaFree(d_indices);
+    return ret;
+}
+
+int rp_embedding_backward(void* grad_weight, const void* grad_output, const int* indices,
+                          int num_indices, int num_embeddings, int embedding_dim, DType dtype, int device_id) {
+    if (!grad_weight || !grad_output || !indices) return -1;
+
+    if (device_id == -1) {
+        if (dtype == DTYPE_FLOAT32) {
+            return embedding_backward_kernel_host_f32((float*)grad_weight, (const float*)grad_output, indices, num_indices, num_embeddings, embedding_dim);
+        } else if (dtype == DTYPE_FLOAT64) {
+            return embedding_backward_kernel_host_f64((double*)grad_weight, (const double*)grad_output, indices, num_indices, num_embeddings, embedding_dim);
+        } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
+            size_t w_total = (size_t)num_embeddings * embedding_dim;
+            size_t out_total = (size_t)num_indices * embedding_dim;
+            float* gw_f32 = (float*)calloc(w_total, sizeof(float));
+            float* go_f32 = (float*)malloc(out_total * sizeof(float));
+            if (!gw_f32 || !go_f32) { free(gw_f32); free(go_f32); return -1; }
+            half_to_fp32_array(grad_output, go_f32, out_total, dtype);
+            int ret = embedding_backward_kernel_host_f32(gw_f32, go_f32, indices, num_indices, num_embeddings, embedding_dim);
+            if (ret == 0) fp32_to_half_array(gw_f32, grad_weight, w_total, dtype);
+            free(gw_f32); free(go_f32);
+            return ret;
+        }
+        return -1;
+    }
+
+    if (!check_cuda_call(cudaSetDevice(device_id), "cudaSetDevice")) return -1;
+    int* d_indices;
+    cudaMalloc((void**)&d_indices, num_indices * sizeof(int));
+    cudaMemcpy(d_indices, indices, num_indices * sizeof(int), cudaMemcpyHostToDevice);
+    int ret = embedding_backward_kernel_device(grad_weight, grad_output, d_indices, num_indices, num_embeddings, embedding_dim, dtype);
+    cudaFree(d_indices);
+    return ret;
+}
+
 int rp_layer_norm(void* out, void* mean_out, void* rstd_out, const void* x,
                   const void* weight, const void* bias,
                   size_t outer_size, size_t norm_size, float eps,

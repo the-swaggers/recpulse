@@ -90,6 +90,7 @@ Tensor* op_conv2d(Tensor* input, Tensor* weight, Tensor* bias,
                   int dilation_h, int dilation_w);
 
 Tensor* op_dropout(Tensor* x, float p);
+Tensor* op_embedding(Tensor* weight, const int* indices, int num_indices);
 
 Tensor* op_layer_norm(Tensor* x, const void* weight, const void* bias,
                       int norm_ndim, const int* norm_shape, float eps,

@@ -1933,6 +1933,62 @@ extern "C" int dropout_kernel_device(void* out, void* mask, const void* x, size_
 }
 
 template<typename T>
+__global__ void embedding_fwd_kernel(const T* weight, T* out, const int* indices,
+                                      int num_indices, int embedding_dim, size_t total) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+
+    int i = idx / embedding_dim;
+    int j = idx % embedding_dim;
+    int row = indices[i];
+    out[idx] = weight[(size_t)row * embedding_dim + j];
+}
+
+template<typename T>
+__global__ void embedding_bwd_kernel(T* grad_weight, const T* grad_output, const int* indices,
+                                      int num_indices, int embedding_dim, size_t total) {
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+
+    int i = idx / embedding_dim;
+    int j = idx % embedding_dim;
+    int row = indices[i];
+    atomicAdd(&grad_weight[(size_t)row * embedding_dim + j], grad_output[idx]);
+}
+
+extern "C" int embedding_kernel_device(void* out, const void* weight, const int* indices,
+                                       int num_indices, int embedding_dim, DType dtype) {
+    size_t total = (size_t)num_indices * embedding_dim;
+    int threads = 256;
+    int blocks = ((int)total + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        embedding_fwd_kernel<float><<<blocks, threads>>>((const float*)weight, (float*)out, indices, num_indices, embedding_dim, total);
+    else if (dtype == DTYPE_FLOAT64)
+        embedding_fwd_kernel<double><<<blocks, threads>>>((const double*)weight, (double*)out, indices, num_indices, embedding_dim, total);
+    else if (dtype == DTYPE_FLOAT16)
+        embedding_fwd_kernel<__half><<<blocks, threads>>>((const __half*)weight, (__half*)out, indices, num_indices, embedding_dim, total);
+    else if (dtype == DTYPE_BFLOAT16)
+        embedding_fwd_kernel<__nv_bfloat16><<<blocks, threads>>>((const __nv_bfloat16*)weight, (__nv_bfloat16*)out, indices, num_indices, embedding_dim, total);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}
+
+extern "C" int embedding_backward_kernel_device(void* grad_weight, const void* grad_output, const int* indices,
+                                                int num_indices, int num_embeddings, int embedding_dim, DType dtype) {
+    size_t total = (size_t)num_indices * embedding_dim;
+    int threads = 256;
+    int blocks = ((int)total + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32)
+        embedding_bwd_kernel<float><<<blocks, threads>>>((float*)grad_weight, (const float*)grad_output, indices, num_indices, embedding_dim, total);
+    else if (dtype == DTYPE_FLOAT64)
+        embedding_bwd_kernel<double><<<blocks, threads>>>((double*)grad_weight, (const double*)grad_output, indices, num_indices, embedding_dim, total);
+    else return -1;
+    return cudaGetLastError() == cudaSuccess ? 0 : -1;
+}
+
+template<typename T>
 __global__ void layer_norm_kernel_fwd(const T* x, T* out, T* mean_out, T* rstd_out,
                                        const T* weight, const T* bias,
                                        size_t outer_size, size_t norm_size, float eps) {

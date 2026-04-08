@@ -69,6 +69,25 @@ int rp_log_softmax(void* out, const void* x, size_t outer_size, size_t dim_size,
 
 int rp_dropout(void* out, void* mask, const void* x, size_t size, float p, DType dtype, int device_id);
 
+int rp_embedding(void* out, const void* weight, const int* indices,
+                 int num_indices, int embedding_dim, DType dtype, int device_id);
+int rp_embedding_backward(void* grad_weight, const void* grad_output, const int* indices,
+                          int num_indices, int num_embeddings, int embedding_dim, DType dtype, int device_id);
+
+int embedding_kernel_host_f32(float* out, const float* weight, const int* indices, int num_indices, int embedding_dim);
+int embedding_kernel_host_f64(double* out, const double* weight, const int* indices, int num_indices, int embedding_dim);
+int embedding_backward_kernel_host_f32(float* grad_weight, const float* grad_output, const int* indices, int num_indices, int num_embeddings, int embedding_dim);
+int embedding_backward_kernel_host_f64(double* grad_weight, const double* grad_output, const int* indices, int num_indices, int num_embeddings, int embedding_dim);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+int embedding_kernel_device(void* out, const void* weight, const int* indices, int num_indices, int embedding_dim, DType dtype);
+int embedding_backward_kernel_device(void* grad_weight, const void* grad_output, const int* indices, int num_indices, int num_embeddings, int embedding_dim, DType dtype);
+#ifdef __cplusplus
+}
+#endif
+
 int rp_layer_norm(void* out, void* mean_out, void* rstd_out, const void* x,
                   const void* weight, const void* bias,
                   size_t outer_size, size_t norm_size, float eps,

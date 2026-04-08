@@ -1488,6 +1488,62 @@ int dropout_kernel_host_f64(double* out, double* mask, const double* x, size_t s
     return 0;
 }
 
+int embedding_kernel_host_f32(float* out, const float* weight, const int* indices,
+                              int num_indices, int embedding_dim) {
+    if (!out || !weight || !indices) return -1;
+    for (int i = 0; i < num_indices; i++) {
+        int idx = indices[i];
+        const float* row = weight + (size_t)idx * embedding_dim;
+        float* out_row = out + (size_t)i * embedding_dim;
+        for (int j = 0; j < embedding_dim; j++) {
+            out_row[j] = row[j];
+        }
+    }
+    return 0;
+}
+
+int embedding_kernel_host_f64(double* out, const double* weight, const int* indices,
+                              int num_indices, int embedding_dim) {
+    if (!out || !weight || !indices) return -1;
+    for (int i = 0; i < num_indices; i++) {
+        int idx = indices[i];
+        const double* row = weight + (size_t)idx * embedding_dim;
+        double* out_row = out + (size_t)i * embedding_dim;
+        for (int j = 0; j < embedding_dim; j++) {
+            out_row[j] = row[j];
+        }
+    }
+    return 0;
+}
+
+int embedding_backward_kernel_host_f32(float* grad_weight, const float* grad_output, const int* indices,
+                                       int num_indices, int num_embeddings, int embedding_dim) {
+    if (!grad_weight || !grad_output || !indices) return -1;
+    for (int i = 0; i < num_indices; i++) {
+        int idx = indices[i];
+        float* gw_row = grad_weight + (size_t)idx * embedding_dim;
+        const float* go_row = grad_output + (size_t)i * embedding_dim;
+        for (int j = 0; j < embedding_dim; j++) {
+            gw_row[j] += go_row[j];
+        }
+    }
+    return 0;
+}
+
+int embedding_backward_kernel_host_f64(double* grad_weight, const double* grad_output, const int* indices,
+                                       int num_indices, int num_embeddings, int embedding_dim) {
+    if (!grad_weight || !grad_output || !indices) return -1;
+    for (int i = 0; i < num_indices; i++) {
+        int idx = indices[i];
+        double* gw_row = grad_weight + (size_t)idx * embedding_dim;
+        const double* go_row = grad_output + (size_t)i * embedding_dim;
+        for (int j = 0; j < embedding_dim; j++) {
+            gw_row[j] += go_row[j];
+        }
+    }
+    return 0;
+}
+
 int layer_norm_kernel_host_f32(float* out, float* mean_out, float* rstd_out, const float* x,
                                const float* weight, const float* bias,
                                size_t outer_size, size_t norm_size, float eps) {

@@ -196,40 +196,9 @@ class Embedding(Module):
 
     def forward(self, indices):
         if isinstance(indices, (list, tuple)):
-            idx_flat = [float(i) for i in indices]
-            indices_t = rp.values(idx_flat)
+            return self.weight.op_embedding(indices)
         else:
-            indices_t = indices
-
-        input_shape = list(indices_t.shape)
-        num_indices = indices_t.size
-
-        expanded = []
-        if indices_t.device_id == -1:
-            t32 = indices_t.to(dtype='float32') if indices_t.dtype != 'float32' else indices_t
-            for i in range(num_indices):
-                val = rp.values([0.0]).op_add(t32.slice([i], [i+1], [1])).sum_all()
-                for _ in range(self.embedding_dim):
-                    expanded.append(val)
-        else:
-            host_t = indices_t.to(device='cpu', dtype='float32')
-            for i in range(num_indices):
-                val = rp.values([0.0]).op_add(host_t.slice([i], [i+1], [1])).sum_all()
-                for _ in range(self.embedding_dim):
-                    expanded.append(val)
-
-        idx_expanded = rp.values(expanded)
-        self.keep(idx_expanded)
-        idx_nd = idx_expanded.reshape([num_indices, self.embedding_dim])
-        self.keep(idx_nd)
-
-        result = self.weight.op_gather(0, idx_nd)
-
-        if len(input_shape) > 1:
-            out_shape = input_shape + [self.embedding_dim]
-            result = self.keep(result.reshape(out_shape))
-
-        return result
+            return self.weight.op_embedding(indices)
 
 
 class Dropout(Module):

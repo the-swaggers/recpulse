@@ -830,6 +830,35 @@ static int* tensor_to_int_array(Tensor* t) {
     return result;
 }
 
+static PyObject* PyTensor_op_embedding(PyTensorObject* self, PyObject* args) {
+    if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
+
+    PyObject* indices_obj;
+    if (!PyArg_ParseTuple(args, "O", &indices_obj)) return NULL;
+
+    int* indices = NULL;
+    int num_indices = 0;
+
+    if (PyObject_TypeCheck(indices_obj, &PyTensorType)) {
+        indices = tensor_to_int_array(((PyTensorObject*)indices_obj)->tensor);
+        num_indices = ((PyTensorObject*)indices_obj)->tensor->size;
+    } else if (PySequence_Check(indices_obj)) {
+        num_indices = (int)PySequence_Size(indices_obj);
+        indices = (int*)malloc(num_indices * sizeof(int));
+        for (int i = 0; i < num_indices; i++) {
+            PyObject* item = PySequence_GetItem(indices_obj, i);
+            indices[i] = (int)PyLong_AsLong(item);
+            Py_DECREF(item);
+        }
+    }
+    if (!indices) { PyErr_SetString(PyExc_RuntimeError, "Failed to parse indices"); return NULL; }
+
+    Tensor* result = op_embedding(self->tensor, indices, num_indices);
+    free(indices);
+    if (!result) { PyErr_SetString(PyExc_RuntimeError, "op_embedding failed"); return NULL; }
+    return wrap_tensor_result(result);
+}
+
 static PyObject* PyTensor_op_layer_norm(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
     if (self->tensor == NULL) { PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized"); return NULL; }
 
@@ -2448,6 +2477,8 @@ static PyMethodDef PyTensor_methods[] = {
      "Mean along a dimension with autograd support"},
     {"op_conv2d", (PyCFunction)PyTensor_op_conv2d, METH_VARARGS | METH_KEYWORDS,
      "2D convolution with autograd (im2col + matmul)"},
+    {"op_embedding", (PyCFunction)PyTensor_op_embedding, METH_VARARGS,
+     "Embedding lookup with fused C/CUDA kernel"},
     {"op_layer_norm", (PyCFunction)PyTensor_op_layer_norm, METH_VARARGS | METH_KEYWORDS,
      "Layer normalization with fused C/CUDA kernel"},
     {"op_batch_norm", (PyCFunction)PyTensor_op_batch_norm, METH_VARARGS | METH_KEYWORDS,
