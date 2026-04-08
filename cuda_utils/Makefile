@@ -12,6 +12,7 @@ FUNCTIONAL_DIR := functional
 OPS_DIR := ops
 OPTIM_DIR := optim
 RAND_DIR := rand
+TOKENIZER_DIR := tokenizer
 PYTHON_DIR := python
 BUILD_DIR := build
 
@@ -21,7 +22,8 @@ C_SOURCES := $(CORE_DIR)/tensor.c $(CORE_DIR)/tensor_host.c \
              $(FUNCTIONAL_DIR)/functional.c $(FUNCTIONAL_DIR)/functional_host.c \
              $(OPS_DIR)/ops.c $(OPS_DIR)/grad_host.c \
              $(OPTIM_DIR)/optim.c $(OPTIM_DIR)/optim_host.c \
-             $(RAND_DIR)/rand.c $(RAND_DIR)/rand_host.c
+             $(RAND_DIR)/rand.c $(RAND_DIR)/rand_host.c \
+             $(TOKENIZER_DIR)/tokenizer.c
 CU_SOURCES := $(CORE_DIR)/tensor_device.cu $(CORE_DIR)/cuda_helpers.cu \
               $(FUNCTIONAL_DIR)/functional_device.cu \
               $(OPS_DIR)/grad_device.cu \
@@ -33,7 +35,8 @@ C_OBJECTS := $(patsubst $(CORE_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(CORE_DIR)/%.
              $(patsubst $(FUNCTIONAL_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(FUNCTIONAL_DIR)/%.c,$(C_SOURCES))) \
              $(patsubst $(OPS_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(OPS_DIR)/%.c,$(C_SOURCES))) \
              $(patsubst $(OPTIM_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(OPTIM_DIR)/%.c,$(C_SOURCES))) \
-             $(patsubst $(RAND_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(RAND_DIR)/%.c,$(C_SOURCES)))
+             $(patsubst $(RAND_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(RAND_DIR)/%.c,$(C_SOURCES))) \
+             $(patsubst $(TOKENIZER_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter $(TOKENIZER_DIR)/%.c,$(C_SOURCES)))
 CU_OBJECTS := $(patsubst $(CORE_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(CORE_DIR)/%.cu,$(CU_SOURCES))) \
               $(patsubst $(FUNCTIONAL_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(FUNCTIONAL_DIR)/%.cu,$(CU_SOURCES))) \
               $(patsubst $(OPS_DIR)/%.cu,$(BUILD_DIR)/%.o,$(filter $(OPS_DIR)/%.cu,$(CU_SOURCES))) \
@@ -50,11 +53,11 @@ CUDA_ARCH := -gencode arch=compute_75,code=sm_75 \
              -gencode arch=compute_90,code=sm_90
 
 CFLAGS := -O3 -fPIC -std=c11 -Wall -Wextra
-CFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) $(PYTHON_INCLUDES)
+CFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) -I$(TOKENIZER_DIR) $(PYTHON_INCLUDES)
 CFLAGS += -I/opt/cuda/include
 
 NVCCFLAGS := -O3 --shared -Xcompiler -fPIC
-NVCCFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) $(PYTHON_INCLUDES)
+NVCCFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) -I$(TOKENIZER_DIR) $(PYTHON_INCLUDES)
 NVCCFLAGS += $(CUDA_ARCH)
 
 LDFLAGS := -shared
@@ -114,6 +117,10 @@ $(BUILD_DIR)/%.o: $(RAND_DIR)/%.c | $(BUILD_DIR)
 $(BUILD_DIR)/%.o: $(RAND_DIR)/%.cu | $(BUILD_DIR)
 	@echo "Compiling CUDA: $<"
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%.o: $(TOKENIZER_DIR)/%.c | $(BUILD_DIR)
+	@echo "Compiling C: $<"
+	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.o: $(PYTHON_DIR)/%.c | $(BUILD_DIR)
 	@echo "Compiling Python binding: $<"

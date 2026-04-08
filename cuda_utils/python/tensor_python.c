@@ -5,6 +5,7 @@
 #include "../ops/ops.h"
 #include "../optim/optim.h"
 #include "../rand/rand.h"
+#include "../tokenizer/tokenizer.h"
 
 typedef struct {
     PyObject_HEAD
@@ -3077,6 +3078,158 @@ static PyObject* module_manual_seed(PyObject* self, PyObject* args) {
     Py_RETURN_NONE;
 }
 
+typedef struct {
+    PyObject_HEAD
+    Tokenizer* tokenizer;
+} PyTokenizerObject;
+
+static void PyTokenizer_dealloc(PyTokenizerObject* self) {
+    if (self->tokenizer) tokenizer_free(self->tokenizer);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* PyTokenizer_new(PyTypeObject* type, PyObject* args, PyObject* kwds) {
+    PyTokenizerObject* self = (PyTokenizerObject*)type->tp_alloc(type, 0);
+    if (self) self->tokenizer = tokenizer_create();
+    return (PyObject*)self;
+}
+
+static PyObject* PyTokenizer_train(PyTokenizerObject* self, PyObject* args, PyObject* kwargs) {
+    const char* text;
+    Py_ssize_t text_len;
+    int vocab_size = 512;
+    PyObject* special_obj = NULL;
+
+    static char* kwlist[] = {"text", "vocab_size", "special_tokens", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|iO", kwlist, &text, &text_len, &vocab_size, &special_obj))
+        return NULL;
+
+    const char** special = NULL;
+    int num_special = 0;
+    if (special_obj && PySequence_Check(special_obj)) {
+        num_special = (int)PySequence_Size(special_obj);
+        special = (const char**)malloc(num_special * sizeof(char*));
+        for (int i = 0; i < num_special; i++) {
+            PyObject* item = PySequence_GetItem(special_obj, i);
+            special[i] = PyUnicode_AsUTF8(item);
+            Py_DECREF(item);
+        }
+    }
+
+    int ret = tokenizer_train(self->tokenizer, text, (size_t)text_len, vocab_size, special, num_special);
+    free(special);
+
+    if (ret != 0) { PyErr_SetString(PyExc_RuntimeError, "tokenizer training failed"); return NULL; }
+    Py_RETURN_NONE;
+}
+
+static PyObject* PyTokenizer_encode(PyTokenizerObject* self, PyObject* args) {
+    const char* text;
+    Py_ssize_t text_len;
+    if (!PyArg_ParseTuple(args, "s#", &text, &text_len)) return NULL;
+
+    int out_len;
+    int* ids = tokenizer_encode(self->tokenizer, text, (size_t)text_len, &out_len);
+    if (!ids) { PyErr_SetString(PyExc_RuntimeError, "encoding failed"); return NULL; }
+
+    PyObject* result = PyList_New(out_len);
+    for (int i = 0; i < out_len; i++) {
+        PyList_SET_ITEM(result, i, PyLong_FromLong(ids[i]));
+    }
+    free(ids);
+    return result;
+}
+
+static PyObject* PyTokenizer_decode(PyTokenizerObject* self, PyObject* args) {
+    PyObject* ids_obj;
+    if (!PyArg_ParseTuple(args, "O", &ids_obj)) return NULL;
+
+    if (!PySequence_Check(ids_obj)) { PyErr_SetString(PyExc_TypeError, "ids must be a sequence"); return NULL; }
+    int num_ids = (int)PySequence_Size(ids_obj);
+    int* ids = (int*)malloc(num_ids * sizeof(int));
+    for (int i = 0; i < num_ids; i++) {
+        PyObject* item = PySequence_GetItem(ids_obj, i);
+        ids[i] = (int)PyLong_AsLong(item);
+        Py_DECREF(item);
+    }
+
+    char* text = tokenizer_decode(self->tokenizer, ids, num_ids);
+    free(ids);
+    if (!text) { PyErr_SetString(PyExc_RuntimeError, "decoding failed"); return NULL; }
+
+    PyObject* result = PyUnicode_DecodeUTF8(text, strlen(text), "replace");
+    free(text);
+    return result;
+}
+
+static PyObject* PyTokenizer_save(PyTokenizerObject* self, PyObject* args) {
+    const char* path;
+    if (!PyArg_ParseTuple(args, "s", &path)) return NULL;
+    if (tokenizer_save(self->tokenizer, path) != 0) { PyErr_SetString(PyExc_RuntimeError, "save failed"); return NULL; }
+    Py_RETURN_NONE;
+}
+
+static PyObject* PyTokenizer_get_vocab_size(PyTokenizerObject* self, void* closure) {
+    (void)closure;
+    return PyLong_FromLong(tokenizer_vocab_size(self->tokenizer));
+}
+
+static PyObject* PyTokenizer_id_to_token(PyTokenizerObject* self, PyObject* args) {
+    int id;
+    if (!PyArg_ParseTuple(args, "i", &id)) return NULL;
+    const char* token = tokenizer_id_to_token(self->tokenizer, id);
+    if (!token) { PyErr_SetString(PyExc_IndexError, "invalid token id"); return NULL; }
+    return PyUnicode_DecodeUTF8(token, strlen(token), "replace");
+}
+
+static PyObject* PyTokenizer_token_to_id(PyTokenizerObject* self, PyObject* args) {
+    const char* token;
+    if (!PyArg_ParseTuple(args, "s", &token)) return NULL;
+    int id = tokenizer_token_to_id(self->tokenizer, token);
+    if (id < 0) { PyErr_SetString(PyExc_KeyError, "token not found"); return NULL; }
+    return PyLong_FromLong(id);
+}
+
+static PyMethodDef PyTokenizer_methods[] = {
+    {"train", (PyCFunction)PyTokenizer_train, METH_VARARGS | METH_KEYWORDS, "Train BPE tokenizer on text"},
+    {"encode", (PyCFunction)PyTokenizer_encode, METH_VARARGS, "Encode text to token ids"},
+    {"decode", (PyCFunction)PyTokenizer_decode, METH_VARARGS, "Decode token ids to text"},
+    {"save", (PyCFunction)PyTokenizer_save, METH_VARARGS, "Save tokenizer to file"},
+    {"id_to_token", (PyCFunction)PyTokenizer_id_to_token, METH_VARARGS, "Get token string for id"},
+    {"token_to_id", (PyCFunction)PyTokenizer_token_to_id, METH_VARARGS, "Get id for token string"},
+    {NULL, NULL, 0, NULL}
+};
+
+static PyGetSetDef PyTokenizer_getset[] = {
+    {"vocab_size", (getter)PyTokenizer_get_vocab_size, NULL, "Vocabulary size", NULL},
+    {NULL}
+};
+
+static PyTypeObject PyTokenizerType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "recpulse_cuda.Tokenizer",
+    .tp_basicsize = sizeof(PyTokenizerObject),
+    .tp_dealloc = (destructor)PyTokenizer_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_methods = PyTokenizer_methods,
+    .tp_getset = PyTokenizer_getset,
+    .tp_new = PyTokenizer_new,
+};
+
+static PyObject* module_load_tokenizer(PyObject* self, PyObject* args) {
+    (void)self;
+    const char* path;
+    if (!PyArg_ParseTuple(args, "s", &path)) return NULL;
+
+    Tokenizer* tok = tokenizer_load(path);
+    if (!tok) { PyErr_SetString(PyExc_RuntimeError, "Failed to load tokenizer"); return NULL; }
+
+    PyTokenizerObject* py_tok = (PyTokenizerObject*)PyTokenizerType.tp_alloc(&PyTokenizerType, 0);
+    if (!py_tok) { tokenizer_free(tok); return NULL; }
+    py_tok->tokenizer = tok;
+    return (PyObject*)py_tok;
+}
+
 static PyMethodDef module_methods[] = {
     {"zeros", (PyCFunction)module_zeros, METH_VARARGS | METH_KEYWORDS,
      "Create a tensor filled with zeros"},
@@ -3094,6 +3247,8 @@ static PyMethodDef module_methods[] = {
      "Create tensor with random integers in [low, high)"},
     {"manual_seed", (PyCFunction)module_manual_seed, METH_VARARGS,
      "Set the random seed for reproducibility"},
+    {"load_tokenizer", (PyCFunction)module_load_tokenizer, METH_VARARGS,
+     "Load a tokenizer from file"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -3116,6 +3271,15 @@ PyMODINIT_FUNC PyInit_recpulse_cuda(void) {
     Py_INCREF(&PyTensorType);
     if (PyModule_AddObject(m, "Tensor", (PyObject*)&PyTensorType) < 0) {
         Py_DECREF(&PyTensorType);
+        Py_DECREF(m);
+        return NULL;
+    }
+
+    if (PyType_Ready(&PyTokenizerType) < 0)
+        return NULL;
+    Py_INCREF(&PyTokenizerType);
+    if (PyModule_AddObject(m, "Tokenizer", (PyObject*)&PyTokenizerType) < 0) {
+        Py_DECREF(&PyTokenizerType);
         Py_DECREF(m);
         return NULL;
     }
