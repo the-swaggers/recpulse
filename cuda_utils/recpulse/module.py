@@ -61,6 +61,24 @@ class Module:
         self.tracked = new_tracked
         return self
 
+    def load_state(self, state_dict):
+        for name, tensor in state_dict.items():
+            if name not in self.tracked:
+                continue
+
+            old = self.tracked[name]
+            new_t = tensor.copy()
+
+            if old.requires_grad:
+                new_t.requires_grad_(True)
+
+            parts = name.split('.')
+            obj = self
+            for part in parts[:-1]:
+                obj = getattr(obj, part)
+            setattr(obj, parts[-1], new_t)
+            self.tracked[name] = new_t
+
     def train(self):
         self._training = True
         for m in self._modules.values():

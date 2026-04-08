@@ -18,7 +18,7 @@ BUILD_DIR := build
 
 TARGET := recpulse_cuda.so
 
-C_SOURCES := $(CORE_DIR)/tensor.c $(CORE_DIR)/tensor_host.c \
+C_SOURCES := $(CORE_DIR)/tensor.c $(CORE_DIR)/tensor_host.c $(CORE_DIR)/serialize.c \
              $(FUNCTIONAL_DIR)/functional.c $(FUNCTIONAL_DIR)/functional_host.c \
              $(OPS_DIR)/ops.c $(OPS_DIR)/grad_host.c \
              $(OPTIM_DIR)/optim.c $(OPTIM_DIR)/optim_host.c \
@@ -54,7 +54,8 @@ CUDA_ARCH := -gencode arch=compute_75,code=sm_75 \
 
 CFLAGS := -O3 -fPIC -std=c11 -Wall -Wextra
 CFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) -I$(TOKENIZER_DIR) $(PYTHON_INCLUDES)
-CFLAGS += -I/opt/cuda/include
+NUMPY_INCLUDES := $(shell python3 -c "import numpy; print(numpy.get_include())")
+CFLAGS += -I/opt/cuda/include -I$(NUMPY_INCLUDES)
 
 NVCCFLAGS := -O3 --shared -Xcompiler -fPIC
 NVCCFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) -I$(TOKENIZER_DIR) $(PYTHON_INCLUDES)

@@ -1,11 +1,15 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+#include <numpy/arrayobject.h>
 #include "../core/tensor.h"
+#include "../core/half_precision.h"
 #include "../functional/functional.h"
 #include "../ops/ops.h"
 #include "../optim/optim.h"
 #include "../rand/rand.h"
 #include "../tokenizer/tokenizer.h"
+#include "../core/serialize.h"
 
 typedef struct {
     PyObject_HEAD
@@ -251,6 +255,43 @@ static PyObject* PyTensor_to(PyTensorObject* self, PyObject* args, PyObject* kwa
 
     py_result->tensor = result;
     return (PyObject*)py_result;
+}
+
+static PyObject* PyTensor_to_numpy(PyTensorObject* self, PyObject* Py_UNUSED(ignored)) {
+    if (self->tensor == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
+        return NULL;
+    }
+
+    Tensor* t = self->tensor;
+    Tensor* host_t = t;
+    int need_free = 0;
+    if (t->device_id >= 0) {
+        host_t = tensor_to(t, -1, t->dtype, 0);
+        if (!host_t) { PyErr_SetString(PyExc_RuntimeError, "Failed to copy to host"); return NULL; }
+        need_free = 1;
+    }
+
+    int npy_type;
+    switch (host_t->dtype) {
+        case DTYPE_FLOAT32: npy_type = NPY_FLOAT32; break;
+        case DTYPE_FLOAT64: npy_type = NPY_FLOAT64; break;
+        case DTYPE_FLOAT16: npy_type = NPY_FLOAT16; break;
+        default: npy_type = NPY_FLOAT32; break;
+    }
+
+    npy_intp* dims = (npy_intp*)malloc(host_t->ndim * sizeof(npy_intp));
+    for (int i = 0; i < host_t->ndim; i++) dims[i] = host_t->shape[i];
+
+    PyObject* arr = PyArray_SimpleNew(host_t->ndim, dims, npy_type);
+    free(dims);
+    if (!arr) { if (need_free) free_tensor(host_t); return NULL; }
+
+    size_t data_bytes = host_t->size * dtype_size(host_t->dtype);
+    memcpy(PyArray_DATA((PyArrayObject*)arr), host_t->data, data_bytes);
+
+    if (need_free) free_tensor(host_t);
+    return arr;
 }
 
 static PyObject* PyTensor_copy(PyTensorObject* self, PyObject* Py_UNUSED(ignored)) {
@@ -2303,6 +2344,8 @@ static PyGetSetDef PyTensor_getsetters[] = {
 static PyMethodDef PyTensor_methods[] = {
     {"to", (PyCFunction)PyTensor_to, METH_VARARGS | METH_KEYWORDS,
      "Convert tensor to different device/dtype"},
+    {"to_numpy", (PyCFunction)PyTensor_to_numpy, METH_NOARGS,
+     "Convert tensor to numpy array (copies to host if on GPU)"},
     {"copy", (PyCFunction)PyTensor_copy, METH_NOARGS,
      "Create a copy of the tensor"},
     {"data", (PyCFunction)PyTensor_data, METH_NOARGS,
@@ -3216,6 +3259,64 @@ static PyTypeObject PyTokenizerType = {
     .tp_new = PyTokenizer_new,
 };
 
+static PyObject* module_save(PyObject* self, PyObject* args) {
+    (void)self;
+    PyObject* dict_obj;
+    const char* path;
+    if (!PyArg_ParseTuple(args, "Os", &dict_obj, &path)) return NULL;
+
+    if (!PyDict_Check(dict_obj)) { PyErr_SetString(PyExc_TypeError, "first argument must be a dict"); return NULL; }
+
+    Py_ssize_t size = PyDict_Size(dict_obj);
+    TensorDict* td = tensor_dict_create((int)size);
+    if (!td) return PyErr_NoMemory();
+
+    PyObject* key; PyObject* value;
+    Py_ssize_t pos = 0;
+    while (PyDict_Next(dict_obj, &pos, &key, &value)) {
+        const char* name = PyUnicode_AsUTF8(key);
+        if (!name || !PyObject_TypeCheck(value, &PyTensorType)) {
+            tensor_dict_free(td);
+            PyErr_SetString(PyExc_TypeError, "dict must map strings to Tensors");
+            return NULL;
+        }
+        tensor_dict_add(td, name, ((PyTensorObject*)value)->tensor);
+    }
+
+    int ret = rpt_save(td, path);
+    tensor_dict_free(td);
+    if (ret != 0) { PyErr_SetString(PyExc_RuntimeError, "save failed"); return NULL; }
+    Py_RETURN_NONE;
+}
+
+static PyObject* module_load(PyObject* self, PyObject* args) {
+    (void)self;
+    const char* path;
+    if (!PyArg_ParseTuple(args, "s", &path)) return NULL;
+
+    TensorDict* td = rpt_load(path);
+    if (!td) { PyErr_SetString(PyExc_RuntimeError, "load failed"); return NULL; }
+
+    PyObject* result = PyDict_New();
+    for (int i = 0; i < td->count; i++) {
+        PyObject* py_tensor = wrap_tensor_result(td->tensors[i]);
+        if (!py_tensor) {
+            tensor_dict_free(td);
+            Py_DECREF(result);
+            return NULL;
+        }
+        PyDict_SetItemString(result, td->names[i], py_tensor);
+        Py_DECREF(py_tensor);
+    }
+
+    for (int i = 0; i < td->count; i++) free(td->names[i]);
+    free(td->names);
+    free(td->tensors);
+    free(td);
+
+    return result;
+}
+
 static PyObject* module_load_tokenizer(PyObject* self, PyObject* args) {
     (void)self;
     const char* path;
@@ -3247,6 +3348,10 @@ static PyMethodDef module_methods[] = {
      "Create tensor with random integers in [low, high)"},
     {"manual_seed", (PyCFunction)module_manual_seed, METH_VARARGS,
      "Set the random seed for reproducibility"},
+    {"save", (PyCFunction)module_save, METH_VARARGS,
+     "Save tensor dict to .rpt file"},
+    {"load", (PyCFunction)module_load, METH_VARARGS,
+     "Load tensor dict from .rpt file"},
     {"load_tokenizer", (PyCFunction)module_load_tokenizer, METH_VARARGS,
      "Load a tokenizer from file"},
     {NULL, NULL, 0, NULL}
@@ -3261,6 +3366,8 @@ static struct PyModuleDef recpulse_cuda_module = {
 };
 
 PyMODINIT_FUNC PyInit_recpulse_cuda(void) {
+    import_array();
+
     if (PyType_Ready(&PyTensorType) < 0)
         return NULL;
 
