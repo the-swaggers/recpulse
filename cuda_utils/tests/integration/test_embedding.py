@@ -145,6 +145,65 @@ full = FullModel()
 check("full model tracked", len(full.tracked) == 5)
 check("full model params", len(full.parameters()) == 5)
 
+print("\n--- C kernel: op_embedding directly ---")
+
+w = rp.values([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+_w_base = w
+w2d = w.reshape([3, 2])
+w2d.requires_grad_(True)
+
+out_direct = w2d.op_embedding([2, 0, 1])
+check("op_embedding shape", out_direct.shape == (3, 2))
+check("op_embedding values", approx(out_direct.sum_all(), 1+2+3+4+5+6, 0.01))
+
+out_direct.op_sum_all().backward()
+g = w2d.grad
+g_vals = [rp.values([0.0]).op_add(g.reshape([6]).slice([i],[i+1],[1])).sum_all() for i in range(6)]
+check("op_embedding backward all rows selected once", all(approx(v, 1.0) for v in g_vals))
+
+print("\n--- Float64 ---")
+
+w64 = rp.values([1.0, 2.0, 3.0, 4.0], dtype='float64')
+_w64_base = w64
+w64_2d = w64.reshape([2, 2])
+out64 = w64_2d.op_embedding([1, 0])
+check("f64 dtype", out64.dtype == 'float64')
+check("f64 values", approx(out64.sum_all(), 10.0, 0.01))
+
+print("\n--- Float16 ---")
+
+w16 = rp.values([1.0, 2.0, 3.0, 4.0], dtype='float16')
+_w16_base = w16
+w16_2d = w16.reshape([2, 2])
+out16 = w16_2d.op_embedding([0, 1])
+check("f16 dtype", out16.dtype == 'float16')
+
+HAS_CUDA = False
+try:
+    _t = rp.zeros([1], device='cuda')
+    HAS_CUDA = True
+except:
+    pass
+
+if HAS_CUDA:
+    print("\n--- CUDA ---")
+
+    w_gpu = rp.values([10.0, 20.0, 30.0, 40.0, 50.0, 60.0], device='cuda')
+    w_gpu_2d = w_gpu.reshape([3, 2])
+    out_gpu = w_gpu_2d.op_embedding([2, 0])
+    check("CUDA shape", out_gpu.shape == (2, 2))
+    check("CUDA device", 'cuda' in out_gpu.device)
+    check("CUDA values", approx(out_gpu.to(device='cpu').sum_all(), 50+60+10+20, 0.1))
+
+    w_gpu2 = rp.values([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], device='cuda')
+    w_gpu2_2d = w_gpu2.reshape([3, 2])
+    w_gpu2_2d.requires_grad_(True)
+    out_gpu2 = w_gpu2_2d.op_embedding([1, 2, 1])
+    out_gpu2.op_sum_all().backward()
+    check("CUDA backward", w_gpu2_2d.has_grad)
+else:
+    print("\n  SKIP: No CUDA device")
+
 print("\n" + "=" * 60)
 print(f"Results: {passed}/{passed + failed} tests passed")
 if failed > 0:
