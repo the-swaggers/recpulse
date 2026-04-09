@@ -3259,6 +3259,49 @@ static PyTypeObject PyTokenizerType = {
     .tp_new = PyTokenizer_new,
 };
 
+static PyObject* module_clip_grad_norm(PyObject* self, PyObject* args) {
+    (void)self;
+    PyObject* params_obj;
+    float max_norm;
+    if (!PyArg_ParseTuple(args, "Of", &params_obj, &max_norm)) return NULL;
+
+    if (!PySequence_Check(params_obj)) { PyErr_SetString(PyExc_TypeError, "params must be a sequence"); return NULL; }
+    int n = (int)PySequence_Size(params_obj);
+    Tensor** params = (Tensor**)malloc(n * sizeof(Tensor*));
+    for (int i = 0; i < n; i++) {
+        PyObject* item = PySequence_GetItem(params_obj, i);
+        if (!PyObject_TypeCheck(item, &PyTensorType)) { Py_DECREF(item); free(params); PyErr_SetString(PyExc_TypeError, "all params must be Tensors"); return NULL; }
+        params[i] = ((PyTensorObject*)item)->tensor;
+        Py_DECREF(item);
+    }
+
+    float total_norm;
+    clip_grad_norm(params, n, max_norm, &total_norm);
+    free(params);
+    return PyFloat_FromDouble((double)total_norm);
+}
+
+static PyObject* module_clip_grad_value(PyObject* self, PyObject* args) {
+    (void)self;
+    PyObject* params_obj;
+    float clip_value;
+    if (!PyArg_ParseTuple(args, "Of", &params_obj, &clip_value)) return NULL;
+
+    if (!PySequence_Check(params_obj)) { PyErr_SetString(PyExc_TypeError, "params must be a sequence"); return NULL; }
+    int n = (int)PySequence_Size(params_obj);
+    Tensor** params = (Tensor**)malloc(n * sizeof(Tensor*));
+    for (int i = 0; i < n; i++) {
+        PyObject* item = PySequence_GetItem(params_obj, i);
+        if (!PyObject_TypeCheck(item, &PyTensorType)) { Py_DECREF(item); free(params); PyErr_SetString(PyExc_TypeError, "all params must be Tensors"); return NULL; }
+        params[i] = ((PyTensorObject*)item)->tensor;
+        Py_DECREF(item);
+    }
+
+    clip_grad_value(params, n, clip_value);
+    free(params);
+    Py_RETURN_NONE;
+}
+
 static PyObject* module_save(PyObject* self, PyObject* args) {
     (void)self;
     PyObject* dict_obj;
@@ -3348,6 +3391,10 @@ static PyMethodDef module_methods[] = {
      "Create tensor with random integers in [low, high)"},
     {"manual_seed", (PyCFunction)module_manual_seed, METH_VARARGS,
      "Set the random seed for reproducibility"},
+    {"clip_grad_norm", (PyCFunction)module_clip_grad_norm, METH_VARARGS,
+     "Clip gradient norm of parameters"},
+    {"clip_grad_value", (PyCFunction)module_clip_grad_value, METH_VARARGS,
+     "Clip gradient values of parameters"},
     {"save", (PyCFunction)module_save, METH_VARARGS,
      "Save tensor dict to .rpt file"},
     {"load", (PyCFunction)module_load, METH_VARARGS,

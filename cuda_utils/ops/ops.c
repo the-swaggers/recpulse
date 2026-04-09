@@ -6633,6 +6633,119 @@ void backward_squeeze_fn(GradFn* self, Tensor* grad_output);
 void backward_unsqueeze_fn(GradFn* self, Tensor* grad_output);
 void backward_flatten_fn(GradFn* self, Tensor* grad_output);
 
+int clip_grad_norm(Tensor** params, int num_params, float max_norm, float* out_total_norm) {
+    if (!params || num_params <= 0) return -1;
+
+    double total_norm_sq = 0.0;
+    for (int i = 0; i < num_params; i++) {
+        Tensor* p = params[i];
+        if (!p || !p->metadata || !p->metadata->grad) continue;
+        Tensor* g = p->metadata->grad;
+
+        Tensor* host_g = g;
+        bool need_free = false;
+        if (g->device_id >= 0) {
+            host_g = tensor_to(g, -1, g->dtype, false);
+            if (!host_g) continue;
+            need_free = true;
+        }
+
+        if (host_g->dtype == DTYPE_FLOAT32) {
+            float* d = (float*)host_g->data;
+            for (size_t j = 0; j < host_g->size; j++) total_norm_sq += (double)d[j] * (double)d[j];
+        } else if (host_g->dtype == DTYPE_FLOAT64) {
+            double* d = (double*)host_g->data;
+            for (size_t j = 0; j < host_g->size; j++) total_norm_sq += d[j] * d[j];
+        } else {
+            float* tmp = (float*)malloc(host_g->size * sizeof(float));
+            if (tmp) {
+                half_to_fp32_array(host_g->data, tmp, host_g->size, host_g->dtype);
+                for (size_t j = 0; j < host_g->size; j++) total_norm_sq += (double)tmp[j] * (double)tmp[j];
+                free(tmp);
+            }
+        }
+
+        if (need_free) free_tensor(host_g);
+    }
+
+    double total_norm = sqrt(total_norm_sq);
+    if (out_total_norm) *out_total_norm = (float)total_norm;
+
+    if (total_norm > (double)max_norm && total_norm > 0.0) {
+        float scale_f32 = max_norm / (float)total_norm;
+        double scale_f64 = (double)max_norm / total_norm;
+
+        for (int i = 0; i < num_params; i++) {
+            Tensor* p = params[i];
+            if (!p || !p->metadata || !p->metadata->grad) continue;
+            Tensor* g = p->metadata->grad;
+            void* scale_ptr = (g->dtype == DTYPE_FLOAT64) ? (void*)&scale_f64 : (void*)&scale_f32;
+            rp_mul_scalar(g->data, g->data, scale_ptr, g->size, g->dtype, g->device_id);
+        }
+    }
+
+    return 0;
+}
+
+int clip_grad_value(Tensor** params, int num_params, float clip_value) {
+    if (!params || num_params <= 0) return -1;
+
+    for (int i = 0; i < num_params; i++) {
+        Tensor* p = params[i];
+        if (!p || !p->metadata || !p->metadata->grad) continue;
+        Tensor* g = p->metadata->grad;
+
+        if (g->device_id == -1) {
+            if (g->dtype == DTYPE_FLOAT32) {
+                float* d = (float*)g->data;
+                for (size_t j = 0; j < g->size; j++) {
+                    if (d[j] > clip_value) d[j] = clip_value;
+                    else if (d[j] < -clip_value) d[j] = -clip_value;
+                }
+            } else if (g->dtype == DTYPE_FLOAT64) {
+                double* d = (double*)g->data;
+                double cv = (double)clip_value;
+                for (size_t j = 0; j < g->size; j++) {
+                    if (d[j] > cv) d[j] = cv;
+                    else if (d[j] < -cv) d[j] = -cv;
+                }
+            } else {
+                float* tmp = (float*)malloc(g->size * sizeof(float));
+                if (tmp) {
+                    half_to_fp32_array(g->data, tmp, g->size, g->dtype);
+                    for (size_t j = 0; j < g->size; j++) {
+                        if (tmp[j] > clip_value) tmp[j] = clip_value;
+                        else if (tmp[j] < -clip_value) tmp[j] = -clip_value;
+                    }
+                    fp32_to_half_array(tmp, g->data, g->size, g->dtype);
+                    free(tmp);
+                }
+            }
+        } else {
+            Tensor* host_g = tensor_to(g, -1, g->dtype, false);
+            if (!host_g) continue;
+            if (host_g->dtype == DTYPE_FLOAT32) {
+                float* d = (float*)host_g->data;
+                for (size_t j = 0; j < host_g->size; j++) {
+                    if (d[j] > clip_value) d[j] = clip_value;
+                    else if (d[j] < -clip_value) d[j] = -clip_value;
+                }
+            } else if (host_g->dtype == DTYPE_FLOAT64) {
+                double* d = (double*)host_g->data;
+                double cv = (double)clip_value;
+                for (size_t j = 0; j < host_g->size; j++) {
+                    if (d[j] > cv) d[j] = cv;
+                    else if (d[j] < -cv) d[j] = -cv;
+                }
+            }
+            cudaMemcpy(g->data, host_g->data, g->size * dtype_size(g->dtype), cudaMemcpyHostToDevice);
+            free_tensor(host_g);
+        }
+    }
+
+    return 0;
+}
+
 void free_grad_fn(GradFn* grad_fn) {
     if (!grad_fn) return;
     if (grad_fn->inputs) free(grad_fn->inputs);

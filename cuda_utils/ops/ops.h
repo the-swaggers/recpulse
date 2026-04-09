@@ -92,6 +92,9 @@ Tensor* op_conv2d(Tensor* input, Tensor* weight, Tensor* bias,
 Tensor* op_dropout(Tensor* x, float p);
 Tensor* op_embedding(Tensor* weight, const int* indices, int num_indices);
 
+int clip_grad_norm(Tensor** params, int num_params, float max_norm, float* out_total_norm);
+int clip_grad_value(Tensor** params, int num_params, float clip_value);
+
 Tensor* op_layer_norm(Tensor* x, const void* weight, const void* bias,
                       int norm_ndim, const int* norm_shape, float eps,
                       DType dtype, int device_id);
