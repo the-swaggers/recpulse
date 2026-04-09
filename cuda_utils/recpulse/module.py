@@ -51,7 +51,19 @@ class Module:
     def to(self, device=None, dtype=None):
         new_tracked = {}
         for name, tensor in self.tracked.items():
-            new_t = tensor.to(device=device, dtype=dtype, inplace=True)
+            kwargs = {}
+            if device is not None:
+                kwargs['device'] = device
+            if dtype is not None:
+                kwargs['dtype'] = dtype
+            if not kwargs:
+                new_tracked[name] = tensor
+                continue
+
+            new_t = tensor.to(**kwargs)
+            if tensor.requires_grad:
+                new_t.requires_grad_(True)
+
             new_tracked[name] = new_t
             parts = name.split('.')
             obj = self

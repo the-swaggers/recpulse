@@ -2960,6 +2960,47 @@ static PyObject* module_cat(PyObject* self, PyObject* args, PyObject* kwargs) {
     return wrap_tensor_result(result);
 }
 
+static PyObject* module_from_numpy(PyObject* self, PyObject* args) {
+    (void)self;
+    PyObject* arr_obj;
+    if (!PyArg_ParseTuple(args, "O", &arr_obj)) return NULL;
+
+    if (!PyArray_Check(arr_obj)) {
+        PyErr_SetString(PyExc_TypeError, "argument must be a numpy array");
+        return NULL;
+    }
+
+    PyArrayObject* arr = (PyArrayObject*)PyArray_GETCONTIGUOUS((PyArrayObject*)arr_obj);
+    if (!arr) return NULL;
+
+    int ndim = PyArray_NDIM(arr);
+    npy_intp* np_shape = PyArray_DIMS(arr);
+    int npy_type = PyArray_TYPE(arr);
+
+    DType dtype;
+    if (npy_type == NPY_FLOAT32) dtype = DTYPE_FLOAT32;
+    else if (npy_type == NPY_FLOAT64) dtype = DTYPE_FLOAT64;
+    else if (npy_type == NPY_FLOAT16) dtype = DTYPE_FLOAT16;
+    else {
+        Py_DECREF(arr);
+        PyErr_SetString(PyExc_TypeError, "unsupported numpy dtype (use float32, float64, or float16)");
+        return NULL;
+    }
+
+    int* shape = (int*)malloc(ndim * sizeof(int));
+    for (int i = 0; i < ndim; i++) shape[i] = (int)np_shape[i];
+
+    Tensor* tensor = zeros_tensor(dtype, -1, ndim, shape, NULL);
+    free(shape);
+    if (!tensor) { Py_DECREF(arr); return PyErr_NoMemory(); }
+
+    size_t data_bytes = tensor->size * dtype_size(dtype);
+    memcpy(tensor->data, PyArray_DATA(arr), data_bytes);
+    Py_DECREF(arr);
+
+    return wrap_tensor_result(tensor);
+}
+
 static PyObject* module_rand(PyObject* self, PyObject* args, PyObject* kwargs) {
     (void)self;
     PyObject* shape_obj;
@@ -3383,6 +3424,8 @@ static PyMethodDef module_methods[] = {
      "Create a tensor from a list of values"},
     {"cat", (PyCFunction)module_cat, METH_VARARGS | METH_KEYWORDS,
      "Concatenate tensors along a dimension"},
+    {"from_numpy", (PyCFunction)module_from_numpy, METH_VARARGS,
+     "Create tensor from numpy array (zero-copy for contiguous arrays)"},
     {"rand", (PyCFunction)module_rand, METH_VARARGS | METH_KEYWORDS,
      "Create tensor with uniform random values in [0, 1)"},
     {"randn", (PyCFunction)module_randn, METH_VARARGS | METH_KEYWORDS,
