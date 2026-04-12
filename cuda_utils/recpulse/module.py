@@ -104,9 +104,20 @@ class Module:
         return self
 
     def zero_grad(self):
+        import gc
+        if hasattr(self, '_intermediates'):
+            self._intermediates.clear()
+        self._clear_all_intermediates()
+        gc.collect()
         for t in self.tracked.values():
             if t.requires_grad:
                 t.zero_grad()
+
+    def _clear_all_intermediates(self):
+        for m in self._modules.values():
+            if hasattr(m, '_intermediates'):
+                m._intermediates.clear()
+            m._clear_all_intermediates()
 
 
 class Linear(Module):
