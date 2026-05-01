@@ -1,4 +1,5 @@
 #include "tensor.h"
+#include "../ops/ops.h"
 #include "cuda_helpers.h"
 #include <stdlib.h>
 #include <string.h>
@@ -264,6 +265,10 @@ void free_tensor_device(Tensor* tensor){
     if (!tensor) return;
     if (tensor->device_id < 0) return;
     if (tensor->metadata){
+        if (tensor->metadata->grad_fn) {
+            free_grad_fn((GradFn*)tensor->metadata->grad_fn);
+            tensor->metadata->grad_fn = NULL;
+        }
         if (tensor->metadata->grad){
             free_tensor(tensor->metadata->grad);
         };

@@ -1,4 +1,5 @@
 #include "tensor.h"
+#include "../ops/ops.h"
 #include "half_precision.h"
 #include "cuda_helpers.h"
 #include <stdlib.h>
@@ -294,6 +295,10 @@ void free_tensor_host(Tensor* tensor) {
     }
 
     if (tensor->metadata) {
+        if (tensor->metadata->grad_fn) {
+            free_grad_fn((GradFn*)tensor->metadata->grad_fn);
+            tensor->metadata->grad_fn = NULL;
+        }
         if (tensor->metadata->grad) {
             free_tensor(tensor->metadata->grad);
         }

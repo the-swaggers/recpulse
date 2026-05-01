@@ -293,6 +293,14 @@ int tensor_backward(Tensor* tensor) {
         }
     }
 
+    for (int i = 0; i < nodes_count; i++) {
+        Tensor* t = nodes[i].tensor;
+        if (t && t->metadata && t->metadata->grad_fn) {
+            free_grad_fn((GradFn*)t->metadata->grad_fn);
+            t->metadata->grad_fn = NULL;
+        }
+    }
+
     free(nodes);
     free(ready);
     return 0;

@@ -3511,13 +3511,18 @@ void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
                     gw_f32[i] += gov * (xv - m) * rs;
                 }
             }
-            Tensor* gw = zeros_tensor(dtype, dev, weight_t->ndim, weight_t->shape, NULL);
-            if (gw) {
-                if (dtype == DTYPE_FLOAT32) memcpy(gw->data, gw_f32, norm * sizeof(float));
-                else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < norm; i++) ((double*)gw->data)[i] = (double)gw_f32[i]; }
-                else fp32_to_half_array(gw_f32, gw->data, norm, dtype);
-                rp_add(weight_t->metadata->grad->data, weight_t->metadata->grad->data, gw->data, norm, dtype, dev);
-                free_tensor(gw);
+            Tensor* gw_host = zeros_tensor(dtype, -1, weight_t->ndim, weight_t->shape, NULL);
+            if (gw_host) {
+                if (dtype == DTYPE_FLOAT32) memcpy(gw_host->data, gw_f32, norm * sizeof(float));
+                else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < norm; i++) ((double*)gw_host->data)[i] = (double)gw_f32[i]; }
+                else fp32_to_half_array(gw_f32, gw_host->data, norm, dtype);
+                if (dev >= 0) {
+                    Tensor* gw_dev = tensor_to(gw_host, dev, dtype, false);
+                    if (gw_dev) { rp_add(weight_t->metadata->grad->data, weight_t->metadata->grad->data, gw_dev->data, norm, dtype, dev); free_tensor(gw_dev); }
+                } else {
+                    rp_add(weight_t->metadata->grad->data, weight_t->metadata->grad->data, gw_host->data, norm, dtype, -1);
+                }
+                free_tensor(gw_host);
             }
             free(gw_f32);
         }
@@ -3538,13 +3543,18 @@ void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
                     gb_f32[i] += gov;
                 }
             }
-            Tensor* gb = zeros_tensor(dtype, dev, bias_t->ndim, bias_t->shape, NULL);
-            if (gb) {
-                if (dtype == DTYPE_FLOAT32) memcpy(gb->data, gb_f32, norm * sizeof(float));
-                else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < norm; i++) ((double*)gb->data)[i] = (double)gb_f32[i]; }
-                else fp32_to_half_array(gb_f32, gb->data, norm, dtype);
-                rp_add(bias_t->metadata->grad->data, bias_t->metadata->grad->data, gb->data, norm, dtype, dev);
-                free_tensor(gb);
+            Tensor* gb_host = zeros_tensor(dtype, -1, bias_t->ndim, bias_t->shape, NULL);
+            if (gb_host) {
+                if (dtype == DTYPE_FLOAT32) memcpy(gb_host->data, gb_f32, norm * sizeof(float));
+                else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < norm; i++) ((double*)gb_host->data)[i] = (double)gb_f32[i]; }
+                else fp32_to_half_array(gb_f32, gb_host->data, norm, dtype);
+                if (dev >= 0) {
+                    Tensor* gb_dev = tensor_to(gb_host, dev, dtype, false);
+                    if (gb_dev) { rp_add(bias_t->metadata->grad->data, bias_t->metadata->grad->data, gb_dev->data, norm, dtype, dev); free_tensor(gb_dev); }
+                } else {
+                    rp_add(bias_t->metadata->grad->data, bias_t->metadata->grad->data, gb_host->data, norm, dtype, -1);
+                }
+                free_tensor(gb_host);
             }
             free(gb_f32);
         }
@@ -4246,9 +4256,9 @@ void backward_conv2d_fn(GradFn* self, Tensor* grad_output) {
                 Tensor* wt_c = rp_contiguous(wt_t);
                 if (wt_c) {
                     cudaMemcpy(wt_buf, wt_c->data, (size_t)s->C_out * col_rows * esz, cudaMemcpyDeviceToDevice);
-                    free(wt_c->shape); free(wt_c->strides); free(wt_c);
+                    free_tensor(wt_c);
                 }
-                free(wt_t->shape); free(wt_t->strides); free(wt_t);
+                free_tensor(wt_t);
             }
         }
 
@@ -4325,9 +4335,9 @@ void backward_conv2d_fn(GradFn* self, Tensor* grad_output) {
                     Tensor* contig = rp_contiguous(transposed);
                     if (contig) {
                         cudaMemcpy(col_t_buf, contig->data, (size_t)col_rows * col_cols * esz, cudaMemcpyDeviceToDevice);
-                        free(contig->shape); free(contig->strides); free(contig);
+                        free_tensor(contig);
                     }
-                    free(transposed->shape); free(transposed->strides); free(transposed);
+                    free_tensor(transposed);
                 }
             }
 
@@ -6748,7 +6758,6 @@ int clip_grad_value(Tensor** params, int num_params, float clip_value) {
 
 void free_grad_fn(GradFn* grad_fn) {
     if (!grad_fn) return;
-    if (grad_fn->inputs) free(grad_fn->inputs);
     if (grad_fn->saved_data) {
         if (grad_fn->backward == backward_cat_fn) {
             CatSavedData* saved = (CatSavedData*)grad_fn->saved_data;
@@ -6803,6 +6812,12 @@ void free_grad_fn(GradFn* grad_fn) {
                    grad_fn->backward == backward_cross_entropy_loss_fn) {
             CELossSavedData* saved = (CELossSavedData*)grad_fn->saved_data;
             if (saved->targets) free(saved->targets);
+            if (grad_fn->backward == backward_cross_entropy_loss_fn &&
+                grad_fn->num_inputs > 1 && grad_fn->inputs[1] &&
+                grad_fn->inputs[1] != grad_fn->inputs[0]) {
+                free_tensor(grad_fn->inputs[1]);
+                grad_fn->inputs[1] = NULL;
+            }
         } else if (grad_fn->backward == backward_gather_fn) {
             GatherSavedData* saved = (GatherSavedData*)grad_fn->saved_data;
             if (saved->indices) free(saved->indices);
@@ -6825,6 +6840,7 @@ void free_grad_fn(GradFn* grad_fn) {
         }
         free(grad_fn->saved_data);
     }
+    if (grad_fn->inputs) free(grad_fn->inputs);
     free(grad_fn);
 }
 
