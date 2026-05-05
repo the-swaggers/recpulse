@@ -29,13 +29,17 @@ class Module:
         raise NotImplementedError
 
     def __call__(self, *args, **kwargs):
-        self._intermediates = []
+        if not hasattr(self, '_intermediates'):
+            self._intermediates = []
         for m in self._modules.values():
-            m._intermediates = []
+            if not hasattr(m, '_intermediates'):
+                m._intermediates = []
         result = self.forward(*args, **kwargs)
         return result
 
     def keep(self, tensor):
+        if not hasattr(self, '_intermediates'):
+            self._intermediates = []
         self._intermediates.append(tensor)
         return tensor
 
