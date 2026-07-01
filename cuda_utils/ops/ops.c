@@ -7198,7 +7198,7 @@ void backward_view_fn(GradFn* self, Tensor* grad_output) {
     Tensor* input = self->inputs[0];
     if (!input || !input->metadata || !input->metadata->requires_grad) return;
 
-    Tensor* grad_reshaped = rp_view(grad_output, saved->ndim, saved->original_shape);
+    Tensor* grad_reshaped = rp_reshape(grad_output, saved->ndim, saved->original_shape);
     if (!grad_reshaped) return;
 
     if (!input->metadata->grad) {
@@ -7381,12 +7381,16 @@ void backward_transpose_fn(GradFn* self, Tensor* grad_output) {
     Tensor* grad_transposed = rp_transpose(grad_output, saved->dim0, saved->dim1);
     if (!grad_transposed) return;
 
+    Tensor* grad_contig = rp_contiguous(grad_transposed);
+    free_tensor(grad_transposed);
+    if (!grad_contig) return;
+
     if (!input->metadata->grad) {
-        input->metadata->grad = grad_transposed;
+        input->metadata->grad = grad_contig;
     } else {
         rp_add(input->metadata->grad->data, input->metadata->grad->data,
-               grad_transposed->data, input->size, input->dtype, input->device_id);
-        free_tensor(grad_transposed);
+               grad_contig->data, input->size, input->dtype, input->device_id);
+        free_tensor(grad_contig);
     }
 }
 
@@ -7474,12 +7478,16 @@ void backward_permute_fn(GradFn* self, Tensor* grad_output) {
 
     if (!grad_permuted) return;
 
+    Tensor* grad_contig = rp_contiguous(grad_permuted);
+    free_tensor(grad_permuted);
+    if (!grad_contig) return;
+
     if (!input->metadata->grad) {
-        input->metadata->grad = grad_permuted;
+        input->metadata->grad = grad_contig;
     } else {
         rp_add(input->metadata->grad->data, input->metadata->grad->data,
-               grad_permuted->data, input->size, input->dtype, input->device_id);
-        free_tensor(grad_permuted);
+               grad_contig->data, input->size, input->dtype, input->device_id);
+        free_tensor(grad_contig);
     }
 }
 

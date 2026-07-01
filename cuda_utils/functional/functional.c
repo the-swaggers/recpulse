@@ -1260,7 +1260,6 @@ Tensor* rp_view(Tensor* src, int ndim, int* new_shape) {
     }
 
     if (!rp_is_contiguous(src)) {
-        fprintf(stderr, "Error: view requires contiguous tensor\n");
         free(final_shape);
         return NULL;
     }

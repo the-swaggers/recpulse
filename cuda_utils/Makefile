@@ -55,14 +55,14 @@ CUDA_ARCH := -gencode arch=compute_75,code=sm_75 \
 CFLAGS := -O3 -fPIC -std=c11 -Wall -Wextra
 CFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) -I$(TOKENIZER_DIR) $(PYTHON_INCLUDES)
 NUMPY_INCLUDES := $(shell python3 -c "import numpy; print(numpy.get_include())")
-CFLAGS += -I/opt/cuda/include -I$(NUMPY_INCLUDES)
+CFLAGS += -I/usr/local/cuda/include -I$(NUMPY_INCLUDES)
 
 NVCCFLAGS := -O3 --shared -Xcompiler -fPIC
 NVCCFLAGS += -I$(CORE_DIR) -I$(FUNCTIONAL_DIR) -I$(OPS_DIR) -I$(OPTIM_DIR) -I$(RAND_DIR) -I$(TOKENIZER_DIR) $(PYTHON_INCLUDES)
 NVCCFLAGS += $(CUDA_ARCH)
 
 LDFLAGS := -shared
-LDFLAGS += -L/opt/cuda/lib64 -lcudart -lcublas
+LDFLAGS += -L/usr/local/cuda/lib64 -lcudart -lcublas
 LDFLAGS += $(PYTHON_LDFLAGS)
 
 .PHONY: all clean help install config test test_functional test_sum_mean test_sum_dim test_scalar test_split test_shape_ops test_backward test_optim test_grad_transfer test_rand test_all
