@@ -1068,10 +1068,11 @@ Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step) {
         if (s < 0) s += dim_size;
         if (e < 0) e += dim_size;
 
-        if (s < 0) s = 0;
-        if (s > dim_size) s = dim_size;
-        if (e < 0) e = 0;
-        if (e > dim_size) e = dim_size;
+        if (s < 0 || s > dim_size || e < 0 || e > dim_size) {
+            free(new_shape);
+            free(new_strides);
+            return NULL;
+        }
 
         if (s > e) {
             int tmp = s;
@@ -1096,6 +1097,7 @@ Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step) {
         free(new_strides);
         return NULL;
     }
+    view->refcount = 1;
 
     view->dtype = src->dtype;
     view->data = (char*)src->data + offset * elem_size;
@@ -1105,7 +1107,7 @@ Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step) {
     view->strides = new_strides;
     view->device_id = src->device_id;
     view->owns_data = false;
-    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
     view->data_offset = offset * elem_size;
     view->metadata = NULL;
 
@@ -1148,6 +1150,7 @@ Tensor* rp_contiguous(Tensor* src) {
             free(new_strides);
             return NULL;
         }
+        view->refcount = 1;
 
         view->dtype = src->dtype;
         view->data = src->data;
@@ -1157,7 +1160,7 @@ Tensor* rp_contiguous(Tensor* src) {
         view->strides = new_strides;
         view->device_id = src->device_id;
         view->owns_data = false;
-        view->base_tensor = src->base_tensor ? src->base_tensor : src;
+        view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
         view->data_offset = src->data_offset;
         view->metadata = NULL;
 
@@ -1184,10 +1187,16 @@ Tensor* rp_contiguous(Tensor* src) {
                 return NULL;
             }
         } else if (src->dtype == DTYPE_FLOAT16 || src->dtype == DTYPE_BFLOAT16) {
-            float* src_f32 = (float*)malloc(src->size * sizeof(float));
+            size_t span = 1;
+            for (int i = 0; i < src->ndim; i++) {
+                if (src->shape[i] > 1 && src->strides[i] > 0) {
+                    span += (size_t)src->strides[i] * (src->shape[i] - 1);
+                }
+            }
+            float* src_f32 = (float*)malloc(span * sizeof(float));
             float* dst_f32 = (float*)malloc(src->size * sizeof(float));
             if (!src_f32 || !dst_f32) { free(src_f32); free(dst_f32); free_tensor(contiguous); return NULL; }
-            half_to_fp32_array(src->data, src_f32, src->size, src->dtype);
+            half_to_fp32_array(src->data, src_f32, span, src->dtype);
             if (contiguous_copy_kernel_host_f32(dst_f32, src_f32, src->ndim, src->shape, src->strides) != 0) {
                 free(src_f32); free(dst_f32); free_tensor(contiguous); return NULL;
             }
@@ -1281,6 +1290,7 @@ Tensor* rp_view(Tensor* src, int ndim, int* new_shape) {
         free(new_strides);
         return NULL;
     }
+    view->refcount = 1;
 
     view->dtype = src->dtype;
     view->data = src->data;
@@ -1290,7 +1300,7 @@ Tensor* rp_view(Tensor* src, int ndim, int* new_shape) {
     view->strides = new_strides;
     view->device_id = src->device_id;
     view->owns_data = false;
-    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
     view->data_offset = src->data_offset;
     view->metadata = NULL;
 
@@ -1363,6 +1373,7 @@ Tensor* rp_transpose(Tensor* src, int dim0, int dim1) {
             free(new_strides);
             return NULL;
         }
+        view->refcount = 1;
 
         view->dtype = src->dtype;
         view->data = src->data;
@@ -1372,7 +1383,7 @@ Tensor* rp_transpose(Tensor* src, int dim0, int dim1) {
         view->strides = new_strides;
         view->device_id = src->device_id;
         view->owns_data = false;
-        view->base_tensor = src->base_tensor ? src->base_tensor : src;
+        view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
         view->data_offset = src->data_offset;
         view->metadata = NULL;
 
@@ -1406,6 +1417,7 @@ Tensor* rp_transpose(Tensor* src, int dim0, int dim1) {
         free(new_strides);
         return NULL;
     }
+    view->refcount = 1;
 
     view->dtype = src->dtype;
     view->data = src->data;
@@ -1415,7 +1427,7 @@ Tensor* rp_transpose(Tensor* src, int dim0, int dim1) {
     view->strides = new_strides;
     view->device_id = src->device_id;
     view->owns_data = false;
-    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
     view->data_offset = src->data_offset;
     view->metadata = NULL;
 
@@ -1467,6 +1479,7 @@ Tensor* rp_squeeze(Tensor* src, int dim) {
             free(new_strides);
             return NULL;
         }
+        view->refcount = 1;
 
         view->dtype = src->dtype;
         view->data = src->data;
@@ -1476,7 +1489,7 @@ Tensor* rp_squeeze(Tensor* src, int dim) {
         view->strides = new_strides;
         view->device_id = src->device_id;
         view->owns_data = false;
-        view->base_tensor = src->base_tensor ? src->base_tensor : src;
+        view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
         view->data_offset = src->data_offset;
         view->metadata = NULL;
 
@@ -1510,6 +1523,7 @@ Tensor* rp_squeeze(Tensor* src, int dim) {
             free(new_strides);
             return NULL;
         }
+        view->refcount = 1;
 
         view->dtype = src->dtype;
         view->data = src->data;
@@ -1519,7 +1533,7 @@ Tensor* rp_squeeze(Tensor* src, int dim) {
         view->strides = new_strides;
         view->device_id = src->device_id;
         view->owns_data = false;
-        view->base_tensor = src->base_tensor ? src->base_tensor : src;
+        view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
         view->data_offset = src->data_offset;
         view->metadata = NULL;
 
@@ -1555,6 +1569,7 @@ Tensor* rp_squeeze(Tensor* src, int dim) {
         free(new_strides);
         return NULL;
     }
+    view->refcount = 1;
 
     view->dtype = src->dtype;
     view->data = src->data;
@@ -1564,7 +1579,7 @@ Tensor* rp_squeeze(Tensor* src, int dim) {
     view->strides = new_strides;
     view->device_id = src->device_id;
     view->owns_data = false;
-    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
     view->data_offset = src->data_offset;
     view->metadata = NULL;
 
@@ -1619,6 +1634,7 @@ Tensor* rp_unsqueeze(Tensor* src, int dim) {
         free(new_strides);
         return NULL;
     }
+    view->refcount = 1;
 
     view->dtype = src->dtype;
     view->data = src->data;
@@ -1628,7 +1644,7 @@ Tensor* rp_unsqueeze(Tensor* src, int dim) {
     view->strides = new_strides;
     view->device_id = src->device_id;
     view->owns_data = false;
-    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
     view->data_offset = src->data_offset;
     view->metadata = NULL;
 
@@ -1841,6 +1857,7 @@ Tensor* rp_permute(Tensor* src, int* dims) {
         free(new_strides);
         return NULL;
     }
+    view->refcount = 1;
 
     view->dtype = src->dtype;
     view->data = src->data;
@@ -1850,7 +1867,7 @@ Tensor* rp_permute(Tensor* src, int* dims) {
     view->strides = new_strides;
     view->device_id = src->device_id;
     view->owns_data = false;
-    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
     view->data_offset = src->data_offset;
     view->metadata = NULL;
 
@@ -1968,6 +1985,7 @@ Tensor* rp_expand(Tensor* src, int ndim, int* shape) {
         free(new_strides);
         return NULL;
     }
+    view->refcount = 1;
 
     view->dtype = src->dtype;
     view->data = src->data;
@@ -1977,7 +1995,7 @@ Tensor* rp_expand(Tensor* src, int ndim, int* shape) {
     view->strides = new_strides;
     view->device_id = src->device_id;
     view->owns_data = false;
-    view->base_tensor = src->base_tensor ? src->base_tensor : src;
+    view->base_tensor = tensor_retain(src->base_tensor ? src->base_tensor : src);
     view->data_offset = src->data_offset;
     view->metadata = NULL;
 

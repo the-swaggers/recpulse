@@ -16,6 +16,7 @@ struct GradFn {
     Tensor** inputs;
     int num_inputs;
     void* saved_data;
+    Tensor* owner;
 };
 
 Tensor* op_add(Tensor* x1, Tensor* x2);

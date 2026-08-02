@@ -7,6 +7,51 @@
 #include <limits.h>
 #include <math.h>
 
+
+static void grad_fn_attach(Tensor* out, GradFn* grad_fn) {
+    grad_fn->owner = out;
+    for (int i = 0; i < grad_fn->num_inputs; i++) {
+        if (grad_fn->inputs[i] && grad_fn->inputs[i] != out) {
+            tensor_retain(grad_fn->inputs[i]);
+        }
+    }
+    out->metadata->grad_fn = grad_fn;
+}
+
+static Tensor* ensure_contiguous(Tensor* x) {
+    if (!x) return NULL;
+    if (rp_is_contiguous(x)) return tensor_retain(x);
+    return rp_contiguous(x);
+}
+
+static Tensor* wrap_buffer_2d(void* data, DType dtype, int device_id, int rows, int cols) {
+    Tensor* t = (Tensor*)malloc(sizeof(Tensor));
+    if (!t) return NULL;
+    t->refcount = 1;
+    t->shape = (int*)malloc(2 * sizeof(int));
+    t->strides = (int*)malloc(2 * sizeof(int));
+    if (!t->shape || !t->strides) {
+        if (t->shape) free(t->shape);
+        if (t->strides) free(t->strides);
+        free(t);
+        return NULL;
+    }
+    t->dtype = dtype;
+    t->data = data;
+    t->ndim = 2;
+    t->size = (size_t)rows * cols;
+    t->shape[0] = rows;
+    t->shape[1] = cols;
+    t->strides[0] = cols;
+    t->strides[1] = 1;
+    t->device_id = device_id;
+    t->owns_data = false;
+    t->base_tensor = NULL;
+    t->data_offset = 0;
+    t->metadata = NULL;
+    return t;
+}
+
 int backwards_add_x1(const void* grad_c, void* grad_x1,
                      size_t size, DType dtype, int device_id) {
     if (!grad_c || !grad_x1) return -1;
@@ -104,7 +149,12 @@ Tensor* op_add(Tensor* x1, Tensor* x2) {
 
     int result;
     if (same_shape) {
-        result = rp_add(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        if (rp_is_contiguous(x1) && rp_is_contiguous(x2)) {
+            result = rp_add(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        } else {
+            result = rp_add_strided(out->data, x1->data, x2->data, x1->ndim, x1->shape,
+                                  x1->strides, x2->strides, x1->size, x1->dtype, x1->device_id);
+        }
     } else {
         Tensor* e1 = rp_expand(x1, out_ndim, out_shape);
         Tensor* e2 = rp_expand(x2, out_ndim, out_shape);
@@ -153,7 +203,7 @@ Tensor* op_add(Tensor* x1, Tensor* x2) {
             grad_fn->saved_data = NULL;
         }
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -274,6 +324,9 @@ void backward_mul_fn(GradFn* self, Tensor* grad_output) {
 
     Tensor* x1 = self->inputs[0];
     Tensor* x2 = self->inputs[1];
+    Tensor* x1c = ensure_contiguous(x1);
+    Tensor* x2c = ensure_contiguous(x2);
+    if (!x1c || !x2c) { free_tensor(x1c); free_tensor(x2c); return; }
     BroadcastSavedData* bcast = (BroadcastSavedData*)self->saved_data;
 
     if (bcast) {
@@ -332,12 +385,12 @@ void backward_mul_fn(GradFn* self, Tensor* grad_output) {
             if (!x1->metadata->grad) {
                 x1->metadata->grad = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
                 if (x1->metadata->grad)
-                    backwards_mul_x1(grad_output->data, x2->data, x1->metadata->grad->data,
+                    backwards_mul_x1(grad_output->data, x2c->data, x1->metadata->grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
             } else {
                 Tensor* temp_grad = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
                 if (temp_grad) {
-                    backwards_mul_x1(grad_output->data, x2->data, temp_grad->data,
+                    backwards_mul_x1(grad_output->data, x2c->data, temp_grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
                     rp_add(x1->metadata->grad->data, x1->metadata->grad->data, temp_grad->data,
                            x1->size, x1->dtype, x1->device_id);
@@ -350,12 +403,12 @@ void backward_mul_fn(GradFn* self, Tensor* grad_output) {
             if (!x2->metadata->grad) {
                 x2->metadata->grad = zeros_tensor(x2->dtype, x2->device_id, x2->ndim, x2->shape, NULL);
                 if (x2->metadata->grad)
-                    backwards_mul_x2(grad_output->data, x1->data, x2->metadata->grad->data,
+                    backwards_mul_x2(grad_output->data, x1c->data, x2->metadata->grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
             } else {
                 Tensor* temp_grad = zeros_tensor(x2->dtype, x2->device_id, x2->ndim, x2->shape, NULL);
                 if (temp_grad) {
-                    backwards_mul_x2(grad_output->data, x1->data, temp_grad->data,
+                    backwards_mul_x2(grad_output->data, x1c->data, temp_grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
                     rp_add(x2->metadata->grad->data, x2->metadata->grad->data, temp_grad->data,
                            x2->size, x2->dtype, x2->device_id);
@@ -364,6 +417,9 @@ void backward_mul_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(x1c);
+    free_tensor(x2c);
 }
 
 void backward_sub_fn(GradFn* self, Tensor* grad_output) {
@@ -437,6 +493,9 @@ void backward_div_fn(GradFn* self, Tensor* grad_output) {
 
     Tensor* x1 = self->inputs[0];
     Tensor* x2 = self->inputs[1];
+    Tensor* x1c = ensure_contiguous(x1);
+    Tensor* x2c = ensure_contiguous(x2);
+    if (!x1c || !x2c) { free_tensor(x1c); free_tensor(x2c); return; }
     BroadcastSavedData* bcast = (BroadcastSavedData*)self->saved_data;
 
     if (bcast) {
@@ -495,12 +554,12 @@ void backward_div_fn(GradFn* self, Tensor* grad_output) {
             if (!x1->metadata->grad) {
                 x1->metadata->grad = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
                 if (x1->metadata->grad)
-                    backwards_div_x1(grad_output->data, x2->data, x1->metadata->grad->data,
+                    backwards_div_x1(grad_output->data, x2c->data, x1->metadata->grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
             } else {
                 Tensor* temp_grad = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
                 if (temp_grad) {
-                    backwards_div_x1(grad_output->data, x2->data, temp_grad->data,
+                    backwards_div_x1(grad_output->data, x2c->data, temp_grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
                     rp_add(x1->metadata->grad->data, x1->metadata->grad->data, temp_grad->data,
                            x1->size, x1->dtype, x1->device_id);
@@ -513,12 +572,12 @@ void backward_div_fn(GradFn* self, Tensor* grad_output) {
             if (!x2->metadata->grad) {
                 x2->metadata->grad = zeros_tensor(x2->dtype, x2->device_id, x2->ndim, x2->shape, NULL);
                 if (x2->metadata->grad)
-                    backwards_div_x2(grad_output->data, x1->data, x2->data, x2->metadata->grad->data,
+                    backwards_div_x2(grad_output->data, x1c->data, x2c->data, x2->metadata->grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
             } else {
                 Tensor* temp_grad = zeros_tensor(x2->dtype, x2->device_id, x2->ndim, x2->shape, NULL);
                 if (temp_grad) {
-                    backwards_div_x2(grad_output->data, x1->data, x2->data, temp_grad->data,
+                    backwards_div_x2(grad_output->data, x1c->data, x2c->data, temp_grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
                     rp_add(x2->metadata->grad->data, x2->metadata->grad->data, temp_grad->data,
                            x2->size, x2->dtype, x2->device_id);
@@ -527,6 +586,9 @@ void backward_div_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(x1c);
+    free_tensor(x2c);
 }
 
 Tensor* op_mul(Tensor* x1, Tensor* x2) {
@@ -552,7 +614,12 @@ Tensor* op_mul(Tensor* x1, Tensor* x2) {
 
     int result;
     if (same_shape) {
-        result = rp_mul(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        if (rp_is_contiguous(x1) && rp_is_contiguous(x2)) {
+            result = rp_mul(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        } else {
+            result = rp_mul_strided(out->data, x1->data, x2->data, x1->ndim, x1->shape,
+                                  x1->strides, x2->strides, x1->size, x1->dtype, x1->device_id);
+        }
     } else {
         Tensor* e1 = rp_expand(x1, out_ndim, out_shape);
         Tensor* e2 = rp_expand(x2, out_ndim, out_shape);
@@ -601,7 +668,7 @@ Tensor* op_mul(Tensor* x1, Tensor* x2) {
             grad_fn->saved_data = NULL;
         }
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -630,7 +697,12 @@ Tensor* op_sub(Tensor* x1, Tensor* x2) {
 
     int result;
     if (same_shape) {
-        result = rp_sub(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        if (rp_is_contiguous(x1) && rp_is_contiguous(x2)) {
+            result = rp_sub(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        } else {
+            result = rp_sub_strided(out->data, x1->data, x2->data, x1->ndim, x1->shape,
+                                  x1->strides, x2->strides, x1->size, x1->dtype, x1->device_id);
+        }
     } else {
         Tensor* e1 = rp_expand(x1, out_ndim, out_shape);
         Tensor* e2 = rp_expand(x2, out_ndim, out_shape);
@@ -679,7 +751,7 @@ Tensor* op_sub(Tensor* x1, Tensor* x2) {
             grad_fn->saved_data = NULL;
         }
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -708,7 +780,12 @@ Tensor* op_div(Tensor* x1, Tensor* x2) {
 
     int result;
     if (same_shape) {
-        result = rp_divide(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        if (rp_is_contiguous(x1) && rp_is_contiguous(x2)) {
+            result = rp_divide(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        } else {
+            result = rp_divide_strided(out->data, x1->data, x2->data, x1->ndim, x1->shape,
+                                  x1->strides, x2->strides, x1->size, x1->dtype, x1->device_id);
+        }
     } else {
         Tensor* e1 = rp_expand(x1, out_ndim, out_shape);
         Tensor* e2 = rp_expand(x2, out_ndim, out_shape);
@@ -757,7 +834,7 @@ Tensor* op_div(Tensor* x1, Tensor* x2) {
             grad_fn->saved_data = NULL;
         }
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -768,6 +845,9 @@ void backward_power_fn(GradFn* self, Tensor* grad_output) {
 
     Tensor* x1 = self->inputs[0];
     Tensor* x2 = self->inputs[1];
+    Tensor* x1c = ensure_contiguous(x1);
+    Tensor* x2c = ensure_contiguous(x2);
+    if (!x1c || !x2c) { free_tensor(x1c); free_tensor(x2c); return; }
     Tensor* output = self->inputs[2];
     BroadcastSavedData* bcast = (BroadcastSavedData*)self->saved_data;
 
@@ -827,12 +907,12 @@ void backward_power_fn(GradFn* self, Tensor* grad_output) {
             if (!x1->metadata->grad) {
                 x1->metadata->grad = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
                 if (x1->metadata->grad)
-                    backwards_power_x1(grad_output->data, x1->data, x2->data, output->data, x1->metadata->grad->data,
+                    backwards_power_x1(grad_output->data, x1c->data, x2c->data, output->data, x1->metadata->grad->data,
                                       grad_output->size, grad_output->dtype, grad_output->device_id);
             } else {
                 Tensor* temp_grad = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
                 if (temp_grad) {
-                    backwards_power_x1(grad_output->data, x1->data, x2->data, output->data, temp_grad->data,
+                    backwards_power_x1(grad_output->data, x1c->data, x2c->data, output->data, temp_grad->data,
                                       grad_output->size, grad_output->dtype, grad_output->device_id);
                     rp_add(x1->metadata->grad->data, x1->metadata->grad->data, temp_grad->data,
                            x1->size, x1->dtype, x1->device_id);
@@ -845,12 +925,12 @@ void backward_power_fn(GradFn* self, Tensor* grad_output) {
             if (!x2->metadata->grad) {
                 x2->metadata->grad = zeros_tensor(x2->dtype, x2->device_id, x2->ndim, x2->shape, NULL);
                 if (x2->metadata->grad)
-                    backwards_power_x2(grad_output->data, x1->data, output->data, x2->metadata->grad->data,
+                    backwards_power_x2(grad_output->data, x1c->data, output->data, x2->metadata->grad->data,
                                       grad_output->size, grad_output->dtype, grad_output->device_id);
             } else {
                 Tensor* temp_grad = zeros_tensor(x2->dtype, x2->device_id, x2->ndim, x2->shape, NULL);
                 if (temp_grad) {
-                    backwards_power_x2(grad_output->data, x1->data, output->data, temp_grad->data,
+                    backwards_power_x2(grad_output->data, x1c->data, output->data, temp_grad->data,
                                       grad_output->size, grad_output->dtype, grad_output->device_id);
                     rp_add(x2->metadata->grad->data, x2->metadata->grad->data, temp_grad->data,
                            x2->size, x2->dtype, x2->device_id);
@@ -859,6 +939,9 @@ void backward_power_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(x1c);
+    free_tensor(x2c);
 }
 
 void backward_logb_fn(GradFn* self, Tensor* grad_output) {
@@ -866,6 +949,9 @@ void backward_logb_fn(GradFn* self, Tensor* grad_output) {
 
     Tensor* x1 = self->inputs[0];
     Tensor* x2 = self->inputs[1];
+    Tensor* x1c = ensure_contiguous(x1);
+    Tensor* x2c = ensure_contiguous(x2);
+    if (!x1c || !x2c) { free_tensor(x1c); free_tensor(x2c); return; }
     BroadcastSavedData* bcast = (BroadcastSavedData*)self->saved_data;
 
     if (bcast) {
@@ -924,12 +1010,12 @@ void backward_logb_fn(GradFn* self, Tensor* grad_output) {
             if (!x1->metadata->grad) {
                 x1->metadata->grad = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
                 if (x1->metadata->grad)
-                    backwards_logb_x1(grad_output->data, x1->data, x2->data, x1->metadata->grad->data,
+                    backwards_logb_x1(grad_output->data, x1c->data, x2c->data, x1->metadata->grad->data,
                                      grad_output->size, grad_output->dtype, grad_output->device_id);
             } else {
                 Tensor* temp_grad = zeros_tensor(x1->dtype, x1->device_id, x1->ndim, x1->shape, NULL);
                 if (temp_grad) {
-                    backwards_logb_x1(grad_output->data, x1->data, x2->data, temp_grad->data,
+                    backwards_logb_x1(grad_output->data, x1c->data, x2c->data, temp_grad->data,
                                      grad_output->size, grad_output->dtype, grad_output->device_id);
                     rp_add(x1->metadata->grad->data, x1->metadata->grad->data, temp_grad->data,
                            x1->size, x1->dtype, x1->device_id);
@@ -942,12 +1028,12 @@ void backward_logb_fn(GradFn* self, Tensor* grad_output) {
             if (!x2->metadata->grad) {
                 x2->metadata->grad = zeros_tensor(x2->dtype, x2->device_id, x2->ndim, x2->shape, NULL);
                 if (x2->metadata->grad)
-                    backwards_logb_x2(grad_output->data, x1->data, x2->data, x2->metadata->grad->data,
+                    backwards_logb_x2(grad_output->data, x1c->data, x2c->data, x2->metadata->grad->data,
                                      grad_output->size, grad_output->dtype, grad_output->device_id);
             } else {
                 Tensor* temp_grad = zeros_tensor(x2->dtype, x2->device_id, x2->ndim, x2->shape, NULL);
                 if (temp_grad) {
-                    backwards_logb_x2(grad_output->data, x1->data, x2->data, temp_grad->data,
+                    backwards_logb_x2(grad_output->data, x1c->data, x2c->data, temp_grad->data,
                                      grad_output->size, grad_output->dtype, grad_output->device_id);
                     rp_add(x2->metadata->grad->data, x2->metadata->grad->data, temp_grad->data,
                            x2->size, x2->dtype, x2->device_id);
@@ -956,6 +1042,9 @@ void backward_logb_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(x1c);
+    free_tensor(x2c);
 }
 
 Tensor* op_power(Tensor* x1, Tensor* x2) {
@@ -981,7 +1070,12 @@ Tensor* op_power(Tensor* x1, Tensor* x2) {
 
     int result;
     if (same_shape) {
-        result = rp_power(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        if (rp_is_contiguous(x1) && rp_is_contiguous(x2)) {
+            result = rp_power(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        } else {
+            result = rp_power_strided(out->data, x1->data, x2->data, x1->ndim, x1->shape,
+                                  x1->strides, x2->strides, x1->size, x1->dtype, x1->device_id);
+        }
     } else {
         Tensor* e1 = rp_expand(x1, out_ndim, out_shape);
         Tensor* e2 = rp_expand(x2, out_ndim, out_shape);
@@ -1031,7 +1125,7 @@ Tensor* op_power(Tensor* x1, Tensor* x2) {
             grad_fn->saved_data = NULL;
         }
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -1060,7 +1154,12 @@ Tensor* op_logb(Tensor* x1, Tensor* x2) {
 
     int result;
     if (same_shape) {
-        result = rp_logb(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        if (rp_is_contiguous(x1) && rp_is_contiguous(x2)) {
+            result = rp_logb(out->data, x1->data, x2->data, x1->size, x1->dtype, x1->device_id);
+        } else {
+            result = rp_logb_strided(out->data, x1->data, x2->data, x1->ndim, x1->shape,
+                                  x1->strides, x2->strides, x1->size, x1->dtype, x1->device_id);
+        }
     } else {
         Tensor* e1 = rp_expand(x1, out_ndim, out_shape);
         Tensor* e2 = rp_expand(x2, out_ndim, out_shape);
@@ -1109,7 +1208,7 @@ Tensor* op_logb(Tensor* x1, Tensor* x2) {
             grad_fn->saved_data = NULL;
         }
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -1411,18 +1510,20 @@ void backward_log_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_log(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_log(grad_output->data, xc->data, x->metadata->grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_log(grad_output->data, x->data, temp_grad->data,
+                backwards_log(grad_output->data, xc->data, temp_grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1430,6 +1531,8 @@ void backward_log_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_sqrt_fn(GradFn* self, Tensor* grad_output) {
@@ -1488,18 +1591,20 @@ void backward_relu_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_relu(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_relu(grad_output->data, xc->data, x->metadata->grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_relu(grad_output->data, x->data, temp_grad->data,
+                backwards_relu(grad_output->data, xc->data, temp_grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1507,6 +1612,8 @@ void backward_relu_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_sigmoid_fn(GradFn* self, Tensor* grad_output) {
@@ -1539,18 +1646,20 @@ void backward_abs_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_abs(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_abs(grad_output->data, xc->data, x->metadata->grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_abs(grad_output->data, x->data, temp_grad->data,
+                backwards_abs(grad_output->data, xc->data, temp_grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1558,24 +1667,28 @@ void backward_abs_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_square_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_square(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_square(grad_output->data, xc->data, x->metadata->grad->data,
                                 grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_square(grad_output->data, x->data, temp_grad->data,
+                backwards_square(grad_output->data, xc->data, temp_grad->data,
                                 grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1583,24 +1696,28 @@ void backward_square_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_sin_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_sin(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_sin(grad_output->data, xc->data, x->metadata->grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_sin(grad_output->data, x->data, temp_grad->data,
+                backwards_sin(grad_output->data, xc->data, temp_grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1608,24 +1725,28 @@ void backward_sin_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_cos_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_cos(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_cos(grad_output->data, xc->data, x->metadata->grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_cos(grad_output->data, x->data, temp_grad->data,
+                backwards_cos(grad_output->data, xc->data, temp_grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1633,24 +1754,28 @@ void backward_cos_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_tan_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_tan(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_tan(grad_output->data, xc->data, x->metadata->grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_tan(grad_output->data, x->data, temp_grad->data,
+                backwards_tan(grad_output->data, xc->data, temp_grad->data,
                              grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1658,24 +1783,28 @@ void backward_tan_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_asin_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_asin(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_asin(grad_output->data, xc->data, x->metadata->grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_asin(grad_output->data, x->data, temp_grad->data,
+                backwards_asin(grad_output->data, xc->data, temp_grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1683,24 +1812,28 @@ void backward_asin_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_acos_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_acos(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_acos(grad_output->data, xc->data, x->metadata->grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_acos(grad_output->data, x->data, temp_grad->data,
+                backwards_acos(grad_output->data, xc->data, temp_grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1708,24 +1841,28 @@ void backward_acos_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_atan_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_atan(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_atan(grad_output->data, xc->data, x->metadata->grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_atan(grad_output->data, x->data, temp_grad->data,
+                backwards_atan(grad_output->data, xc->data, temp_grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1733,24 +1870,28 @@ void backward_atan_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_sinh_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_sinh(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_sinh(grad_output->data, xc->data, x->metadata->grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_sinh(grad_output->data, x->data, temp_grad->data,
+                backwards_sinh(grad_output->data, xc->data, temp_grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1758,24 +1899,28 @@ void backward_sinh_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_cosh_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_cosh(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_cosh(grad_output->data, xc->data, x->metadata->grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_cosh(grad_output->data, x->data, temp_grad->data,
+                backwards_cosh(grad_output->data, xc->data, temp_grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1783,24 +1928,28 @@ void backward_cosh_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_gelu_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_gelu(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_gelu(grad_output->data, xc->data, x->metadata->grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_gelu(grad_output->data, x->data, temp_grad->data,
+                backwards_gelu(grad_output->data, xc->data, temp_grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1808,24 +1957,28 @@ void backward_gelu_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_silu_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_silu(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_silu(grad_output->data, xc->data, x->metadata->grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_silu(grad_output->data, x->data, temp_grad->data,
+                backwards_silu(grad_output->data, xc->data, temp_grad->data,
                               grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1833,6 +1986,8 @@ void backward_silu_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 typedef struct {
@@ -1844,6 +1999,8 @@ void backward_leaky_relu_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
     LeakyReluSavedData* saved = (LeakyReluSavedData*)self->saved_data;
 
     if (x->metadata && x->metadata->requires_grad) {
@@ -1852,13 +2009,13 @@ void backward_leaky_relu_fn(GradFn* self, Tensor* grad_output) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_leaky_relu(grad_output->data, x->data, alpha_ptr, x->metadata->grad->data,
+                backwards_leaky_relu(grad_output->data, xc->data, alpha_ptr, x->metadata->grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_leaky_relu(grad_output->data, x->data, alpha_ptr, temp_grad->data,
+                backwards_leaky_relu(grad_output->data, xc->data, alpha_ptr, temp_grad->data,
                                     grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1866,24 +2023,28 @@ void backward_leaky_relu_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_rsqrt_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
 
     if (x->metadata && x->metadata->requires_grad) {
         if (!x->metadata->grad) {
             x->metadata->grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (x->metadata->grad) {
-                backwards_rsqrt(grad_output->data, x->data, x->metadata->grad->data,
+                backwards_rsqrt(grad_output->data, xc->data, x->metadata->grad->data,
                                grad_output->size, grad_output->dtype, grad_output->device_id);
             }
         } else {
             Tensor* temp_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
             if (temp_grad) {
-                backwards_rsqrt(grad_output->data, x->data, temp_grad->data,
+                backwards_rsqrt(grad_output->data, xc->data, temp_grad->data,
                                grad_output->size, grad_output->dtype, grad_output->device_id);
                 rp_add(x->metadata->grad->data, x->metadata->grad->data, temp_grad->data,
                        grad_output->size, grad_output->dtype, grad_output->device_id);
@@ -1891,6 +2052,8 @@ void backward_rsqrt_fn(GradFn* self, Tensor* grad_output) {
             }
         }
     }
+
+    free_tensor(xc);
 }
 
 void backward_sum_all_fn(GradFn* self, Tensor* grad_output) {
@@ -2015,7 +2178,10 @@ Tensor* op_exp(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_exp(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_exp(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2052,7 +2218,7 @@ Tensor* op_exp(Tensor* x) {
         grad_fn->inputs[1] = out;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2064,7 +2230,10 @@ Tensor* op_log(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_log(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_log(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2100,7 +2269,7 @@ Tensor* op_log(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2112,7 +2281,10 @@ Tensor* op_sqrt(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_sqrt(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_sqrt(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2149,7 +2321,7 @@ Tensor* op_sqrt(Tensor* x) {
         grad_fn->inputs[1] = out;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2161,7 +2333,10 @@ Tensor* op_tanh(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_tanh(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_tanh(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2198,7 +2373,7 @@ Tensor* op_tanh(Tensor* x) {
         grad_fn->inputs[1] = out;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2210,7 +2385,10 @@ Tensor* op_relu(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_relu(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_relu(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2246,7 +2424,7 @@ Tensor* op_relu(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2258,7 +2436,10 @@ Tensor* op_sigmoid(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_sigmoid(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_sigmoid(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2295,7 +2476,7 @@ Tensor* op_sigmoid(Tensor* x) {
         grad_fn->inputs[1] = out;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2307,7 +2488,10 @@ Tensor* op_abs(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_abs(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_abs(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2343,7 +2527,7 @@ Tensor* op_abs(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2355,7 +2539,10 @@ Tensor* op_square(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_square(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_square(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2391,7 +2578,7 @@ Tensor* op_square(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2403,7 +2590,10 @@ Tensor* op_sin(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_sin(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_sin(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2439,7 +2629,7 @@ Tensor* op_sin(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2451,7 +2641,10 @@ Tensor* op_cos(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_cos(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_cos(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2487,7 +2680,7 @@ Tensor* op_cos(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2499,7 +2692,10 @@ Tensor* op_tan(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_tan(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_tan(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2535,7 +2731,7 @@ Tensor* op_tan(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2547,7 +2743,10 @@ Tensor* op_asin(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_asin(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_asin(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2583,7 +2782,7 @@ Tensor* op_asin(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2595,7 +2794,10 @@ Tensor* op_acos(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_acos(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_acos(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2631,7 +2833,7 @@ Tensor* op_acos(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2643,7 +2845,10 @@ Tensor* op_atan(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_atan(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_atan(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2679,7 +2884,7 @@ Tensor* op_atan(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2691,7 +2896,10 @@ Tensor* op_sinh(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_sinh(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_sinh(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2727,7 +2935,7 @@ Tensor* op_sinh(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2739,7 +2947,10 @@ Tensor* op_cosh(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_cosh(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_cosh(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2775,7 +2986,7 @@ Tensor* op_cosh(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2787,7 +2998,10 @@ Tensor* op_gelu(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_gelu(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_gelu(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2823,7 +3037,7 @@ Tensor* op_gelu(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2835,7 +3049,10 @@ Tensor* op_silu(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_silu(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_silu(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2871,7 +3088,7 @@ Tensor* op_silu(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2892,7 +3109,10 @@ Tensor* op_leaky_relu(Tensor* x, float alpha) {
         alpha_ptr = &alpha_f32;
     }
 
-    int result = rp_leaky_relu(out->data, x->data, alpha_ptr, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_leaky_relu(out->data, xc->data, alpha_ptr, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2938,7 +3158,7 @@ Tensor* op_leaky_relu(Tensor* x, float alpha) {
         saved->alpha_f64 = alpha_f64;
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2950,7 +3170,10 @@ Tensor* op_rsqrt(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_rsqrt(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_rsqrt(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -2986,7 +3209,7 @@ Tensor* op_rsqrt(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -2999,7 +3222,10 @@ Tensor* op_sum_all(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, 1, scalar_shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_sum_all(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_sum_all(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -3035,7 +3261,7 @@ Tensor* op_sum_all(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -3048,7 +3274,10 @@ Tensor* op_mean_all(Tensor* x) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, 1, scalar_shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_mean_all(out->data, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_mean_all(out->data, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -3084,7 +3313,7 @@ Tensor* op_mean_all(Tensor* x) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -3201,7 +3430,7 @@ Tensor* op_sum_dim(Tensor* x, int dim, bool keepdim) {
         memcpy(saved->input_shape, x->shape, x->ndim * sizeof(int));
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     if (made_contiguous) free_tensor(input);
@@ -3319,7 +3548,7 @@ Tensor* op_mean_dim(Tensor* x, int dim, bool keepdim) {
         memcpy(saved->input_shape, x->shape, x->ndim * sizeof(int));
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     if (made_contiguous) free_tensor(input);
@@ -3379,6 +3608,38 @@ typedef struct {
     int* input_shape;
 } BatchNormSavedData;
 
+static int ln_load_f64(const void* src, double* dst, size_t n, DType dtype) {
+    if (dtype == DTYPE_FLOAT32) {
+        const float* s = (const float*)src;
+        for (size_t i = 0; i < n; i++) dst[i] = (double)s[i];
+    } else if (dtype == DTYPE_FLOAT64) {
+        memcpy(dst, src, n * sizeof(double));
+    } else {
+        float* tmp = (float*)malloc(n * sizeof(float));
+        if (!tmp) return -1;
+        half_to_fp32_array(src, tmp, n, dtype);
+        for (size_t i = 0; i < n; i++) dst[i] = (double)tmp[i];
+        free(tmp);
+    }
+    return 0;
+}
+
+static int ln_store_f64(const double* src, void* dst, size_t n, DType dtype) {
+    if (dtype == DTYPE_FLOAT32) {
+        float* d = (float*)dst;
+        for (size_t i = 0; i < n; i++) d[i] = (float)src[i];
+    } else if (dtype == DTYPE_FLOAT64) {
+        memcpy(dst, src, n * sizeof(double));
+    } else {
+        float* tmp = (float*)malloc(n * sizeof(float));
+        if (!tmp) return -1;
+        for (size_t i = 0; i < n; i++) tmp[i] = (float)src[i];
+        fp32_to_half_array(tmp, dst, n, dtype);
+        free(tmp);
+    }
+    return 0;
+}
+
 void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
@@ -3396,7 +3657,6 @@ void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
     size_t total = outer * norm;
     DType dtype = x->dtype;
     int dev = x->device_id;
-    size_t esz = dtype_size(dtype);
 
     Tensor* host_go = grad_output;
     Tensor* host_x = x;
@@ -3419,62 +3679,53 @@ void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
             if (!x->metadata->grad) goto ln_cleanup;
         }
 
-        float* gx_f32 = (float*)calloc(total, sizeof(float));
-        float* go_f32 = (float*)malloc(total * sizeof(float));
-        float* x_f32 = (float*)malloc(total * sizeof(float));
-        float* mean_f32 = (float*)malloc(outer * sizeof(float));
-        float* rstd_f32 = (float*)malloc(outer * sizeof(float));
-        float* w_f32 = NULL;
+        double* gx_d = (double*)calloc(total, sizeof(double));
+        double* go_d = (double*)malloc(total * sizeof(double));
+        double* x_d = (double*)malloc(total * sizeof(double));
+        double* mean_d = (double*)malloc(outer * sizeof(double));
+        double* rstd_d = (double*)malloc(outer * sizeof(double));
+        double* w_d = host_w ? (double*)malloc(norm * sizeof(double)) : NULL;
 
-        if (dtype == DTYPE_FLOAT32) {
-            memcpy(go_f32, host_go->data, total * sizeof(float));
-            memcpy(x_f32, host_x->data, total * sizeof(float));
-            memcpy(mean_f32, host_mean->data, outer * sizeof(float));
-            memcpy(rstd_f32, host_rstd->data, outer * sizeof(float));
-            if (host_w) { w_f32 = (float*)malloc(norm * sizeof(float)); memcpy(w_f32, host_w->data, norm * sizeof(float)); }
-        } else if (dtype == DTYPE_FLOAT64) {
-            for (size_t i = 0; i < total; i++) { go_f32[i] = (float)((double*)host_go->data)[i]; x_f32[i] = (float)((double*)host_x->data)[i]; }
-            for (size_t i = 0; i < outer; i++) { mean_f32[i] = (float)((double*)host_mean->data)[i]; rstd_f32[i] = (float)((double*)host_rstd->data)[i]; }
-            if (host_w) { w_f32 = (float*)malloc(norm * sizeof(float)); for (size_t i = 0; i < norm; i++) w_f32[i] = (float)((double*)host_w->data)[i]; }
-        } else {
-            half_to_fp32_array(host_go->data, go_f32, total, dtype);
-            half_to_fp32_array(host_x->data, x_f32, total, dtype);
-            half_to_fp32_array(host_mean->data, mean_f32, outer, dtype);
-            half_to_fp32_array(host_rstd->data, rstd_f32, outer, dtype);
-            if (host_w) { w_f32 = (float*)malloc(norm * sizeof(float)); half_to_fp32_array(host_w->data, w_f32, norm, dtype); }
+        if (!gx_d || !go_d || !x_d || !mean_d || !rstd_d || (host_w && !w_d)) {
+            free(gx_d); free(go_d); free(x_d); free(mean_d); free(rstd_d); free(w_d);
+            goto ln_cleanup;
         }
 
-        for (size_t o = 0; o < outer; o++) {
-            float m = mean_f32[o];
-            float rs = rstd_f32[o];
-            float* go_row = go_f32 + o * norm;
-            float* x_row = x_f32 + o * norm;
-            float* gx_row = gx_f32 + o * norm;
+        ln_load_f64(host_go->data, go_d, total, dtype);
+        ln_load_f64(host_x->data, x_d, total, dtype);
+        ln_load_f64(host_mean->data, mean_d, outer, dtype);
+        ln_load_f64(host_rstd->data, rstd_d, outer, dtype);
+        if (host_w) ln_load_f64(host_w->data, w_d, norm, dtype);
 
-            float sum_go_w = 0.0f;
-            float sum_go_w_norm = 0.0f;
+        for (size_t o = 0; o < outer; o++) {
+            double m = mean_d[o];
+            double rs = rstd_d[o];
+            double* go_row = go_d + o * norm;
+            double* x_row = x_d + o * norm;
+            double* gx_row = gx_d + o * norm;
+
+            double sum_go_w = 0.0;
+            double sum_go_w_norm = 0.0;
             for (size_t i = 0; i < norm; i++) {
-                float g = go_row[i];
-                if (w_f32) g *= w_f32[i];
-                float normed = (x_row[i] - m) * rs;
+                double g = go_row[i];
+                if (w_d) g *= w_d[i];
+                double normed = (x_row[i] - m) * rs;
                 sum_go_w += g;
                 sum_go_w_norm += g * normed;
             }
 
-            float inv_n = 1.0f / (float)norm;
+            double inv_n = 1.0 / (double)norm;
             for (size_t i = 0; i < norm; i++) {
-                float g = go_row[i];
-                if (w_f32) g *= w_f32[i];
-                float normed = (x_row[i] - m) * rs;
+                double g = go_row[i];
+                if (w_d) g *= w_d[i];
+                double normed = (x_row[i] - m) * rs;
                 gx_row[i] = rs * (g - inv_n * sum_go_w - inv_n * normed * sum_go_w_norm);
             }
         }
 
         Tensor* grad_x_host = zeros_tensor(dtype, -1, x->ndim, x->shape, NULL);
         if (grad_x_host) {
-            if (dtype == DTYPE_FLOAT32) memcpy(grad_x_host->data, gx_f32, total * sizeof(float));
-            else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < total; i++) ((double*)grad_x_host->data)[i] = (double)gx_f32[i]; }
-            else fp32_to_half_array(gx_f32, grad_x_host->data, total, dtype);
+            ln_store_f64(gx_d, grad_x_host->data, total, dtype);
 
             if (dev >= 0) {
                 Tensor* grad_x_dev = tensor_to(grad_x_host, dev, dtype, false);
@@ -3489,7 +3740,7 @@ void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
             }
         }
 
-        free(gx_f32); free(go_f32); free(x_f32); free(mean_f32); free(rstd_f32); free(w_f32);
+        free(gx_d); free(go_d); free(x_d); free(mean_d); free(rstd_d); free(w_d);
     }
 
     if (weight_t && weight_t->metadata && weight_t->metadata->requires_grad) {
@@ -3497,25 +3748,30 @@ void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
             weight_t->metadata->grad = zeros_tensor(dtype, dev, weight_t->ndim, weight_t->shape, NULL);
         }
         if (weight_t->metadata->grad) {
-            float* gw_f32 = (float*)calloc(norm, sizeof(float));
+            double* gw_d = (double*)calloc(norm, sizeof(double));
+            double* mean_d = (double*)malloc(outer * sizeof(double));
+            double* rstd_d = (double*)malloc(outer * sizeof(double));
+            double* x_d = (double*)malloc(total * sizeof(double));
+            double* go_d = (double*)malloc(total * sizeof(double));
+            if (!gw_d || !mean_d || !rstd_d || !x_d || !go_d) {
+                free(gw_d); free(mean_d); free(rstd_d); free(x_d); free(go_d);
+                goto ln_cleanup;
+            }
+            ln_load_f64(host_mean->data, mean_d, outer, dtype);
+            ln_load_f64(host_rstd->data, rstd_d, outer, dtype);
+            ln_load_f64(host_x->data, x_d, total, dtype);
+            ln_load_f64(host_go->data, go_d, total, dtype);
             for (size_t o = 0; o < outer; o++) {
-                float m, rs;
-                if (dtype == DTYPE_FLOAT32) { m = ((float*)host_mean->data)[o]; rs = ((float*)host_rstd->data)[o]; }
-                else if (dtype == DTYPE_FLOAT64) { m = (float)((double*)host_mean->data)[o]; rs = (float)((double*)host_rstd->data)[o]; }
-                else { float tmp[2]; half_to_fp32_array((char*)host_mean->data + o * esz, &tmp[0], 1, dtype); half_to_fp32_array((char*)host_rstd->data + o * esz, &tmp[1], 1, dtype); m = tmp[0]; rs = tmp[1]; }
+                double m = mean_d[o];
+                double rs = rstd_d[o];
                 for (size_t i = 0; i < norm; i++) {
-                    float xv, gov;
-                    if (dtype == DTYPE_FLOAT32) { xv = ((float*)host_x->data)[o*norm+i]; gov = ((float*)host_go->data)[o*norm+i]; }
-                    else if (dtype == DTYPE_FLOAT64) { xv = (float)((double*)host_x->data)[o*norm+i]; gov = (float)((double*)host_go->data)[o*norm+i]; }
-                    else { half_to_fp32_array((char*)host_x->data + (o*norm+i)*esz, &xv, 1, dtype); half_to_fp32_array((char*)host_go->data + (o*norm+i)*esz, &gov, 1, dtype); }
-                    gw_f32[i] += gov * (xv - m) * rs;
+                    gw_d[i] += go_d[o*norm+i] * (x_d[o*norm+i] - m) * rs;
                 }
             }
+            free(mean_d); free(rstd_d); free(x_d); free(go_d);
             Tensor* gw_host = zeros_tensor(dtype, -1, weight_t->ndim, weight_t->shape, NULL);
             if (gw_host) {
-                if (dtype == DTYPE_FLOAT32) memcpy(gw_host->data, gw_f32, norm * sizeof(float));
-                else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < norm; i++) ((double*)gw_host->data)[i] = (double)gw_f32[i]; }
-                else fp32_to_half_array(gw_f32, gw_host->data, norm, dtype);
+                ln_store_f64(gw_d, gw_host->data, norm, dtype);
                 if (dev >= 0) {
                     Tensor* gw_dev = tensor_to(gw_host, dev, dtype, false);
                     if (gw_dev) { rp_add(weight_t->metadata->grad->data, weight_t->metadata->grad->data, gw_dev->data, norm, dtype, dev); free_tensor(gw_dev); }
@@ -3524,7 +3780,7 @@ void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
                 }
                 free_tensor(gw_host);
             }
-            free(gw_f32);
+            free(gw_d);
         }
     }
 
@@ -3533,21 +3789,22 @@ void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
             bias_t->metadata->grad = zeros_tensor(dtype, dev, bias_t->ndim, bias_t->shape, NULL);
         }
         if (bias_t->metadata->grad) {
-            float* gb_f32 = (float*)calloc(norm, sizeof(float));
+            double* gb_d = (double*)calloc(norm, sizeof(double));
+            double* go_d = (double*)malloc(total * sizeof(double));
+            if (!gb_d || !go_d) {
+                free(gb_d); free(go_d);
+                goto ln_cleanup;
+            }
+            ln_load_f64(host_go->data, go_d, total, dtype);
             for (size_t o = 0; o < outer; o++) {
                 for (size_t i = 0; i < norm; i++) {
-                    float gov;
-                    if (dtype == DTYPE_FLOAT32) gov = ((float*)host_go->data)[o*norm+i];
-                    else if (dtype == DTYPE_FLOAT64) gov = (float)((double*)host_go->data)[o*norm+i];
-                    else { half_to_fp32_array((char*)host_go->data + (o*norm+i)*esz, &gov, 1, dtype); }
-                    gb_f32[i] += gov;
+                    gb_d[i] += go_d[o*norm+i];
                 }
             }
+            free(go_d);
             Tensor* gb_host = zeros_tensor(dtype, -1, bias_t->ndim, bias_t->shape, NULL);
             if (gb_host) {
-                if (dtype == DTYPE_FLOAT32) memcpy(gb_host->data, gb_f32, norm * sizeof(float));
-                else if (dtype == DTYPE_FLOAT64) { for (size_t i = 0; i < norm; i++) ((double*)gb_host->data)[i] = (double)gb_f32[i]; }
-                else fp32_to_half_array(gb_f32, gb_host->data, norm, dtype);
+                ln_store_f64(gb_d, gb_host->data, norm, dtype);
                 if (dev >= 0) {
                     Tensor* gb_dev = tensor_to(gb_host, dev, dtype, false);
                     if (gb_dev) { rp_add(bias_t->metadata->grad->data, bias_t->metadata->grad->data, gb_dev->data, norm, dtype, dev); free_tensor(gb_dev); }
@@ -3556,7 +3813,7 @@ void backward_layer_norm_fn(GradFn* self, Tensor* grad_output) {
                 }
                 free_tensor(gb_host);
             }
-            free(gb_f32);
+            free(gb_d);
         }
     }
 
@@ -3588,8 +3845,11 @@ Tensor* op_layer_norm(Tensor* x, const void* weight, const void* bias,
         return NULL;
     }
 
-    int ret = rp_layer_norm(out->data, mean_t->data, rstd_t->data, x->data,
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); free_tensor(mean_t); free_tensor(rstd_t); return NULL; }
+    int ret = rp_layer_norm(out->data, mean_t->data, rstd_t->data, xc->data,
                             weight, bias, outer_size, norm_size, eps, dtype, device_id);
+    free_tensor(xc);
     if (ret != 0) { free_tensor(out); free_tensor(mean_t); free_tensor(rstd_t); return NULL; }
 
     bool requires_grad = (x->metadata && x->metadata->requires_grad);
@@ -3621,7 +3881,9 @@ Tensor* op_layer_norm(Tensor* x, const void* weight, const void* bias,
         saved->input_shape = (int*)malloc(x->ndim * sizeof(int));
         memcpy(saved->input_shape, x->shape, x->ndim * sizeof(int));
         gf->saved_data = saved;
-        out->metadata->grad_fn = gf;
+        grad_fn_attach(out, gf);
+        free_tensor(mean_t);
+        free_tensor(rstd_t);
     } else {
         free_tensor(mean_t);
         free_tensor(rstd_t);
@@ -3667,6 +3929,10 @@ Tensor* op_embedding(Tensor* weight, const int* indices, int num_indices) {
     int num_embeddings = weight->shape[0];
     int embedding_dim = weight->shape[1];
 
+    for (int i = 0; i < num_indices; i++) {
+        if (indices[i] < 0 || indices[i] >= num_embeddings) return NULL;
+    }
+
     int out_shape[] = {num_indices, embedding_dim};
     Tensor* out = zeros_tensor(weight->dtype, weight->device_id, 2, out_shape, NULL);
     if (!out) return NULL;
@@ -3698,7 +3964,7 @@ Tensor* op_embedding(Tensor* weight, const int* indices, int num_indices) {
         saved->num_embeddings = num_embeddings;
         saved->embedding_dim = embedding_dim;
         gf->saved_data = saved;
-        out->metadata->grad_fn = gf;
+        grad_fn_attach(out, gf);
     }
 
     return out;
@@ -3750,7 +4016,10 @@ Tensor* op_dropout(Tensor* x, float p) {
     Tensor* mask_tensor = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!mask_tensor) { free_tensor(out); return NULL; }
 
-    int ret = rp_dropout(out->data, mask_tensor->data, x->data, x->size, p, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); free_tensor(mask_tensor); return NULL; }
+    int ret = rp_dropout(out->data, mask_tensor->data, xc->data, x->size, p, x->dtype, x->device_id);
+    free_tensor(xc);
     if (ret != 0) { free_tensor(out); free_tensor(mask_tensor); return NULL; }
 
     bool requires_grad = (x->metadata && x->metadata->requires_grad);
@@ -3775,7 +4044,8 @@ Tensor* op_dropout(Tensor* x, float p) {
         if (!saved) { free(grad_fn->inputs); free(grad_fn); free_tensor(out); free_tensor(mask_tensor); return NULL; }
         saved->p = p;
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
+        free_tensor(mask_tensor);
     } else {
         free_tensor(mask_tensor);
     }
@@ -3833,6 +4103,9 @@ Tensor* op_gather(Tensor* input, int dim, const int* indices, int index_ndim, co
     if (dim < 0) dim += input->ndim;
     if (dim < 0 || dim >= input->ndim) return NULL;
     if (index_ndim != input->ndim) return NULL;
+    for (size_t i = 0; i < index_size; i++) {
+        if (indices[i] < 0 || indices[i] >= input->shape[dim]) return NULL;
+    }
 
     Tensor* out = zeros_tensor(input->dtype, input->device_id, index_ndim, (int*)index_shape, NULL);
     if (!out) return NULL;
@@ -3892,7 +4165,7 @@ Tensor* op_gather(Tensor* input, int dim, const int* indices, int index_ndim, co
         memcpy(saved->input_shape, input->shape, input->ndim * sizeof(int));
 
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     } else {
         if (d_indices) cudaFree(d_indices);
     }
@@ -4135,7 +4408,7 @@ Tensor* op_maxpool2d(Tensor* input, int kH, int kW, int stride_h, int stride_w, 
         saved->max_indices = max_indices;
         saved->d_max_indices = NULL;
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     } else {
         free(max_indices);
     }
@@ -4181,7 +4454,7 @@ Tensor* op_avgpool2d(Tensor* input, int kH, int kW, int stride_h, int stride_w, 
         saved->N = N; saved->C = C; saved->H = H; saved->W = W;
         saved->out_H = out_H; saved->out_W = out_W;
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -4245,20 +4518,18 @@ void backward_conv2d_fn(GradFn* self, Tensor* grad_output) {
                         wd[c * s->C_out + r] = ws[r * col_rows + c];
             }
         } else {
-            int wt_shape[] = {s->C_out, col_rows};
-            int wt_strides[] = {col_rows, 1};
-            Tensor tmp_w = {.dtype = dtype, .data = weight->data, .ndim = 2,
-                            .size = (size_t)s->C_out * col_rows,
-                            .shape = wt_shape, .strides = wt_strides, .device_id = dev,
-                            .owns_data = false, .base_tensor = NULL, .data_offset = 0, .metadata = NULL};
-            Tensor* wt_t = rp_transpose(&tmp_w, 0, 1);
-            if (wt_t) {
-                Tensor* wt_c = rp_contiguous(wt_t);
-                if (wt_c) {
-                    cudaMemcpy(wt_buf, wt_c->data, (size_t)s->C_out * col_rows * esz, cudaMemcpyDeviceToDevice);
-                    free_tensor(wt_c);
+            Tensor* tmp_w = wrap_buffer_2d(weight->data, dtype, dev, s->C_out, col_rows);
+            if (tmp_w) {
+                Tensor* wt_t = rp_transpose(tmp_w, 0, 1);
+                if (wt_t) {
+                    Tensor* wt_c = rp_contiguous(wt_t);
+                    if (wt_c) {
+                        cudaMemcpy(wt_buf, wt_c->data, (size_t)s->C_out * col_rows * esz, cudaMemcpyDeviceToDevice);
+                        free_tensor(wt_c);
+                    }
+                    free_tensor(wt_t);
                 }
-                free_tensor(wt_t);
+                free_tensor(tmp_w);
             }
         }
 
@@ -4301,9 +4572,6 @@ void backward_conv2d_fn(GradFn* self, Tensor* grad_output) {
             col_buf = d1; col_t_buf = d2; grad_w_tmp = d3;
         }
 
-        int col_t_shape[] = {col_rows, col_cols};
-        int col_t_strides[] = {col_cols, 1};
-
         for (int n = 0; n < s->N; n++) {
             void* input_n = (char*)input->data + (size_t)n * s->C_in * s->H * s->W * esz;
             void* grad_out_n = (char*)grad_output->data + (size_t)n * s->C_out * col_cols * esz;
@@ -4327,17 +4595,18 @@ void backward_conv2d_fn(GradFn* self, Tensor* grad_output) {
                             dst[c * col_rows + r] = src[r * col_cols + c];
                 }
             } else {
-                Tensor tmp_src = {.dtype = dtype, .data = col_buf, .ndim = 2, .size = (size_t)col_rows * col_cols,
-                                  .shape = col_t_shape, .strides = col_t_strides, .device_id = dev,
-                                  .owns_data = false, .base_tensor = NULL, .data_offset = 0, .metadata = NULL};
-                Tensor* transposed = rp_transpose(&tmp_src, 0, 1);
-                if (transposed) {
-                    Tensor* contig = rp_contiguous(transposed);
-                    if (contig) {
-                        cudaMemcpy(col_t_buf, contig->data, (size_t)col_rows * col_cols * esz, cudaMemcpyDeviceToDevice);
-                        free_tensor(contig);
+                Tensor* tmp_src = wrap_buffer_2d(col_buf, dtype, dev, col_rows, col_cols);
+                if (tmp_src) {
+                    Tensor* transposed = rp_transpose(tmp_src, 0, 1);
+                    if (transposed) {
+                        Tensor* contig = rp_contiguous(transposed);
+                        if (contig) {
+                            cudaMemcpy(col_t_buf, contig->data, (size_t)col_rows * col_cols * esz, cudaMemcpyDeviceToDevice);
+                            free_tensor(contig);
+                        }
+                        free_tensor(transposed);
                     }
-                    free_tensor(transposed);
+                    free_tensor(tmp_src);
                 }
             }
 
@@ -4385,17 +4654,40 @@ void backward_conv2d_fn(GradFn* self, Tensor* grad_output) {
                         }
                     }
                 }
-                if (dev == -1) {
-                    float* bg = (float*)bias->metadata->grad->data;
-                    for (int c = 0; c < s->C_out; c++) bg[c] += bias_grad_f32[c];
-                } else {
-                    if (dtype == DTYPE_FLOAT32) {
+                if (dtype == DTYPE_FLOAT32) {
+                    if (dev == -1) {
+                        float* bg = (float*)bias->metadata->grad->data;
+                        for (int c = 0; c < s->C_out; c++) bg[c] += bias_grad_f32[c];
+                    } else {
                         float* bg_host = (float*)malloc(s->C_out * sizeof(float));
-                        cudaMemcpy(bg_host, bias->metadata->grad->data, s->C_out * sizeof(float), cudaMemcpyDeviceToHost);
-                        for (int c = 0; c < s->C_out; c++) bg_host[c] += bias_grad_f32[c];
-                        cudaMemcpy(bias->metadata->grad->data, bg_host, s->C_out * sizeof(float), cudaMemcpyHostToDevice);
-                        free(bg_host);
+                        if (bg_host) {
+                            cudaMemcpy(bg_host, bias->metadata->grad->data, s->C_out * sizeof(float), cudaMemcpyDeviceToHost);
+                            for (int c = 0; c < s->C_out; c++) bg_host[c] += bias_grad_f32[c];
+                            cudaMemcpy(bias->metadata->grad->data, bg_host, s->C_out * sizeof(float), cudaMemcpyHostToDevice);
+                            free(bg_host);
+                        }
                     }
+                } else {
+                    size_t half_bytes = s->C_out * dtype_size(dtype);
+                    void* bg_half = malloc(half_bytes);
+                    float* bg_f32 = (float*)malloc(s->C_out * sizeof(float));
+                    if (bg_half && bg_f32) {
+                        if (dev == -1) {
+                            memcpy(bg_half, bias->metadata->grad->data, half_bytes);
+                        } else {
+                            cudaMemcpy(bg_half, bias->metadata->grad->data, half_bytes, cudaMemcpyDeviceToHost);
+                        }
+                        half_to_fp32_array(bg_half, bg_f32, s->C_out, dtype);
+                        for (int c = 0; c < s->C_out; c++) bg_f32[c] += bias_grad_f32[c];
+                        fp32_to_half_array(bg_f32, bg_half, s->C_out, dtype);
+                        if (dev == -1) {
+                            memcpy(bias->metadata->grad->data, bg_half, half_bytes);
+                        } else {
+                            cudaMemcpy(bias->metadata->grad->data, bg_half, half_bytes, cudaMemcpyHostToDevice);
+                        }
+                    }
+                    free(bg_half);
+                    free(bg_f32);
                 }
                 if (go_f32) free(go_f32);
             } else {
@@ -4408,8 +4700,18 @@ void backward_conv2d_fn(GradFn* self, Tensor* grad_output) {
                         }
                     }
                 }
-                double* bg = (double*)bias->metadata->grad->data;
-                for (int c = 0; c < s->C_out; c++) bg[c] += bias_grad_f64[c];
+                if (dev == -1) {
+                    double* bg = (double*)bias->metadata->grad->data;
+                    for (int c = 0; c < s->C_out; c++) bg[c] += bias_grad_f64[c];
+                } else {
+                    double* bg_host = (double*)malloc(s->C_out * sizeof(double));
+                    if (bg_host) {
+                        cudaMemcpy(bg_host, bias->metadata->grad->data, s->C_out * sizeof(double), cudaMemcpyDeviceToHost);
+                        for (int c = 0; c < s->C_out; c++) bg_host[c] += bias_grad_f64[c];
+                        cudaMemcpy(bias->metadata->grad->data, bg_host, s->C_out * sizeof(double), cudaMemcpyHostToDevice);
+                        free(bg_host);
+                    }
+                }
                 free(bias_grad_f64);
             }
             free(bias_grad_f32);
@@ -4487,6 +4789,20 @@ Tensor* op_conv2d(Tensor* input, Tensor* weight, Tensor* bias,
                     for (int c = 0; c < C_out; c++)
                         for (size_t hw = 0; hw < spatial; hw++)
                             od[(size_t)n * C_out * spatial + c * spatial + hw] += bd[c];
+            } else {
+                float* of = (float*)malloc(out->size * sizeof(float));
+                float* bf = (float*)malloc((size_t)C_out * sizeof(float));
+                if (of && bf) {
+                    half_to_fp32_array(out->data, of, out->size, dtype);
+                    half_to_fp32_array(bias->data, bf, C_out, dtype);
+                    for (int n = 0; n < N; n++)
+                        for (int c = 0; c < C_out; c++)
+                            for (size_t hw = 0; hw < spatial; hw++)
+                                of[(size_t)n * C_out * spatial + c * spatial + hw] += bf[c];
+                    fp32_to_half_array(of, out->data, out->size, dtype);
+                }
+                free(of);
+                free(bf);
             }
         } else {
             Tensor* host_out = tensor_to(out, -1, dtype, false);
@@ -4499,8 +4815,31 @@ Tensor* op_conv2d(Tensor* input, Tensor* weight, Tensor* bias,
                         for (int c = 0; c < C_out; c++)
                             for (size_t hw = 0; hw < spatial; hw++)
                                 od[(size_t)n * C_out * spatial + c * spatial + hw] += bd[c];
+                    cudaMemcpy(out->data, host_out->data, out->size * esz, cudaMemcpyHostToDevice);
+                } else if (dtype == DTYPE_FLOAT64) {
+                    double* od = (double*)host_out->data;
+                    const double* bd = (const double*)host_bias->data;
+                    for (int n = 0; n < N; n++)
+                        for (int c = 0; c < C_out; c++)
+                            for (size_t hw = 0; hw < spatial; hw++)
+                                od[(size_t)n * C_out * spatial + c * spatial + hw] += bd[c];
+                    cudaMemcpy(out->data, host_out->data, out->size * esz, cudaMemcpyHostToDevice);
+                } else {
+                    float* of = (float*)malloc(out->size * sizeof(float));
+                    float* bf = (float*)malloc((size_t)C_out * sizeof(float));
+                    if (of && bf) {
+                        half_to_fp32_array(host_out->data, of, out->size, dtype);
+                        half_to_fp32_array(host_bias->data, bf, C_out, dtype);
+                        for (int n = 0; n < N; n++)
+                            for (int c = 0; c < C_out; c++)
+                                for (size_t hw = 0; hw < spatial; hw++)
+                                    of[(size_t)n * C_out * spatial + c * spatial + hw] += bf[c];
+                        fp32_to_half_array(of, host_out->data, out->size, dtype);
+                        cudaMemcpy(out->data, host_out->data, out->size * esz, cudaMemcpyHostToDevice);
+                    }
+                    free(of);
+                    free(bf);
                 }
-                cudaMemcpy(out->data, host_out->data, out->size * esz, cudaMemcpyHostToDevice);
             }
             if (host_out) free_tensor(host_out);
             if (host_bias) free_tensor(host_bias);
@@ -4540,7 +4879,7 @@ Tensor* op_conv2d(Tensor* input, Tensor* weight, Tensor* bias,
         saved->out_H = out_H; saved->out_W = out_W;
         saved->has_bias = bias ? 1 : 0;
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -4597,6 +4936,17 @@ void backward_mse_loss_fn(GradFn* self, Tensor* grad_output) {
             free_tensor(grad);
             grad = scaled;
         }
+    } else {
+        Tensor* go_c = ensure_contiguous(grad_output);
+        Tensor* scaled = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        if (go_c && scaled) {
+            rp_mul(scaled->data, grad->data, go_c->data, pred->size, pred->dtype, pred->device_id);
+            free_tensor(grad);
+            grad = scaled;
+        } else if (scaled) {
+            free_tensor(scaled);
+        }
+        if (go_c) free_tensor(go_c);
     }
 
     if (!pred->metadata->grad) {
@@ -4662,7 +5012,7 @@ Tensor* op_mse_loss(Tensor* pred, Tensor* target, int reduction) {
         saved->input_size = pred->size;
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -4763,6 +5113,17 @@ void backward_bce_loss_fn(GradFn* self, Tensor* grad_output) {
             free_tensor(grad);
             grad = scaled;
         }
+    } else {
+        Tensor* go_c = ensure_contiguous(grad_output);
+        Tensor* scaled = zeros_tensor(pred->dtype, pred->device_id, pred->ndim, pred->shape, NULL);
+        if (go_c && scaled) {
+            rp_mul(scaled->data, grad->data, go_c->data, pred->size, pred->dtype, pred->device_id);
+            free_tensor(grad);
+            grad = scaled;
+        } else if (scaled) {
+            free_tensor(scaled);
+        }
+        if (go_c) free_tensor(go_c);
     }
 
     if (!pred->metadata->grad) {
@@ -4870,7 +5231,7 @@ Tensor* op_bce_loss(Tensor* pred, Tensor* target, int reduction, int from_logits
         saved->input_size = pred->size;
         saved->from_logits = detected_logits;
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -4937,6 +5298,21 @@ void backward_nll_loss_fn(GradFn* self, Tensor* grad_output) {
             free_tensor(grad);
             grad = scaled;
         }
+    } else {
+        Tensor* go_c = ensure_contiguous(grad_output);
+        Tensor* scaled = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (go_c && scaled) {
+            int bshape[2] = {saved->batch_size, saved->num_classes};
+            int g_strides[2] = {saved->num_classes, 1};
+            int go_strides[2] = {1, 0};
+            rp_mul_strided(scaled->data, grad->data, go_c->data, 2, bshape,
+                           g_strides, go_strides, input->size, input->dtype, input->device_id);
+            free_tensor(grad);
+            grad = scaled;
+        } else if (scaled) {
+            free_tensor(scaled);
+        }
+        if (go_c) free_tensor(go_c);
     }
 
     rp_add(input->metadata->grad->data, input->metadata->grad->data, grad->data,
@@ -4945,6 +5321,10 @@ void backward_nll_loss_fn(GradFn* self, Tensor* grad_output) {
 }
 
 Tensor* op_nll_loss(Tensor* input, const int* targets, int batch_size, int num_classes, int reduction) {
+    if (!input || !targets) return NULL;
+    for (int b = 0; b < batch_size; b++) {
+        if (targets[b] < 0 || targets[b] >= num_classes) return NULL;
+    }
     if (!input || !targets) return NULL;
     if (input->ndim != 2 || input->shape[0] != batch_size || input->shape[1] != num_classes) return NULL;
 
@@ -5023,7 +5403,7 @@ Tensor* op_nll_loss(Tensor* input, const int* targets, int batch_size, int num_c
         saved->targets = (int*)malloc(batch_size * sizeof(int));
         memcpy(saved->targets, targets, batch_size * sizeof(int));
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -5068,9 +5448,17 @@ void backward_cross_entropy_loss_fn(GradFn* self, Tensor* grad_output) {
             half_to_fp32_array(host_sm->data, sm_f32_alloc, total, host_sm->dtype);
             sm_data = sm_f32_alloc;
         }
-        for (size_t i = 0; i < total; i++) grad_f32[i] = sm_data[i];
-        for (int b = 0; b < saved->batch_size; b++) {
-            grad_f32[(size_t)b * saved->num_classes + saved->targets[b]] -= 1.0f;
+        if (saved->from_logits) {
+            for (size_t i = 0; i < total; i++) grad_f32[i] = sm_data[i];
+            for (int b = 0; b < saved->batch_size; b++) {
+                grad_f32[(size_t)b * saved->num_classes + saved->targets[b]] -= 1.0f;
+            }
+        } else {
+            for (size_t i = 0; i < total; i++) grad_f32[i] = 0.0f;
+            for (int b = 0; b < saved->batch_size; b++) {
+                size_t ti = (size_t)b * saved->num_classes + saved->targets[b];
+                grad_f32[ti] = -1.0f / sm_data[ti];
+            }
         }
         if (saved->reduction == REDUCTION_MEAN) {
             float scale = 1.0f / (float)saved->batch_size;
@@ -5094,9 +5482,17 @@ void backward_cross_entropy_loss_fn(GradFn* self, Tensor* grad_output) {
         double* grad_f64 = (double*)malloc(total * sizeof(double));
         if (!grad_f64) { free_tensor(grad); if (free_sm) free_tensor(host_sm); return; }
         const double* sm_data = (const double*)host_sm->data;
-        for (size_t i = 0; i < total; i++) grad_f64[i] = sm_data[i];
-        for (int b = 0; b < saved->batch_size; b++) {
-            grad_f64[(size_t)b * saved->num_classes + saved->targets[b]] -= 1.0;
+        if (saved->from_logits) {
+            for (size_t i = 0; i < total; i++) grad_f64[i] = sm_data[i];
+            for (int b = 0; b < saved->batch_size; b++) {
+                grad_f64[(size_t)b * saved->num_classes + saved->targets[b]] -= 1.0;
+            }
+        } else {
+            for (size_t i = 0; i < total; i++) grad_f64[i] = 0.0;
+            for (int b = 0; b < saved->batch_size; b++) {
+                size_t ti = (size_t)b * saved->num_classes + saved->targets[b];
+                grad_f64[ti] = -1.0 / sm_data[ti];
+            }
         }
         if (saved->reduction == REDUCTION_MEAN) {
             double scale = 1.0 / (double)saved->batch_size;
@@ -5124,6 +5520,21 @@ void backward_cross_entropy_loss_fn(GradFn* self, Tensor* grad_output) {
             free_tensor(grad);
             grad = scaled;
         }
+    } else {
+        Tensor* go_c = ensure_contiguous(grad_output);
+        Tensor* scaled = zeros_tensor(input->dtype, input->device_id, input->ndim, input->shape, NULL);
+        if (go_c && scaled) {
+            int bshape[2] = {saved->batch_size, saved->num_classes};
+            int g_strides[2] = {saved->num_classes, 1};
+            int go_strides[2] = {1, 0};
+            rp_mul_strided(scaled->data, grad->data, go_c->data, 2, bshape,
+                           g_strides, go_strides, input->size, input->dtype, input->device_id);
+            free_tensor(grad);
+            grad = scaled;
+        } else if (scaled) {
+            free_tensor(scaled);
+        }
+        if (go_c) free_tensor(go_c);
     }
 
     rp_add(input->metadata->grad->data, input->metadata->grad->data, grad->data,
@@ -5132,6 +5543,10 @@ void backward_cross_entropy_loss_fn(GradFn* self, Tensor* grad_output) {
 }
 
 Tensor* op_cross_entropy_loss(Tensor* input, const int* targets, int batch_size, int num_classes, int reduction, int from_logits) {
+    if (!input || !targets) return NULL;
+    for (int b = 0; b < batch_size; b++) {
+        if (targets[b] < 0 || targets[b] >= num_classes) return NULL;
+    }
     if (!input || !targets) return NULL;
     if (input->ndim != 2 || input->shape[0] != batch_size || input->shape[1] != num_classes) return NULL;
 
@@ -5183,6 +5598,7 @@ Tensor* op_cross_entropy_loss(Tensor* input, const int* targets, int batch_size,
     if (requires_grad) {
         if (out->metadata && out->metadata->grad_fn) {
             free_grad_fn(out->metadata->grad_fn);
+            out->metadata->grad_fn = NULL;
         }
         if (!out->metadata) {
             out->metadata = (Meta*)calloc(1, sizeof(Meta));
@@ -5217,7 +5633,8 @@ Tensor* op_cross_entropy_loss(Tensor* input, const int* targets, int batch_size,
         saved->targets = (int*)malloc(batch_size * sizeof(int));
         memcpy(saved->targets, targets, batch_size * sizeof(int));
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
+        if (softmax_result != input) free_tensor(softmax_result);
     } else {
         if (softmax_result != input) free_tensor(softmax_result);
     }
@@ -5364,7 +5781,7 @@ Tensor* op_softmax(Tensor* x, int dim) {
         memcpy(saved->input_shape, x->shape, x->ndim * sizeof(int));
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -5433,7 +5850,7 @@ Tensor* op_log_softmax(Tensor* x, int dim) {
         memcpy(saved->input_shape, x->shape, x->ndim * sizeof(int));
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -5445,7 +5862,10 @@ Tensor* op_add_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_add_scalar(out->data, x->data, scalar, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_add_scalar(out->data, xc->data, scalar, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -5481,7 +5901,7 @@ Tensor* op_add_scalar(Tensor* x, const void* scalar) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -5493,7 +5913,10 @@ Tensor* op_sub_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_sub_scalar(out->data, x->data, scalar, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_sub_scalar(out->data, xc->data, scalar, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -5529,7 +5952,7 @@ Tensor* op_sub_scalar(Tensor* x, const void* scalar) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -5602,7 +6025,10 @@ Tensor* op_mul_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_mul_scalar(out->data, x->data, scalar, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_mul_scalar(out->data, xc->data, scalar, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -5653,7 +6079,7 @@ Tensor* op_mul_scalar(Tensor* x, const void* scalar) {
         }
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -5665,7 +6091,10 @@ Tensor* op_div_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_div_scalar(out->data, x->data, scalar, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_div_scalar(out->data, xc->data, scalar, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -5716,7 +6145,7 @@ Tensor* op_div_scalar(Tensor* x, const void* scalar) {
         }
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -5726,6 +6155,8 @@ void backward_pow_scalar_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
     ScalarSavedData* saved = (ScalarSavedData*)self->saved_data;
 
     if (x->metadata && x->metadata->requires_grad) {
@@ -5735,16 +6166,16 @@ void backward_pow_scalar_fn(GradFn* self, Tensor* grad_output) {
         void* scalar_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&saved->scalar_f64 : (void*)&saved->scalar_f32;
 
         Tensor* x_pow = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!x_pow) return;
-        rp_pow_scalar(x_pow->data, x->data, exp_m1_ptr, x->size, x->dtype, x->device_id);
+        if (!x_pow) { free_tensor(xc); return; }
+        rp_pow_scalar(x_pow->data, xc->data, exp_m1_ptr, x->size, x->dtype, x->device_id);
 
         Tensor* scaled = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!scaled) { free_tensor(x_pow); return; }
+        if (!scaled) { free_tensor(x_pow); free_tensor(xc); return; }
         rp_mul_scalar(scaled->data, x_pow->data, scalar_ptr, x->size, x->dtype, x->device_id);
         free_tensor(x_pow);
 
         Tensor* local_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!local_grad) { free_tensor(scaled); return; }
+        if (!local_grad) { free_tensor(scaled); free_tensor(xc); return; }
         rp_mul(local_grad->data, grad_output->data, scaled->data, x->size, x->dtype, x->device_id);
         free_tensor(scaled);
 
@@ -5756,6 +6187,8 @@ void backward_pow_scalar_fn(GradFn* self, Tensor* grad_output) {
             free_tensor(local_grad);
         }
     }
+
+    free_tensor(xc);
 }
 
 Tensor* op_pow_scalar(Tensor* x, const void* scalar) {
@@ -5764,7 +6197,10 @@ Tensor* op_pow_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_pow_scalar(out->data, x->data, scalar, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_pow_scalar(out->data, xc->data, scalar, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -5815,7 +6251,7 @@ Tensor* op_pow_scalar(Tensor* x, const void* scalar) {
         }
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -5852,7 +6288,10 @@ Tensor* op_rsub_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_rsub_scalar(out->data, scalar, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_rsub_scalar(out->data, scalar, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -5888,7 +6327,7 @@ Tensor* op_rsub_scalar(Tensor* x, const void* scalar) {
         grad_fn->inputs[0] = x;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -5898,17 +6337,19 @@ void backward_rdiv_scalar_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
     ScalarSavedData* saved = (ScalarSavedData*)self->saved_data;
 
     if (x->metadata && x->metadata->requires_grad) {
         void* scalar_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&saved->scalar_f64 : (void*)&saved->scalar_f32;
 
         Tensor* x_sq = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!x_sq) return;
-        rp_mul(x_sq->data, x->data, x->data, x->size, x->dtype, x->device_id);
+        if (!x_sq) { free_tensor(xc); return; }
+        rp_mul(x_sq->data, xc->data, xc->data, x->size, x->dtype, x->device_id);
 
         Tensor* neg_c_over_x2 = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!neg_c_over_x2) { free_tensor(x_sq); return; }
+        if (!neg_c_over_x2) { free_tensor(x_sq); free_tensor(xc); return; }
         rp_rdiv_scalar(neg_c_over_x2->data, scalar_ptr, x_sq->data, x->size, x->dtype, x->device_id);
         free_tensor(x_sq);
 
@@ -5919,7 +6360,7 @@ void backward_rdiv_scalar_fn(GradFn* self, Tensor* grad_output) {
                      x->size, x->dtype, x->device_id);
 
         Tensor* local_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!local_grad) { free_tensor(neg_c_over_x2); return; }
+        if (!local_grad) { free_tensor(neg_c_over_x2); free_tensor(xc); return; }
         rp_mul(local_grad->data, grad_output->data, neg_c_over_x2->data,
                x->size, x->dtype, x->device_id);
         free_tensor(neg_c_over_x2);
@@ -5932,6 +6373,8 @@ void backward_rdiv_scalar_fn(GradFn* self, Tensor* grad_output) {
             free_tensor(local_grad);
         }
     }
+
+    free_tensor(xc);
 }
 
 Tensor* op_rdiv_scalar(Tensor* x, const void* scalar) {
@@ -5940,7 +6383,10 @@ Tensor* op_rdiv_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_rdiv_scalar(out->data, scalar, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_rdiv_scalar(out->data, scalar, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -5991,7 +6437,7 @@ Tensor* op_rdiv_scalar(Tensor* x, const void* scalar) {
         }
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -6034,7 +6480,10 @@ Tensor* op_rpow_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_rpow_scalar(out->data, scalar, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_rpow_scalar(out->data, scalar, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -6086,7 +6535,7 @@ Tensor* op_rpow_scalar(Tensor* x, const void* scalar) {
         }
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -6096,6 +6545,8 @@ void backward_logb_scalar_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
     ScalarSavedData* saved = (ScalarSavedData*)self->saved_data;
 
     if (x->metadata && x->metadata->requires_grad) {
@@ -6104,11 +6555,11 @@ void backward_logb_scalar_fn(GradFn* self, Tensor* grad_output) {
         void* ln_c_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&ln_c_f64 : (void*)&ln_c_f32;
 
         Tensor* x_ln_c = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!x_ln_c) return;
-        rp_mul_scalar(x_ln_c->data, x->data, ln_c_ptr, x->size, x->dtype, x->device_id);
+        if (!x_ln_c) { free_tensor(xc); return; }
+        rp_mul_scalar(x_ln_c->data, xc->data, ln_c_ptr, x->size, x->dtype, x->device_id);
 
         Tensor* local_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!local_grad) { free_tensor(x_ln_c); return; }
+        if (!local_grad) { free_tensor(x_ln_c); free_tensor(xc); return; }
         rp_divide(local_grad->data, grad_output->data, x_ln_c->data, x->size, x->dtype, x->device_id);
         free_tensor(x_ln_c);
 
@@ -6120,6 +6571,8 @@ void backward_logb_scalar_fn(GradFn* self, Tensor* grad_output) {
             free_tensor(local_grad);
         }
     }
+
+    free_tensor(xc);
 }
 
 Tensor* op_logb_scalar(Tensor* x, const void* scalar) {
@@ -6128,7 +6581,10 @@ Tensor* op_logb_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_logb_scalar(out->data, x->data, scalar, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_logb_scalar(out->data, xc->data, scalar, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -6179,7 +6635,7 @@ Tensor* op_logb_scalar(Tensor* x, const void* scalar) {
         }
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -6189,6 +6645,8 @@ void backward_rlogb_scalar_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
     Tensor* x = self->inputs[0];
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) return;
     ScalarSavedData* saved = (ScalarSavedData*)self->saved_data;
 
     if (x->metadata && x->metadata->requires_grad) {
@@ -6197,26 +6655,26 @@ void backward_rlogb_scalar_fn(GradFn* self, Tensor* grad_output) {
         void* neg_ln_c_ptr = (x->dtype == DTYPE_FLOAT64) ? (void*)&neg_ln_c_f64 : (void*)&neg_ln_c_f32;
 
         Tensor* ln_x = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!ln_x) return;
-        rp_log(ln_x->data, x->data, x->size, x->dtype, x->device_id);
+        if (!ln_x) { free_tensor(xc); return; }
+        rp_log(ln_x->data, xc->data, x->size, x->dtype, x->device_id);
 
         Tensor* ln_x_sq = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!ln_x_sq) { free_tensor(ln_x); return; }
+        if (!ln_x_sq) { free_tensor(ln_x); free_tensor(xc); return; }
         rp_mul(ln_x_sq->data, ln_x->data, ln_x->data, x->size, x->dtype, x->device_id);
         free_tensor(ln_x);
 
         Tensor* x_ln_x_sq = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!x_ln_x_sq) { free_tensor(ln_x_sq); return; }
-        rp_mul(x_ln_x_sq->data, x->data, ln_x_sq->data, x->size, x->dtype, x->device_id);
+        if (!x_ln_x_sq) { free_tensor(ln_x_sq); free_tensor(xc); return; }
+        rp_mul(x_ln_x_sq->data, xc->data, ln_x_sq->data, x->size, x->dtype, x->device_id);
         free_tensor(ln_x_sq);
 
         Tensor* deriv = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!deriv) { free_tensor(x_ln_x_sq); return; }
+        if (!deriv) { free_tensor(x_ln_x_sq); free_tensor(xc); return; }
         rp_rdiv_scalar(deriv->data, neg_ln_c_ptr, x_ln_x_sq->data, x->size, x->dtype, x->device_id);
         free_tensor(x_ln_x_sq);
 
         Tensor* local_grad = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
-        if (!local_grad) { free_tensor(deriv); return; }
+        if (!local_grad) { free_tensor(deriv); free_tensor(xc); return; }
         rp_mul(local_grad->data, grad_output->data, deriv->data, x->size, x->dtype, x->device_id);
         free_tensor(deriv);
 
@@ -6228,6 +6686,8 @@ void backward_rlogb_scalar_fn(GradFn* self, Tensor* grad_output) {
             free_tensor(local_grad);
         }
     }
+
+    free_tensor(xc);
 }
 
 Tensor* op_rlogb_scalar(Tensor* x, const void* scalar) {
@@ -6236,7 +6696,10 @@ Tensor* op_rlogb_scalar(Tensor* x, const void* scalar) {
     Tensor* out = zeros_tensor(x->dtype, x->device_id, x->ndim, x->shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_rlogb_scalar(out->data, scalar, x->data, x->size, x->dtype, x->device_id);
+    Tensor* xc = ensure_contiguous(x);
+    if (!xc) { free_tensor(out); return NULL; }
+    int result = rp_rlogb_scalar(out->data, scalar, xc->data, x->size, x->dtype, x->device_id);
+    free_tensor(xc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -6287,7 +6750,7 @@ Tensor* op_rlogb_scalar(Tensor* x, const void* scalar) {
         }
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -6364,7 +6827,17 @@ Tensor* op_matmul(Tensor* a, Tensor* b) {
     Tensor* out = zeros_tensor(a->dtype, a->device_id, 2, out_shape, NULL);
     if (!out) return NULL;
 
-    int result = rp_matmul(out->data, a->data, b->data, m, k, n, a->dtype, a->device_id);
+    Tensor* ac = ensure_contiguous(a);
+    Tensor* bc = ensure_contiguous(b);
+    if (!ac || !bc) {
+        free_tensor(ac);
+        free_tensor(bc);
+        free_tensor(out);
+        return NULL;
+    }
+    int result = rp_matmul(out->data, ac->data, bc->data, m, k, n, a->dtype, a->device_id);
+    free_tensor(ac);
+    free_tensor(bc);
     if (result != 0) {
         free_tensor(out);
         return NULL;
@@ -6404,7 +6877,7 @@ Tensor* op_matmul(Tensor* a, Tensor* b) {
         grad_fn->inputs[1] = b;
         grad_fn->saved_data = NULL;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -6840,7 +7313,16 @@ void free_grad_fn(GradFn* grad_fn) {
         }
         free(grad_fn->saved_data);
     }
-    if (grad_fn->inputs) free(grad_fn->inputs);
+    if (grad_fn->inputs) {
+        if (grad_fn->owner) {
+            for (int i = 0; i < grad_fn->num_inputs; i++) {
+                if (grad_fn->inputs[i] && grad_fn->inputs[i] != grad_fn->owner) {
+                    free_tensor(grad_fn->inputs[i]);
+                }
+            }
+        }
+        free(grad_fn->inputs);
+    }
     free(grad_fn);
 }
 
@@ -6875,6 +7357,31 @@ void backward_cat_fn(GradFn* self, Tensor* grad_output) {
                 void* grad_src = (char*)grad_output->data + offset * elem_size;
                 rp_add(input->metadata->grad->data, input->metadata->grad->data, grad_src,
                        slice_size, input->dtype, input->device_id);
+            } else if (input->device_id >= 0) {
+                int gnd = grad_output->ndim;
+                int* sl_start = (int*)malloc(gnd * sizeof(int));
+                int* sl_stop = (int*)malloc(gnd * sizeof(int));
+                int* sl_step = (int*)malloc(gnd * sizeof(int));
+                if (sl_start && sl_stop && sl_step) {
+                    for (int d = 0; d < gnd; d++) {
+                        sl_start[d] = 0;
+                        sl_stop[d] = grad_output->shape[d];
+                        sl_step[d] = 1;
+                    }
+                    sl_start[dim] = offset;
+                    sl_stop[dim] = offset + slice_size;
+                    Tensor* region = rp_slice(grad_output, sl_start, sl_stop, sl_step);
+                    Tensor* region_c = region ? rp_contiguous(region) : NULL;
+                    if (region) free_tensor(region);
+                    if (region_c) {
+                        rp_add(input->metadata->grad->data, input->metadata->grad->data,
+                               region_c->data, region_c->size, input->dtype, input->device_id);
+                        free_tensor(region_c);
+                    }
+                }
+                free(sl_start);
+                free(sl_stop);
+                free(sl_step);
             } else {
                 int* indices = (int*)calloc(input->ndim, sizeof(int));
                 if (!indices) {
@@ -7025,7 +7532,7 @@ Tensor* op_cat(Tensor** tensors, int num_tensors, int dim) {
         }
 
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -7046,6 +7553,33 @@ void backward_slice_fn(GradFn* self, Tensor* grad_output) {
     }
 
     if (!input->metadata->grad) return;
+
+    if (input->device_id >= 0) {
+        if (saved->ndim > 8) return;
+        Tensor* go_c = ensure_contiguous(grad_output);
+        if (!go_c) return;
+        int cst[8];
+        int eff[8];
+        size_t acc = 1;
+        for (int d = saved->ndim - 1; d >= 0; d--) {
+            cst[d] = (int)acc;
+            acc *= saved->original_shape[d];
+        }
+        size_t dst_offset = 0;
+        for (int d = 0; d < saved->ndim; d++) {
+            int s = (saved->start && saved->start[d] != INT_MIN) ? saved->start[d] : 0;
+            int st = (saved->step && saved->step[d] != 0) ? saved->step[d] : 1;
+            if (s < 0) s += saved->original_shape[d];
+            if (s < 0) s = 0;
+            if (s > saved->original_shape[d]) s = saved->original_shape[d];
+            dst_offset += (size_t)s * cst[d];
+            eff[d] = cst[d] * st;
+        }
+        rp_scatter_add_device(input->metadata->grad->data, go_c->data, saved->ndim, eff,
+                              dst_offset, go_c->shape, go_c->size, input->dtype);
+        free_tensor(go_c);
+        return;
+    }
 
     size_t elem_size = dtype_size(input->dtype);
     bool is_half = (input->dtype == DTYPE_FLOAT16 || input->dtype == DTYPE_BFLOAT16);
@@ -7183,7 +7717,7 @@ Tensor* op_slice(Tensor* src, int* start, int* stop, int* step) {
         }
 
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -7202,7 +7736,8 @@ void backward_view_fn(GradFn* self, Tensor* grad_output) {
     if (!grad_reshaped) return;
 
     if (!input->metadata->grad) {
-        input->metadata->grad = grad_reshaped;
+        input->metadata->grad = tensor_copy(grad_reshaped);
+        free_tensor(grad_reshaped);
     } else {
         if (input->dtype == DTYPE_FLOAT32) {
             rp_add(input->metadata->grad->data, input->metadata->grad->data,
@@ -7228,7 +7763,8 @@ void backward_reshape_fn(GradFn* self, Tensor* grad_output) {
     if (!grad_reshaped) return;
 
     if (!input->metadata->grad) {
-        input->metadata->grad = grad_reshaped;
+        input->metadata->grad = tensor_copy(grad_reshaped);
+        free_tensor(grad_reshaped);
     } else {
         if (input->dtype == DTYPE_FLOAT32) {
             rp_add(input->metadata->grad->data, input->metadata->grad->data,
@@ -7299,7 +7835,7 @@ Tensor* op_view(Tensor* src, int ndim, int* new_shape) {
         }
 
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -7363,7 +7899,7 @@ Tensor* op_reshape(Tensor* src, int ndim, int* new_shape) {
         }
 
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -7386,7 +7922,12 @@ void backward_transpose_fn(GradFn* self, Tensor* grad_output) {
     if (!grad_contig) return;
 
     if (!input->metadata->grad) {
-        input->metadata->grad = grad_contig;
+        if (grad_contig->owns_data) {
+            input->metadata->grad = grad_contig;
+        } else {
+            input->metadata->grad = tensor_copy(grad_contig);
+            free_tensor(grad_contig);
+        }
     } else {
         rp_add(input->metadata->grad->data, input->metadata->grad->data,
                grad_contig->data, input->size, input->dtype, input->device_id);
@@ -7407,7 +7948,8 @@ void backward_squeeze_fn(GradFn* self, Tensor* grad_output) {
     if (!grad_unsqueezed) return;
 
     if (!input->metadata->grad) {
-        input->metadata->grad = grad_unsqueezed;
+        input->metadata->grad = tensor_copy(grad_unsqueezed);
+        free_tensor(grad_unsqueezed);
     } else {
         rp_add(input->metadata->grad->data, input->metadata->grad->data,
                grad_unsqueezed->data, input->size, input->dtype, input->device_id);
@@ -7428,7 +7970,8 @@ void backward_unsqueeze_fn(GradFn* self, Tensor* grad_output) {
     if (!grad_squeezed) return;
 
     if (!input->metadata->grad) {
-        input->metadata->grad = grad_squeezed;
+        input->metadata->grad = tensor_copy(grad_squeezed);
+        free_tensor(grad_squeezed);
     } else {
         rp_add(input->metadata->grad->data, input->metadata->grad->data,
                grad_squeezed->data, input->size, input->dtype, input->device_id);
@@ -7449,7 +7992,8 @@ void backward_flatten_fn(GradFn* self, Tensor* grad_output) {
     if (!grad_reshaped) return;
 
     if (!input->metadata->grad) {
-        input->metadata->grad = grad_reshaped;
+        input->metadata->grad = tensor_copy(grad_reshaped);
+        free_tensor(grad_reshaped);
     } else {
         rp_add(input->metadata->grad->data, input->metadata->grad->data,
                grad_reshaped->data, input->size, input->dtype, input->device_id);
@@ -7483,7 +8027,12 @@ void backward_permute_fn(GradFn* self, Tensor* grad_output) {
     if (!grad_contig) return;
 
     if (!input->metadata->grad) {
-        input->metadata->grad = grad_contig;
+        if (grad_contig->owns_data) {
+            input->metadata->grad = grad_contig;
+        } else {
+            input->metadata->grad = tensor_copy(grad_contig);
+            free_tensor(grad_contig);
+        }
     } else {
         rp_add(input->metadata->grad->data, input->metadata->grad->data,
                grad_contig->data, input->size, input->dtype, input->device_id);
@@ -7658,6 +8207,23 @@ void backward_chunk_fn(GradFn* self, Tensor* grad_output) {
 
     size_t input_dim_size = saved->input_shape[dim];
     size_t grad_size = grad_output->size;
+
+    if (input->device_id >= 0) {
+        if (ndim > 8) return;
+        Tensor* go_c = ensure_contiguous(grad_output);
+        if (!go_c) return;
+        int strides[8];
+        size_t acc = 1;
+        for (int d = ndim - 1; d >= 0; d--) {
+            strides[d] = (int)acc;
+            acc *= saved->input_shape[d];
+        }
+        size_t dst_offset = (size_t)offset * after_size;
+        rp_scatter_add_device(input->metadata->grad->data, go_c->data, ndim, strides,
+                              dst_offset, go_c->shape, go_c->size, input->dtype);
+        free_tensor(go_c);
+        return;
+    }
 
     bool is_half = (input->dtype == DTYPE_FLOAT16 || input->dtype == DTYPE_BFLOAT16);
 
@@ -7900,7 +8466,7 @@ Tensor* op_transpose(Tensor* src, int dim0, int dim1) {
         saved->dim1 = dim1;
 
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -7958,7 +8524,7 @@ Tensor* op_squeeze(Tensor* src, int dim) {
 
         saved->dim = actual_dim;
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -8016,7 +8582,7 @@ Tensor* op_unsqueeze(Tensor* src, int dim) {
 
         saved->dim = actual_dim;
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -8080,7 +8646,7 @@ Tensor* op_flatten(Tensor* src, int start_dim, int end_dim) {
         }
 
         grad_fn->saved_data = saved;
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -8140,7 +8706,7 @@ Tensor* op_permute(Tensor* src, int* dims) {
         memcpy(saved->dims, dims, src->ndim * sizeof(int));
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -8148,6 +8714,8 @@ Tensor* op_permute(Tensor* src, int* dims) {
 
 Tensor** op_chunk(Tensor* src, int chunks, int dim) {
     if (!src) return NULL;
+    if (dim < 0) dim += src->ndim;
+    if (dim < 0 || dim >= src->ndim) return NULL;
 
     Tensor** result = rp_chunk(src, chunks, dim);
     if (!result) return NULL;
@@ -8167,6 +8735,7 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim) {
                 for (int j = 0; j < actual_chunks; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8182,6 +8751,7 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim) {
                 for (int j = 0; j < actual_chunks; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8197,6 +8767,7 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim) {
                 for (int j = 0; j < actual_chunks; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8215,6 +8786,7 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim) {
                 for (int j = 0; j < actual_chunks; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8234,6 +8806,7 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim) {
                     for (int j = 0; j < actual_chunks; j++) {
                         if (result[j]->metadata && result[j]->metadata->grad_fn) {
                             free_grad_fn(result[j]->metadata->grad_fn);
+                            result[j]->metadata->grad_fn = NULL;
                         }
                         free_tensor(result[j]);
                     }
@@ -8243,7 +8816,7 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim) {
             }
             result[i]->metadata->requires_grad = true;
             result[i]->metadata->is_leaf = false;
-            result[i]->metadata->grad_fn = grad_fn;
+            grad_fn_attach(result[i], grad_fn);
 
             offset += result[i]->shape[dim];
         }
@@ -8254,6 +8827,8 @@ Tensor** op_chunk(Tensor* src, int chunks, int dim) {
 
 Tensor** op_split(Tensor* src, int* sizes, int num_splits, int dim) {
     if (!src) return NULL;
+    if (dim < 0) dim += src->ndim;
+    if (dim < 0 || dim >= src->ndim) return NULL;
 
     Tensor** result = rp_split(src, sizes, num_splits, dim);
     if (!result) return NULL;
@@ -8268,6 +8843,7 @@ Tensor** op_split(Tensor* src, int* sizes, int num_splits, int dim) {
                 for (int j = 0; j < num_splits; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8283,6 +8859,7 @@ Tensor** op_split(Tensor* src, int* sizes, int num_splits, int dim) {
                 for (int j = 0; j < num_splits; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8298,6 +8875,7 @@ Tensor** op_split(Tensor* src, int* sizes, int num_splits, int dim) {
                 for (int j = 0; j < num_splits; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8316,6 +8894,7 @@ Tensor** op_split(Tensor* src, int* sizes, int num_splits, int dim) {
                 for (int j = 0; j < num_splits; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8335,6 +8914,7 @@ Tensor** op_split(Tensor* src, int* sizes, int num_splits, int dim) {
                     for (int j = 0; j < num_splits; j++) {
                         if (result[j]->metadata && result[j]->metadata->grad_fn) {
                             free_grad_fn(result[j]->metadata->grad_fn);
+                            result[j]->metadata->grad_fn = NULL;
                         }
                         free_tensor(result[j]);
                     }
@@ -8344,7 +8924,7 @@ Tensor** op_split(Tensor* src, int* sizes, int num_splits, int dim) {
             }
             result[i]->metadata->requires_grad = true;
             result[i]->metadata->is_leaf = false;
-            result[i]->metadata->grad_fn = grad_fn;
+            grad_fn_attach(result[i], grad_fn);
 
             offset += result[i]->shape[dim];
         }
@@ -8355,6 +8935,8 @@ Tensor** op_split(Tensor* src, int* sizes, int num_splits, int dim) {
 
 Tensor** op_split_equal(Tensor* src, int num_splits, int dim) {
     if (!src) return NULL;
+    if (dim < 0) dim += src->ndim;
+    if (dim < 0 || dim >= src->ndim) return NULL;
 
     Tensor** result = rp_split_equal(src, num_splits, dim);
     if (!result) return NULL;
@@ -8369,6 +8951,7 @@ Tensor** op_split_equal(Tensor* src, int num_splits, int dim) {
                 for (int j = 0; j < num_splits; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8384,6 +8967,7 @@ Tensor** op_split_equal(Tensor* src, int num_splits, int dim) {
                 for (int j = 0; j < num_splits; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8399,6 +8983,7 @@ Tensor** op_split_equal(Tensor* src, int num_splits, int dim) {
                 for (int j = 0; j < num_splits; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8417,6 +9002,7 @@ Tensor** op_split_equal(Tensor* src, int num_splits, int dim) {
                 for (int j = 0; j < num_splits; j++) {
                     if (result[j]->metadata && result[j]->metadata->grad_fn) {
                         free_grad_fn(result[j]->metadata->grad_fn);
+                        result[j]->metadata->grad_fn = NULL;
                     }
                     free_tensor(result[j]);
                 }
@@ -8436,6 +9022,7 @@ Tensor** op_split_equal(Tensor* src, int num_splits, int dim) {
                     for (int j = 0; j < num_splits; j++) {
                         if (result[j]->metadata && result[j]->metadata->grad_fn) {
                             free_grad_fn(result[j]->metadata->grad_fn);
+                            result[j]->metadata->grad_fn = NULL;
                         }
                         free_tensor(result[j]);
                     }
@@ -8445,7 +9032,7 @@ Tensor** op_split_equal(Tensor* src, int num_splits, int dim) {
             }
             result[i]->metadata->requires_grad = true;
             result[i]->metadata->is_leaf = false;
-            result[i]->metadata->grad_fn = grad_fn;
+            grad_fn_attach(result[i], grad_fn);
 
             offset += result[i]->shape[dim];
         }
@@ -8508,7 +9095,7 @@ Tensor* op_expand(Tensor* src, int ndim, int* shape) {
         memcpy(saved->input_shape, src->shape, src->ndim * sizeof(int));
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;
@@ -8572,7 +9159,7 @@ Tensor* op_repeat(Tensor* src, int* repeats) {
         memcpy(saved->input_shape, src->shape, src->ndim * sizeof(int));
         grad_fn->saved_data = saved;
 
-        out->metadata->grad_fn = grad_fn;
+        grad_fn_attach(out, grad_fn);
     }
 
     return out;

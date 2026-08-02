@@ -1,3 +1,5 @@
+__version__ = "0.2.0b1"
+
 from recpulse import optim
 from recpulse import serialize
 from recpulse import scheduler

@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
+#include <type_traits>
 
 static __device__ float rp_log(float a) { return logf(a); }
 static __device__ float rp_exp(float a) { return expf(a); }
@@ -1239,14 +1240,15 @@ __global__ void backwards_softmax_kernel(const T* grad_c, const T* y, T* grad_x,
     size_t o = idx / inner_size;
     size_t i = idx % inner_size;
 
-    float dot = 0.0f;
+    using CT = typename std::conditional<std::is_same<T, double>::value, double, float>::type;
+    CT dot = 0;
     for (size_t d = 0; d < dim_size; d++) {
         size_t pos = o * dim_size * inner_size + d * inner_size + i;
-        dot += (float)grad_c[pos] * (float)y[pos];
+        dot += (CT)grad_c[pos] * (CT)y[pos];
     }
     for (size_t d = 0; d < dim_size; d++) {
         size_t pos = o * dim_size * inner_size + d * inner_size + i;
-        grad_x[pos] = T((float)y[pos] * ((float)grad_c[pos] - dot));
+        grad_x[pos] = T((CT)y[pos] * ((CT)grad_c[pos] - dot));
     }
 }
 
@@ -1258,14 +1260,15 @@ __global__ void backwards_log_softmax_kernel(const T* grad_c, const T* lsm, T* g
     size_t o = idx / inner_size;
     size_t i = idx % inner_size;
 
-    float sum_grad = 0.0f;
+    using CT = typename std::conditional<std::is_same<T, double>::value, double, float>::type;
+    CT sum_grad = 0;
     for (size_t d = 0; d < dim_size; d++) {
         size_t pos = o * dim_size * inner_size + d * inner_size + i;
-        sum_grad += (float)grad_c[pos];
+        sum_grad += (CT)grad_c[pos];
     }
     for (size_t d = 0; d < dim_size; d++) {
         size_t pos = o * dim_size * inner_size + d * inner_size + i;
-        grad_x[pos] = T((float)grad_c[pos] - expf((float)lsm[pos]) * sum_grad);
+        grad_x[pos] = T((CT)grad_c[pos] - exp((CT)lsm[pos]) * sum_grad);
     }
 }
 

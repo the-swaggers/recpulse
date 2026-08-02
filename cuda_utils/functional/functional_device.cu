@@ -759,16 +759,16 @@ __global__ void sum_reduction_kernel(const T* input, T* output, size_t size) {
     T* sdata = (T*)shared_mem;
 
     size_t tid = threadIdx.x;
-    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (idx < size) {
-        sdata[tid] = input[idx];
-    } else {
-        sdata[tid] = 0;
+    T acc = 0;
+    for (size_t i = blockIdx.x * (size_t)blockDim.x + tid; i < size;
+         i += (size_t)gridDim.x * blockDim.x) {
+        acc += input[i];
     }
+    sdata[tid] = acc;
     __syncthreads();
 
-    for (int s = blockDim.x / 2; s > 0; s >>= 1){
+    for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1){
         if (tid < s) {
             sdata[tid] += sdata[tid + s];
         }
@@ -778,6 +778,92 @@ __global__ void sum_reduction_kernel(const T* input, T* output, size_t size) {
     if (tid == 0) {
         output[blockIdx.x] = sdata[0];
     }
+}
+
+struct ScatterAddDims {
+    int strides[8];
+    int shape[8];
+};
+
+template<typename T>
+__device__ inline void scatter_add_elem(T* dst, T v) { *dst += v; }
+
+__device__ inline void scatter_add_elem(__half* dst, __half v) {
+    *dst = __float2half(__half2float(*dst) + __half2float(v));
+}
+
+__device__ inline void scatter_add_elem(__nv_bfloat16* dst, __nv_bfloat16 v) {
+    *dst = __float2bfloat16(__bfloat162float(*dst) + __bfloat162float(v));
+}
+
+template<typename T>
+__global__ void scatter_add_kernel(T* base, const T* src, ScatterAddDims dims, int ndim,
+                                   size_t src_size, size_t dst_offset) {
+    size_t idx = blockIdx.x * (size_t)blockDim.x + threadIdx.x;
+    if (idx >= src_size) return;
+    size_t rem = idx;
+    size_t off = dst_offset;
+    for (int d = ndim - 1; d >= 0; d--) {
+        size_t coord = rem % dims.shape[d];
+        rem /= dims.shape[d];
+        off += coord * (size_t)dims.strides[d];
+    }
+    scatter_add_elem(&base[off], src[idx]);
+}
+
+extern "C" int rp_scatter_add_device(void* base, const void* src, int ndim, const int* dst_strides,
+                                     size_t dst_offset, const int* src_shape, size_t src_size, DType dtype) {
+    if (!base || !src || !dst_strides || !src_shape || ndim <= 0 || ndim > 8 || src_size == 0) return -1;
+
+    ScatterAddDims dims;
+    for (int d = 0; d < ndim; d++) {
+        dims.strides[d] = dst_strides[d];
+        dims.shape[d] = src_shape[d];
+    }
+
+    size_t threads = 256;
+    size_t blocks = (src_size + threads - 1) / threads;
+
+    if (dtype == DTYPE_FLOAT32) {
+        scatter_add_kernel<float><<<blocks, threads>>>((float*)base, (const float*)src, dims, ndim, src_size, dst_offset);
+    } else if (dtype == DTYPE_FLOAT64) {
+        scatter_add_kernel<double><<<blocks, threads>>>((double*)base, (const double*)src, dims, ndim, src_size, dst_offset);
+    } else if (dtype == DTYPE_FLOAT16) {
+        scatter_add_kernel<__half><<<blocks, threads>>>((__half*)base, (const __half*)src, dims, ndim, src_size, dst_offset);
+    } else if (dtype == DTYPE_BFLOAT16) {
+        scatter_add_kernel<__nv_bfloat16><<<blocks, threads>>>((__nv_bfloat16*)base, (const __nv_bfloat16*)src, dims, ndim, src_size, dst_offset);
+    } else {
+        return -1;
+    }
+
+    return check_cuda_kernel() ? 0 : -1;
+}
+
+template<typename T>
+static int reduce_sum_device(T* out, const T* in, size_t size) {
+    const size_t threads = 256;
+    size_t blocks = (size + threads - 1) / threads;
+    if (blocks > 1024) blocks = 1024;
+    size_t shared = threads * sizeof(T);
+
+    if (blocks == 1) {
+        sum_reduction_kernel<T><<<1, threads, shared>>>(in, out, size);
+        return cudaGetLastError() == cudaSuccess ? 0 : -1;
+    }
+
+    T* partials;
+    if (cudaMalloc(&partials, blocks * sizeof(T)) != cudaSuccess) return -1;
+
+    sum_reduction_kernel<T><<<blocks, threads, shared>>>(in, partials, size);
+    if (cudaGetLastError() != cudaSuccess) {
+        cudaFree(partials);
+        return -1;
+    }
+
+    sum_reduction_kernel<T><<<1, threads, shared>>>(partials, out, blocks);
+    cudaError_t err = cudaGetLastError();
+    cudaFree(partials);
+    return err == cudaSuccess ? 0 : -1;
 }
 
 template<typename HalfT>
@@ -803,105 +889,16 @@ __global__ void float_to_half_kernel(HalfT* out, const float* in, size_t size) {
 }
 
 static int sum_all_fp32_reduction(void* out, const float* d_x_f32, size_t size) {
-    size_t threads = 256;
-    size_t blocks = (size + threads - 1) / threads;
-    size_t shared_mem_size = threads * sizeof(float);
-
-    float* d_partial_sums;
-    cudaMalloc(&d_partial_sums, blocks * sizeof(float));
-
-    sum_reduction_kernel<float><<<blocks, threads, shared_mem_size>>>(d_x_f32, d_partial_sums, size);
-
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        cudaFree(d_partial_sums);
-        return -1;
-    }
-
-    if (blocks > 1) {
-        size_t threads2 = (blocks < threads) ? blocks : threads;
-        size_t shared_mem_size2 = threads2 * sizeof(float);
-        sum_reduction_kernel<float><<<1, threads2, shared_mem_size2>>>(d_partial_sums, (float*)out, blocks);
-        err = cudaGetLastError();
-        if (err != cudaSuccess) {
-            cudaFree(d_partial_sums);
-            return -1;
-        }
-    } else {
-        cudaMemcpy(out, d_partial_sums, sizeof(float), cudaMemcpyDeviceToDevice);
-    }
-
-    cudaFree(d_partial_sums);
-    return 0;
+    return reduce_sum_device<float>((float*)out, d_x_f32, size);
 }
 
 int sum_all_kernel_device(void* out, const void* x, size_t size, DType dtype) {
     if (!out || !x || size == 0) return -1;
 
-    size_t threads = 256;
-    size_t blocks = (size + threads - 1) / threads;
-    size_t shared_mem_size = threads * (dtype == DTYPE_FLOAT32 ? sizeof(float) : sizeof(double));
-
     if (dtype == DTYPE_FLOAT32) {
-        float* d_partial_sums;
-        cudaMalloc(&d_partial_sums, blocks * sizeof(float));
-
-        sum_reduction_kernel<float><<<blocks, threads, shared_mem_size>>>(
-            (const float*)x, d_partial_sums, size
-        );
-
-        cudaError_t err = cudaGetLastError();
-        if (err != cudaSuccess) {
-            cudaFree(d_partial_sums);
-            return -1;
-        }
-
-        if (blocks > 1) {
-            size_t threads2 = (blocks < threads) ? blocks : threads;
-            size_t shared_mem_size2 = threads2 * sizeof(float);
-            sum_reduction_kernel<float><<<1, threads2, shared_mem_size2>>>(
-                d_partial_sums, (float*)out, blocks
-            );
-            err = cudaGetLastError();
-            if (err != cudaSuccess) {
-                cudaFree(d_partial_sums);
-                return -1;
-            }
-        } else {
-            cudaMemcpy(out, d_partial_sums, sizeof(float), cudaMemcpyDeviceToDevice);
-        }
-
-        cudaFree(d_partial_sums);
+        if (reduce_sum_device<float>((float*)out, (const float*)x, size) != 0) return -1;
     } else if (dtype == DTYPE_FLOAT64) {
-        double* d_partial_sums;
-        cudaMalloc(&d_partial_sums, blocks * sizeof(double));
-
-        sum_reduction_kernel<double><<<blocks, threads, shared_mem_size>>>(
-            (const double*)x, d_partial_sums, size
-        );
-
-        cudaError_t err = cudaGetLastError();
-        if (err != cudaSuccess) {
-            cudaFree(d_partial_sums);
-            return -1;
-        }
-
-        if (blocks > 1) {
-            size_t threads2 = (blocks < threads) ? blocks : threads;
-            size_t shared_mem_size2 = threads2 * sizeof(double);
-            sum_reduction_kernel<double><<<1, threads2, shared_mem_size2>>>(
-                d_partial_sums, (double*)out, blocks
-            );
-            err = cudaGetLastError();
-            if (err != cudaSuccess) {
-                cudaFree(d_partial_sums);
-                return -1;
-            }
-        } else {
-            cudaMemcpy(out, d_partial_sums, sizeof(double), cudaMemcpyDeviceToDevice);
-        }
-
-        cudaFree(d_partial_sums);
+        if (reduce_sum_device<double>((double*)out, (const double*)x, size) != 0) return -1;
     } else if (dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16) {
         float* d_x_f32;
         cudaError_t err = cudaMalloc(&d_x_f32, size * sizeof(float));
@@ -1488,48 +1485,50 @@ int mean_dim_kernel_device(void* out, const void* x, size_t outer_size, size_t d
 
 template<typename T>
 __global__ void softmax_dim_kernel(const T* x, T* out, size_t dim_size, size_t inner_size, size_t stripe_count) {
+    using CT = typename std::conditional<std::is_same<T, double>::value, double, float>::type;
     size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= stripe_count) return;
     size_t o = idx / inner_size;
     size_t i = idx % inner_size;
 
-    float max_val = -1e38f;
-    for (size_t d = 0; d < dim_size; d++) {
-        float v = (float)x[o * dim_size * inner_size + d * inner_size + i];
+    CT max_val = (CT)x[o * dim_size * inner_size + i];
+    for (size_t d = 1; d < dim_size; d++) {
+        CT v = (CT)x[o * dim_size * inner_size + d * inner_size + i];
         if (v > max_val) max_val = v;
     }
-    float sum_exp = 0.0f;
+    CT sum_exp = 0;
     for (size_t d = 0; d < dim_size; d++) {
-        float v = (float)x[o * dim_size * inner_size + d * inner_size + i];
-        sum_exp += expf(v - max_val);
+        CT v = (CT)x[o * dim_size * inner_size + d * inner_size + i];
+        sum_exp += exp(v - max_val);
     }
     for (size_t d = 0; d < dim_size; d++) {
         size_t pos = o * dim_size * inner_size + d * inner_size + i;
-        out[pos] = T(expf((float)x[pos] - max_val) / sum_exp);
+        out[pos] = T(exp((CT)x[pos] - max_val) / sum_exp);
     }
 }
 
 template<typename T>
 __global__ void log_softmax_dim_kernel(const T* x, T* out, size_t dim_size, size_t inner_size, size_t stripe_count) {
+    using CT = typename std::conditional<std::is_same<T, double>::value, double, float>::type;
     size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= stripe_count) return;
     size_t o = idx / inner_size;
     size_t i = idx % inner_size;
 
-    float max_val = -1e38f;
-    for (size_t d = 0; d < dim_size; d++) {
-        float v = (float)x[o * dim_size * inner_size + d * inner_size + i];
+    CT max_val = (CT)x[o * dim_size * inner_size + i];
+    for (size_t d = 1; d < dim_size; d++) {
+        CT v = (CT)x[o * dim_size * inner_size + d * inner_size + i];
         if (v > max_val) max_val = v;
     }
-    float sum_exp = 0.0f;
+    CT sum_exp = 0;
     for (size_t d = 0; d < dim_size; d++) {
-        float v = (float)x[o * dim_size * inner_size + d * inner_size + i];
-        sum_exp += expf(v - max_val);
+        CT v = (CT)x[o * dim_size * inner_size + d * inner_size + i];
+        sum_exp += exp(v - max_val);
     }
-    float log_sum_exp = logf(sum_exp);
+    CT log_sum_exp = log(sum_exp);
     for (size_t d = 0; d < dim_size; d++) {
         size_t pos = o * dim_size * inner_size + d * inner_size + i;
-        out[pos] = T((float)x[pos] - max_val - log_sum_exp);
+        out[pos] = T((CT)x[pos] - max_val - log_sum_exp);
     }
 }
 

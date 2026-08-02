@@ -266,9 +266,16 @@ static PyObject* PyTensor_to_numpy(PyTensorObject* self, PyObject* Py_UNUSED(ign
     Tensor* t = self->tensor;
     Tensor* host_t = t;
     int need_free = 0;
-    if (t->device_id >= 0) {
-        host_t = tensor_to(t, -1, t->dtype, 0);
-        if (!host_t) { PyErr_SetString(PyExc_RuntimeError, "Failed to copy to host"); return NULL; }
+    if (!rp_is_contiguous(t)) {
+        host_t = rp_contiguous(t);
+        if (!host_t) { PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous"); return NULL; }
+        need_free = 1;
+    }
+    if (host_t->device_id >= 0) {
+        Tensor* moved = tensor_to(host_t, -1, host_t->dtype, 0);
+        if (need_free) free_tensor(host_t);
+        if (!moved) { PyErr_SetString(PyExc_RuntimeError, "Failed to copy to host"); return NULL; }
+        host_t = moved;
         need_free = 1;
     }
 
@@ -314,6 +321,26 @@ static PyObject* PyTensor_copy(PyTensorObject* self, PyObject* Py_UNUSED(ignored
 
     py_result->tensor = result;
     return (PyObject*)py_result;
+}
+
+static PyObject* PyTensor_copy_(PyTensorObject* self, PyObject* args) {
+    PyTensorObject* other;
+    if (!PyArg_ParseTuple(args, "O!", &PyTensorType, &other)) {
+        return NULL;
+    }
+    if (self->tensor == NULL || other->tensor == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Tensor is not initialized");
+        return NULL;
+    }
+    Tensor* copy = tensor_copy(other->tensor);
+    if (copy == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "tensor_copy failed");
+        return NULL;
+    }
+    free_tensor(self->tensor);
+    self->tensor = copy;
+    Py_INCREF(self);
+    return (PyObject*)self;
 }
 
 static PyObject* PyTensor_data(PyTensorObject* self, PyObject* Py_UNUSED(ignored)) {
@@ -406,7 +433,13 @@ static PyObject* PyTensor_##name(PyTensorObject* self, PyObject* args) { \
         PyErr_SetString(PyExc_RuntimeError, "Failed to allocate result tensor"); \
         return NULL; \
     } \
-    int status = func(result->data, a->data, b->data, a->size, a->dtype, a->device_id); \
+    Tensor* ac = rp_is_contiguous(a) ? tensor_retain(a) : rp_contiguous(a); \
+    if (ac == NULL) { free_tensor(result); PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous"); return NULL; } \
+    Tensor* bc = rp_is_contiguous(b) ? tensor_retain(b) : rp_contiguous(b); \
+    if (bc == NULL) { free_tensor(ac); free_tensor(result); PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous"); return NULL; } \
+    int status = func(result->data, ac->data, bc->data, a->size, a->dtype, a->device_id); \
+    free_tensor(ac); \
+    free_tensor(bc); \
     if (status != 0) { \
         free_tensor(result); \
         PyErr_SetString(PyExc_RuntimeError, #func " operation failed"); \
@@ -448,7 +481,10 @@ static PyObject* PyTensor_##name(PyTensorObject* self, PyObject* args) { \
         scalar_f32 = (float)scalar_val; \
         scalar_ptr = &scalar_f32; \
     } \
-    int status = func(result->data, a->data, scalar_ptr, a->size, a->dtype, a->device_id); \
+    Tensor* ac = rp_is_contiguous(a) ? tensor_retain(a) : rp_contiguous(a); \
+    if (ac == NULL) { free_tensor(result); PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous"); return NULL; } \
+    int status = func(result->data, ac->data, scalar_ptr, a->size, a->dtype, a->device_id); \
+    free_tensor(ac); \
     if (status != 0) { \
         free_tensor(result); \
         PyErr_SetString(PyExc_RuntimeError, #func " operation failed"); \
@@ -490,7 +526,10 @@ static PyObject* PyTensor_##name(PyTensorObject* self, PyObject* args) { \
         scalar_f32 = (float)scalar_val; \
         scalar_ptr = &scalar_f32; \
     } \
-    int status = func(result->data, scalar_ptr, a->data, a->size, a->dtype, a->device_id); \
+    Tensor* ac = rp_is_contiguous(a) ? tensor_retain(a) : rp_contiguous(a); \
+    if (ac == NULL) { free_tensor(result); PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous"); return NULL; } \
+    int status = func(result->data, scalar_ptr, ac->data, a->size, a->dtype, a->device_id); \
+    free_tensor(ac); \
     if (status != 0) { \
         free_tensor(result); \
         PyErr_SetString(PyExc_RuntimeError, #func " operation failed"); \
@@ -516,7 +555,10 @@ static PyObject* PyTensor_##name(PyTensorObject* self, PyObject* Py_UNUSED(ignor
         PyErr_SetString(PyExc_RuntimeError, "Failed to allocate result tensor"); \
         return NULL; \
     } \
-    int status = func(result->data, a->data, a->size, a->dtype, a->device_id); \
+    Tensor* ac = rp_is_contiguous(a) ? tensor_retain(a) : rp_contiguous(a); \
+    if (ac == NULL) { free_tensor(result); PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous"); return NULL; } \
+    int status = func(result->data, ac->data, a->size, a->dtype, a->device_id); \
+    free_tensor(ac); \
     if (status != 0) { \
         free_tensor(result); \
         PyErr_SetString(PyExc_RuntimeError, #func " operation failed"); \
@@ -571,7 +613,14 @@ static PyObject* PyTensor_leaky_relu(PyTensorObject* self, PyObject* args) {
     double alpha_f64 = alpha_val;
     void* alpha_ptr = (a->dtype == DTYPE_FLOAT32) ? (void*)&alpha_f32 : (void*)&alpha_f64;
 
-    int status = rp_leaky_relu(result->data, a->data, alpha_ptr, a->size, a->dtype, a->device_id);
+    Tensor* ac = rp_is_contiguous(a) ? tensor_retain(a) : rp_contiguous(a);
+    if (ac == NULL) {
+        free_tensor(result);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous");
+        return NULL;
+    }
+    int status = rp_leaky_relu(result->data, ac->data, alpha_ptr, a->size, a->dtype, a->device_id);
+    free_tensor(ac);
     if (status != 0) {
         free_tensor(result);
         PyErr_SetString(PyExc_RuntimeError, "leaky_relu operation failed");
@@ -589,26 +638,48 @@ static PyObject* PyTensor_sum_all(PyTensorObject* self, PyObject* Py_UNUSED(igno
 
     Tensor* a = self->tensor;
 
-    if (a->dtype == DTYPE_FLOAT32) {
-        float result;
-        int status = rp_sum_all(&result, a->data, a->size, a->dtype, a->device_id);
-        if (status != 0) {
-            PyErr_SetString(PyExc_RuntimeError, "sum_all operation failed");
-            return NULL;
-        }
-        return PyFloat_FromDouble((double)result);
-    } else if (a->dtype == DTYPE_FLOAT64) {
-        double result;
-        int status = rp_sum_all(&result, a->data, a->size, a->dtype, a->device_id);
-        if (status != 0) {
-            PyErr_SetString(PyExc_RuntimeError, "sum_all operation failed");
-            return NULL;
-        }
-        return PyFloat_FromDouble(result);
+    if (a->dtype != DTYPE_FLOAT32 && a->dtype != DTYPE_FLOAT64) {
+        PyErr_SetString(PyExc_RuntimeError, "Unsupported dtype");
+        return NULL;
     }
 
-    PyErr_SetString(PyExc_RuntimeError, "Unsupported dtype");
-    return NULL;
+    Tensor* ac = rp_is_contiguous(a) ? tensor_retain(a) : rp_contiguous(a);
+    if (ac == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous");
+        return NULL;
+    }
+
+    int out_shape[1] = {1};
+    Tensor* out_t = zeros_tensor(a->dtype, a->device_id, 1, out_shape, NULL);
+    if (out_t == NULL) {
+        free_tensor(ac);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to allocate result tensor");
+        return NULL;
+    }
+
+    int status = rp_sum_all(out_t->data, ac->data, a->size, a->dtype, a->device_id);
+    free_tensor(ac);
+    if (status != 0) {
+        free_tensor(out_t);
+        PyErr_SetString(PyExc_RuntimeError, "sum_all operation failed");
+        return NULL;
+    }
+
+    if (out_t->device_id >= 0) {
+        Tensor* host_t = tensor_to(out_t, -1, out_t->dtype, true);
+        if (host_t == NULL) {
+            free_tensor(out_t);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to copy result to host");
+            return NULL;
+        }
+        out_t = host_t;
+    }
+
+    double value = (a->dtype == DTYPE_FLOAT32)
+        ? (double)(*(float*)out_t->data)
+        : *(double*)out_t->data;
+    free_tensor(out_t);
+    return PyFloat_FromDouble(value);
 }
 
 static PyObject* PyTensor_mean_all(PyTensorObject* self, PyObject* Py_UNUSED(ignored)) {
@@ -619,26 +690,48 @@ static PyObject* PyTensor_mean_all(PyTensorObject* self, PyObject* Py_UNUSED(ign
 
     Tensor* a = self->tensor;
 
-    if (a->dtype == DTYPE_FLOAT32) {
-        float result;
-        int status = rp_mean_all(&result, a->data, a->size, a->dtype, a->device_id);
-        if (status != 0) {
-            PyErr_SetString(PyExc_RuntimeError, "mean_all operation failed");
-            return NULL;
-        }
-        return PyFloat_FromDouble((double)result);
-    } else if (a->dtype == DTYPE_FLOAT64) {
-        double result;
-        int status = rp_mean_all(&result, a->data, a->size, a->dtype, a->device_id);
-        if (status != 0) {
-            PyErr_SetString(PyExc_RuntimeError, "mean_all operation failed");
-            return NULL;
-        }
-        return PyFloat_FromDouble(result);
+    if (a->dtype != DTYPE_FLOAT32 && a->dtype != DTYPE_FLOAT64) {
+        PyErr_SetString(PyExc_RuntimeError, "Unsupported dtype");
+        return NULL;
     }
 
-    PyErr_SetString(PyExc_RuntimeError, "Unsupported dtype");
-    return NULL;
+    Tensor* ac = rp_is_contiguous(a) ? tensor_retain(a) : rp_contiguous(a);
+    if (ac == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous");
+        return NULL;
+    }
+
+    int out_shape[1] = {1};
+    Tensor* out_t = zeros_tensor(a->dtype, a->device_id, 1, out_shape, NULL);
+    if (out_t == NULL) {
+        free_tensor(ac);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to allocate result tensor");
+        return NULL;
+    }
+
+    int status = rp_mean_all(out_t->data, ac->data, a->size, a->dtype, a->device_id);
+    free_tensor(ac);
+    if (status != 0) {
+        free_tensor(out_t);
+        PyErr_SetString(PyExc_RuntimeError, "mean_all operation failed");
+        return NULL;
+    }
+
+    if (out_t->device_id >= 0) {
+        Tensor* host_t = tensor_to(out_t, -1, out_t->dtype, true);
+        if (host_t == NULL) {
+            free_tensor(out_t);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to copy result to host");
+            return NULL;
+        }
+        out_t = host_t;
+    }
+
+    double value = (a->dtype == DTYPE_FLOAT32)
+        ? (double)(*(float*)out_t->data)
+        : *(double*)out_t->data;
+    free_tensor(out_t);
+    return PyFloat_FromDouble(value);
 }
 
 static PyObject* PyTensor_sum_dim(PyTensorObject* self, PyObject* args, PyObject* kwargs) {
@@ -944,8 +1037,8 @@ static PyObject* PyTensor_op_layer_norm(PyTensorObject* self, PyObject* args, Py
 
     if (result->metadata && result->metadata->grad_fn) {
         GradFn* gf = (GradFn*)result->metadata->grad_fn;
-        if (w_t) { gf->inputs[4] = w_t; gf->num_inputs = 5; }
-        if (b_t) { gf->inputs[5] = b_t; gf->num_inputs = 6; }
+        if (w_t) { gf->inputs[4] = tensor_retain(w_t); gf->num_inputs = 5; }
+        if (b_t) { gf->inputs[5] = tensor_retain(b_t); gf->num_inputs = 6; }
     }
 
     return wrap_tensor_result(result);
@@ -989,9 +1082,18 @@ static PyObject* PyTensor_op_batch_norm(PyTensorObject* self, PyObject* args, Py
     Tensor* save_mean = zeros_tensor(x->dtype, x->device_id, 1, sm_shape, NULL);
     Tensor* save_rstd = zeros_tensor(x->dtype, x->device_id, 1, sm_shape, NULL);
 
+    Tensor* x_contig = rp_is_contiguous(x) ? tensor_retain(x) : rp_contiguous(x);
+    if (!x_contig) {
+        if (save_mean) free_tensor(save_mean);
+        if (save_rstd) free_tensor(save_rstd);
+        free_tensor(out);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to make tensor contiguous");
+        return NULL;
+    }
     int ret = rp_batch_norm(out->data, save_mean ? save_mean->data : NULL, save_rstd ? save_rstd->data : NULL,
-                            x->data, w_ptr, b_ptr, rm_ptr, rv_ptr, N, C, spatial, eps, momentum, training,
+                            x_contig->data, w_ptr, b_ptr, rm_ptr, rv_ptr, N, C, spatial, eps, momentum, training,
                             x->dtype, x->device_id);
+    free_tensor(x_contig);
 
     if (save_mean) free_tensor(save_mean);
     if (save_rstd) free_tensor(save_rstd);
@@ -2348,6 +2450,8 @@ static PyMethodDef PyTensor_methods[] = {
      "Convert tensor to numpy array (copies to host if on GPU)"},
     {"copy", (PyCFunction)PyTensor_copy, METH_NOARGS,
      "Create a copy of the tensor"},
+    {"copy_", (PyCFunction)PyTensor_copy_, METH_VARARGS,
+     "In-place: replace this tensor's contents with a copy of another tensor"},
     {"data", (PyCFunction)PyTensor_data, METH_NOARGS,
      "Get tensor data as Python list"},
 

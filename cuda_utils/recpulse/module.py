@@ -29,18 +29,9 @@ class Module:
         raise NotImplementedError
 
     def __call__(self, *args, **kwargs):
-        if not hasattr(self, '_intermediates'):
-            self._intermediates = []
-        for m in self._modules.values():
-            if not hasattr(m, '_intermediates'):
-                m._intermediates = []
-        result = self.forward(*args, **kwargs)
-        return result
+        return self.forward(*args, **kwargs)
 
     def keep(self, tensor):
-        if not hasattr(self, '_intermediates'):
-            self._intermediates = []
-        self._intermediates.append(tensor)
         return tensor
 
     def learnable(self):
@@ -53,28 +44,19 @@ class Module:
         return list(self.learnable().values())
 
     def to(self, device=None, dtype=None):
-        new_tracked = {}
-        for name, tensor in self.tracked.items():
-            kwargs = {}
-            if device is not None:
-                kwargs['device'] = device
-            if dtype is not None:
-                kwargs['dtype'] = dtype
-            if not kwargs:
-                new_tracked[name] = tensor
-                continue
+        kwargs = {}
+        if device is not None:
+            kwargs['device'] = device
+        if dtype is not None:
+            kwargs['dtype'] = dtype
+        if not kwargs:
+            return self
 
-            new_t = tensor.to(**kwargs)
-            if tensor.requires_grad:
-                new_t.requires_grad_(True)
-
-            new_tracked[name] = new_t
-            parts = name.split('.')
-            obj = self
-            for part in parts[:-1]:
-                obj = getattr(obj, part)
-            setattr(obj, parts[-1], new_t)
-        self.tracked = new_tracked
+        for tensor in self.tracked.values():
+            rg = tensor.requires_grad
+            tensor.to(inplace=True, **kwargs)
+            if rg:
+                tensor.requires_grad_(True)
         return self
 
     def load_state(self, state_dict):
@@ -83,17 +65,10 @@ class Module:
                 continue
 
             old = self.tracked[name]
-            new_t = tensor.copy()
-
-            if old.requires_grad:
-                new_t.requires_grad_(True)
-
-            parts = name.split('.')
-            obj = self
-            for part in parts[:-1]:
-                obj = getattr(obj, part)
-            setattr(obj, parts[-1], new_t)
-            self.tracked[name] = new_t
+            rg = old.requires_grad
+            old.copy_(tensor)
+            if rg:
+                old.requires_grad_(True)
 
     def train(self):
         self._training = True
@@ -108,20 +83,9 @@ class Module:
         return self
 
     def zero_grad(self):
-        import gc
-        if hasattr(self, '_intermediates'):
-            self._intermediates.clear()
-        self._clear_all_intermediates()
-        gc.collect()
         for t in self.tracked.values():
             if t.requires_grad:
                 t.zero_grad()
-
-    def _clear_all_intermediates(self):
-        for m in self._modules.values():
-            if hasattr(m, '_intermediates'):
-                m._intermediates.clear()
-            m._clear_all_intermediates()
 
 
 class Linear(Module):
@@ -289,6 +253,101 @@ class LayerNorm(Module):
         )
 
 
+class LSTMCell(Module):
+    def __init__(self, input_size, hidden_size, bias=True):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+
+        scale = (1.0 / hidden_size) ** 0.5
+        self.weight_ih = rp.randn([input_size, 4 * hidden_size]).mul_scalar(scale)
+        self.weight_ih.requires_grad_(True)
+        self.track("weight_ih", self.weight_ih)
+        self.weight_hh = rp.randn([hidden_size, 4 * hidden_size]).mul_scalar(scale)
+        self.weight_hh.requires_grad_(True)
+        self.track("weight_hh", self.weight_hh)
+
+        if bias:
+            self.bias_ih = rp.zeros([4 * hidden_size])
+            self.bias_ih.requires_grad_(True)
+            self.track("bias_ih", self.bias_ih)
+            self.bias_hh = rp.zeros([4 * hidden_size])
+            self.bias_hh.requires_grad_(True)
+            self.track("bias_hh", self.bias_hh)
+        else:
+            self.bias_ih = None
+            self.bias_hh = None
+
+    def forward(self, x, state=None):
+        if state is None:
+            batch = x.shape[0]
+            h = rp.zeros([batch, self.hidden_size], device=str(x.device))
+            c = rp.zeros([batch, self.hidden_size], device=str(x.device))
+        else:
+            h, c = state
+
+        gates = x.op_matmul(self.weight_ih).op_add(h.op_matmul(self.weight_hh))
+        if self.bias_ih is not None:
+            gates = gates.op_add(self.bias_ih).op_add(self.bias_hh)
+
+        i_g, f_g, g_g, o_g = gates.chunk(4, 1)
+        i_g = i_g.op_sigmoid()
+        f_g = f_g.op_sigmoid()
+        g_g = g_g.op_tanh()
+        o_g = o_g.op_sigmoid()
+
+        c_next = f_g.op_mul(c).op_add(i_g.op_mul(g_g))
+        h_next = o_g.op_mul(c_next.op_tanh())
+        return h_next, c_next
+
+
+class GRUCell(Module):
+    def __init__(self, input_size, hidden_size, bias=True):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+
+        scale = (1.0 / hidden_size) ** 0.5
+        self.weight_ih = rp.randn([input_size, 3 * hidden_size]).mul_scalar(scale)
+        self.weight_ih.requires_grad_(True)
+        self.track("weight_ih", self.weight_ih)
+        self.weight_hh = rp.randn([hidden_size, 3 * hidden_size]).mul_scalar(scale)
+        self.weight_hh.requires_grad_(True)
+        self.track("weight_hh", self.weight_hh)
+
+        if bias:
+            self.bias_ih = rp.zeros([3 * hidden_size])
+            self.bias_ih.requires_grad_(True)
+            self.track("bias_ih", self.bias_ih)
+            self.bias_hh = rp.zeros([3 * hidden_size])
+            self.bias_hh.requires_grad_(True)
+            self.track("bias_hh", self.bias_hh)
+        else:
+            self.bias_ih = None
+            self.bias_hh = None
+
+    def forward(self, x, h=None):
+        if h is None:
+            batch = x.shape[0]
+            h = rp.zeros([batch, self.hidden_size], device=str(x.device))
+
+        gi = x.op_matmul(self.weight_ih)
+        gh = h.op_matmul(self.weight_hh)
+        if self.bias_ih is not None:
+            gi = gi.op_add(self.bias_ih)
+            gh = gh.op_add(self.bias_hh)
+
+        i_r, i_z, i_n = gi.chunk(3, 1)
+        h_r, h_z, h_n = gh.chunk(3, 1)
+
+        r = i_r.op_add(h_r).op_sigmoid()
+        z = i_z.op_add(h_z).op_sigmoid()
+        n = i_n.op_add(r.op_mul(h_n)).op_tanh()
+
+        h_next = z.op_rsub_scalar(1.0).op_mul(n).op_add(z.op_mul(h))
+        return h_next
+
+
 class BatchNorm2d(Module):
     def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True):
         super().__init__()
@@ -348,10 +407,8 @@ class BatchNorm2d(Module):
         alpha = self.momentum
         new_rm = self.running_mean.mul_scalar(1.0 - alpha).add(mean_1d.copy().mul_scalar(alpha))
         new_rv = self.running_var.mul_scalar(1.0 - alpha).add(var_1d.copy().mul_scalar(alpha))
-        self.running_mean = new_rm
-        self.tracked["running_mean"] = new_rm
-        self.running_var = new_rv
-        self.tracked["running_var"] = new_rv
+        self.running_mean.copy_(new_rm)
+        self.running_var.copy_(new_rv)
 
         var_eps = self.keep(var.op_add_scalar(self.eps))
         std = self.keep(var_eps.op_sqrt())

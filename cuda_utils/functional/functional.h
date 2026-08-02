@@ -224,6 +224,8 @@ Tensor* rp_slice(Tensor* src, int* start, int* stop, int* step);
 
 bool rp_is_contiguous(Tensor* tensor);
 Tensor* rp_contiguous(Tensor* src);
+int rp_scatter_add_device(void* base, const void* src, int ndim, const int* dst_strides,
+                          size_t dst_offset, const int* src_shape, size_t src_size, DType dtype);
 Tensor* rp_view(Tensor* src, int ndim, int* new_shape);
 Tensor* rp_reshape(Tensor* src, int ndim, int* new_shape);
 Tensor* rp_transpose(Tensor* src, int dim0, int dim1);

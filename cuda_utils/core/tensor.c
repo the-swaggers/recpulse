@@ -1,5 +1,6 @@
 #include "tensor.h"
 #include "../ops/ops.h"
+#include "../functional/functional.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -53,6 +54,20 @@ Tensor* fill_value_tensor(double value, Tensor* tensor) {
 Tensor* tensor_copy(Tensor* tensor) {
     if (!tensor) return NULL;
 
+    if (!rp_is_contiguous(tensor)) {
+        Tensor* contiguous = rp_contiguous(tensor);
+        if (!contiguous) return NULL;
+        if (tensor->metadata) {
+            contiguous->metadata = (Meta*)malloc(sizeof(Meta));
+            if (contiguous->metadata) {
+                memcpy(contiguous->metadata, tensor->metadata, sizeof(Meta));
+                contiguous->metadata->grad = NULL;
+                contiguous->metadata->grad_fn = NULL;
+            }
+        }
+        return contiguous;
+    }
+
     if (tensor->device_id == -1) {
         return tensor_copy_host(tensor, tensor->dtype);
     }
@@ -70,6 +85,15 @@ Tensor* tensor_to(Tensor* src, int target_device_id, DType target_dtype, bool in
     if (!validate_device_id(target_device_id)) {
         fprintf(stderr, "Error: Invalid target_device_id %d\n", target_device_id);
         return NULL;
+    }
+
+    if (!rp_is_contiguous(src)) {
+        Tensor* dense = tensor_copy(src);
+        if (!dense) return NULL;
+        Tensor* result = tensor_to(dense, target_device_id, target_dtype, true);
+        if (!result) { free_tensor(dense); return NULL; }
+        if (inplace) free_tensor(src);
+        return result;
     }
 
     bool same_device = (src->device_id == target_device_id);
@@ -215,7 +239,7 @@ int tensor_backward(Tensor* tensor) {
     Tensor** bfs = (Tensor**)malloc(bfs_cap * sizeof(Tensor*));
     if (!bfs) { free(nodes); return -1; }
 
-    nodes[nodes_count++] = (NodeEntry){tensor, 0};
+    nodes[nodes_count++] = (NodeEntry){tensor_retain(tensor), 0};
     bfs[bfs_count++] = tensor;
 
     for (int idx = 0; idx < bfs_count; idx++) {
@@ -233,17 +257,23 @@ int tensor_backward(Tensor* tensor) {
                 if (nodes_count >= nodes_cap) {
                     nodes_cap *= 2;
                     NodeEntry* tmp = (NodeEntry*)realloc(nodes, nodes_cap * sizeof(NodeEntry));
-                    if (!tmp) { free(nodes); free(bfs); return -1; }
+                    if (!tmp) {
+                        for (int k = 0; k < nodes_count; k++) free_tensor(nodes[k].tensor);
+                        free(nodes); free(bfs); return -1;
+                    }
                     nodes = tmp;
                 }
-                nodes[nodes_count++] = (NodeEntry){inp, 0};
+                nodes[nodes_count++] = (NodeEntry){tensor_retain(inp), 0};
                 ni = nodes_count - 1;
 
                 if (inp->metadata->grad_fn) {
                     if (bfs_count >= bfs_cap) {
                         bfs_cap *= 2;
                         Tensor** tmp = (Tensor**)realloc(bfs, bfs_cap * sizeof(Tensor*));
-                        if (!tmp) { free(nodes); free(bfs); return -1; }
+                        if (!tmp) {
+                            for (int k = 0; k < nodes_count; k++) free_tensor(nodes[k].tensor);
+                            free(nodes); free(bfs); return -1;
+                        }
                         bfs = tmp;
                     }
                     bfs[bfs_count++] = inp;
@@ -258,7 +288,10 @@ int tensor_backward(Tensor* tensor) {
     int ready_count = 0;
     int ready_idx = 0;
     Tensor** ready = (Tensor**)malloc(ready_cap * sizeof(Tensor*));
-    if (!ready) { free(nodes); return -1; }
+    if (!ready) {
+        for (int k = 0; k < nodes_count; k++) free_tensor(nodes[k].tensor);
+        free(nodes); return -1;
+    }
 
     int root_idx = find_node(nodes, nodes_count, tensor);
     if (root_idx >= 0 && nodes[root_idx].dep_count == 0) {
@@ -285,7 +318,10 @@ int tensor_backward(Tensor* tensor) {
                 if (ready_count >= ready_cap) {
                     ready_cap *= 2;
                     Tensor** tmp = (Tensor**)realloc(ready, ready_cap * sizeof(Tensor*));
-                    if (!tmp) { free(nodes); free(ready); return -1; }
+                    if (!tmp) {
+                        for (int k = 0; k < nodes_count; k++) free_tensor(nodes[k].tensor);
+                        free(nodes); free(ready); return -1;
+                    }
                     ready = tmp;
                 }
                 ready[ready_count++] = inp;
@@ -301,6 +337,10 @@ int tensor_backward(Tensor* tensor) {
         }
     }
 
+    for (int i = 0; i < nodes_count; i++) {
+        free_tensor(nodes[i].tensor);
+    }
+
     free(nodes);
     free(ready);
     return 0;
@@ -312,12 +352,29 @@ void tensor_zero_grad(Tensor* tensor) {
     tensor->metadata->grad = NULL;
 }
 
+Tensor* tensor_retain(Tensor* tensor) {
+    if (tensor) tensor->refcount++;
+    return tensor;
+}
+
 void free_tensor(Tensor* tensor){
     if (!tensor) return;
-    if (tensor->device_id == -1) return free_tensor_host(tensor);
-    if (tensor->device_id >= 0) return free_tensor_device(tensor);
+    if (tensor->refcount > 1) {
+        tensor->refcount--;
+        return;
+    }
 
-    fprintf(stderr, "Error: Invalid device_id %d in free_tensor\n", tensor->device_id);
-    exit(1);
+    Tensor* base = tensor->base_tensor;
+
+    if (tensor->device_id == -1) {
+        free_tensor_host(tensor);
+    } else if (tensor->device_id >= 0) {
+        free_tensor_device(tensor);
+    } else {
+        fprintf(stderr, "Error: Invalid device_id %d in free_tensor\n", tensor->device_id);
+        exit(1);
+    }
+
+    free_tensor(base);
 };
 

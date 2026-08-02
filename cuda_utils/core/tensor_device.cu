@@ -17,6 +17,8 @@ Tensor* zeros_device_tensor(DType dtype, int device_id, int ndim, int* shape, Me
 
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
+    tensor->refcount = 1;
+    tensor->base_tensor = NULL;
 
     tensor->shape = NULL;
     tensor->strides = NULL;
@@ -147,6 +149,8 @@ Tensor* ones_device_tensor(DType dtype, int device_id, int ndim, int* shape, Met
 
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
+    tensor->refcount = 1;
+    tensor->base_tensor = NULL;
 
     tensor->shape = NULL;
     tensor->strides = NULL;
@@ -198,6 +202,8 @@ Tensor* values_device_tensor(void* vals, DType vals_dtype, DType target_dtype, i
 
     Tensor* tensor = (Tensor*)malloc(sizeof(Tensor));
     if (!tensor) return NULL;
+    tensor->refcount = 1;
+    tensor->base_tensor = NULL;
 
     tensor->shape = NULL;
     tensor->strides = NULL;
@@ -291,6 +297,8 @@ Tensor* tensor_copy_device(Tensor* tensor, int device_id, DType target_dtype) {
 
     Tensor* copy = (Tensor*)malloc(sizeof(Tensor));
     if (!copy) return NULL;
+    copy->refcount = 1;
+    copy->base_tensor = NULL;
 
     copy->shape = NULL;
     copy->strides = NULL;
@@ -368,6 +376,8 @@ Tensor* move_host_to_device(Tensor* tensor, int device_id, DType target_dtype) {
 
     Tensor* result = (Tensor*)malloc(sizeof(Tensor));
     if (!result) return NULL;
+    result->refcount = 1;
+    result->base_tensor = NULL;
 
     result->shape = NULL;
     result->strides = NULL;
@@ -431,6 +441,8 @@ Tensor* move_device_to_host(Tensor* tensor, DType target_dtype) {
 
     Tensor* result = (Tensor*)malloc(sizeof(Tensor));
     if (!result) return NULL;
+    result->refcount = 1;
+    result->base_tensor = NULL;
 
     result->shape = NULL;
     result->strides = NULL;
@@ -523,6 +535,8 @@ Tensor* tensor_reshape_device(Tensor* tensor, int new_ndim, int* new_shape) {
 
     Tensor* reshaped = (Tensor*)malloc(sizeof(Tensor));
     if (!reshaped) return NULL;
+    reshaped->refcount = 1;
+    reshaped->base_tensor = NULL;
 
     reshaped->shape = NULL;
     reshaped->strides = NULL;

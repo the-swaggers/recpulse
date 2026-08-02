@@ -33,6 +33,7 @@ struct Tensor {
     int* strides;
     int device_id;
     bool owns_data;
+    int refcount;
 
     Tensor* base_tensor;
     size_t data_offset;
@@ -76,6 +77,7 @@ bool validate_device_id(int device_id);
 int tensor_backward(Tensor* tensor);
 void tensor_zero_grad(Tensor* tensor);
 
+Tensor* tensor_retain(Tensor* tensor);
 void free_tensor(Tensor* tensor);
 
 void free_tensor_host(Tensor* tensor);
