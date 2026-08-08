@@ -101,12 +101,12 @@ print(expanded.shape)  # (2, 3, 4)
 ## Implementation Details
 
 ### Files Modified
-- `cuda_utils/functional/functional.h` - Added declaration
-- `cuda_utils/functional/functional.c` - Implemented `rp_expand`
-- `cuda_utils/ops/ops.h` - Added declaration for autograd wrapper
-- `cuda_utils/ops/ops.c` - Implemented `op_expand` with autograd support
-- `cuda_utils/python/tensor_python.c` - Added Python bindings
-- `cuda_utils/Makefile` - Added test_expand target
+- `functional/functional.h` - Added declaration
+- `functional/functional.c` - Implemented `rp_expand`
+- `ops/ops.h` - Added declaration for autograd wrapper
+- `ops/ops.c` - Implemented `op_expand` with autograd support
+- `python/tensor_python.c` - Added Python bindings
+- `Makefile` - Added test_expand target
 - `.claude/rules/shape_ops.md` - Updated documentation
 
 ### Algorithm

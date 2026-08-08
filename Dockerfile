@@ -7,4 +7,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip3 install --no-cache-dir numpy
 
-WORKDIR /workspace/cuda_utils
+WORKDIR /workspace

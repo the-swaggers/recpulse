@@ -106,12 +106,12 @@ chunks5 = t.chunk(3, -1)  # Same as dim=1
 ## Implementation Details
 
 ### Files Modified
-- `cuda_utils/functional/functional.h` - Added declaration
-- `cuda_utils/functional/functional.c` - Implemented `rp_chunk`
-- `cuda_utils/ops/ops.h` - Added declaration for autograd wrapper
-- `cuda_utils/ops/ops.c` - Implemented `op_chunk` with autograd support
-- `cuda_utils/python/tensor_python.c` - Added Python bindings
-- `cuda_utils/Makefile` - Added test_chunk target
+- `functional/functional.h` - Added declaration
+- `functional/functional.c` - Implemented `rp_chunk`
+- `ops/ops.h` - Added declaration for autograd wrapper
+- `ops/ops.c` - Implemented `op_chunk` with autograd support
+- `python/tensor_python.c` - Added Python bindings
+- `Makefile` - Added test_chunk target
 - `.claude/rules/shape_ops.md` - Updated documentation
 
 ### Algorithm

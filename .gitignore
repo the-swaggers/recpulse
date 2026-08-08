@@ -1,13 +1,14 @@
 .idea/
-recpulse/__pycache__/
-tests/__pycache__/
-/.pypirc
-/dist/
-/build/
-/.pytest_cache/
-/recpulse.egg-info/
 __pycache__/
 .ipynb_checkpoints/
-cuda_utils/build/
-cuda_utils/data/
+.pytest_cache/
+/build/
+/data/
+/dist/
 *.so
+
+# leftover root-owned build dir from an old docker run; remove with sudo, then drop this line
+cuda_utils/
+*_athena.sh
+*_helios.sh
+*_smoke.sh

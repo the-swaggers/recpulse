@@ -17,7 +17,7 @@ This project aims to create a new machine learning framework. Initially the goal
 ## Quick start
 
 ```bash
-cd cuda_utils
+# from the repo root
 make clean && make        # builds recpulse_cuda.so (needs CUDA toolkit + Python headers)
 make test_all             # run the test suite
 ```
@@ -32,7 +32,7 @@ loss = x.op_square().op_mean_all()
 loss.backward()
 ```
 
-See `cuda_utils/examples/` for full training scripts and notebooks.
+See `examples/` for full training scripts and notebooks.
 
 ## Status
 

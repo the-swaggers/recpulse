@@ -69,12 +69,12 @@ flat_mid = t2.flatten(1, 2)
 ## Implementation Details
 
 ### Files Modified
-- `cuda_utils/functional/functional.h` - Added declaration
-- `cuda_utils/functional/functional.c` - Implemented `rp_flatten`
-- `cuda_utils/ops/ops.h` - Added declaration for autograd wrapper
-- `cuda_utils/ops/ops.c` - Implemented `op_flatten` with autograd support
-- `cuda_utils/python/tensor_python.c` - Added Python bindings
-- `cuda_utils/Makefile` - Added test_flatten target
+- `functional/functional.h` - Added declaration
+- `functional/functional.c` - Implemented `rp_flatten`
+- `ops/ops.h` - Added declaration for autograd wrapper
+- `ops/ops.c` - Implemented `op_flatten` with autograd support
+- `python/tensor_python.c` - Added Python bindings
+- `Makefile` - Added test_flatten target
 - `.claude/rules/shape_ops.md` - Updated documentation
 
 ### Algorithm

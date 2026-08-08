@@ -96,12 +96,12 @@ t.permute([0, 2, 1])     # Reorder to swap dims 1 and 2
 ## Implementation Details
 
 ### Files Modified
-- `cuda_utils/functional/functional.h` - Added declaration
-- `cuda_utils/functional/functional.c` - Implemented `rp_permute`
-- `cuda_utils/ops/ops.h` - Added declaration for autograd wrapper
-- `cuda_utils/ops/ops.c` - Implemented `op_permute` with autograd support
-- `cuda_utils/python/tensor_python.c` - Added Python bindings
-- `cuda_utils/Makefile` - Added test_permute target
+- `functional/functional.h` - Added declaration
+- `functional/functional.c` - Implemented `rp_permute`
+- `ops/ops.h` - Added declaration for autograd wrapper
+- `ops/ops.c` - Implemented `op_permute` with autograd support
+- `python/tensor_python.c` - Added Python bindings
+- `Makefile` - Added test_permute target
 - `.claude/rules/shape_ops.md` - Updated documentation
 
 ### Algorithm
