@@ -6,3 +6,8 @@ tests/__pycache__/
 /build/
 /.pytest_cache/
 /recpulse.egg-info/
+__pycache__/
+.ipynb_checkpoints/
+cuda_utils/build/
+cuda_utils/data/
+*.so

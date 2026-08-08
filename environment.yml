@@ -1,20 +1,14 @@
 name: recpulse
 channels:
   - conda-forge
+  - defaults
 dependencies:
-  - python=3.10
-  - pydantic=2.6.1
-  - make=4.3
-  - pytest=7.4.3
-  - black=23.10.1
-  - numpy=1.26.0
-  - matplotlib=3.8.0
-  - networkx=3.2.1
-  - pre-commit=3.6.0
-  - flake8=7.0.0
-  - isort=5.13.2
-  - mypy=1.8.0
-  - pydocstyle=6.3.0
-  - tqdm=4.66.2
-  - numba=0.59.0
-  - scipy=1.12.0
+  # Core
+  - python>=3.8
+  - numpy
+  - make
+
+  # Optional (for safetensors format support)
+  - pip
+  - pip:
+    - safetensors
