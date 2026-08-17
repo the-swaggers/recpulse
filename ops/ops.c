@@ -8091,6 +8091,7 @@ void backward_expand_fn(GradFn* self, Tensor* grad_output) {
 
     size_t output_size = grad_out_host->size;
     int ndim = grad_out_host->ndim;
+    int offset = ndim - saved->input_ndim;
 
     bool is_half = (input->dtype == DTYPE_FLOAT16 || input->dtype == DTYPE_BFLOAT16);
 
@@ -8123,8 +8124,10 @@ void backward_expand_fn(GradFn* self, Tensor* grad_output) {
                 int coord = out_idx / output_strides[d];
                 out_idx %= output_strides[d];
 
-                int in_coord = (saved->input_shape[d] == 1) ? 0 : coord;
-                in_idx += in_coord * input_strides[d];
+                if (d >= offset) {
+                    int in_coord = (saved->input_shape[d - offset] == 1) ? 0 : coord;
+                    in_idx += in_coord * input_strides[d - offset];
+                }
             }
 
             grad_in[in_idx] += grad_out[i];
@@ -8147,8 +8150,10 @@ void backward_expand_fn(GradFn* self, Tensor* grad_output) {
                 int coord = out_idx / output_strides[d];
                 out_idx %= output_strides[d];
 
-                int in_coord = (saved->input_shape[d] == 1) ? 0 : coord;
-                in_idx += in_coord * input_strides[d];
+                if (d >= offset) {
+                    int in_coord = (saved->input_shape[d - offset] == 1) ? 0 : coord;
+                    in_idx += in_coord * input_strides[d - offset];
+                }
             }
 
             grad_in[in_idx] += grad_out[i];
