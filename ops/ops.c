@@ -6908,10 +6908,6 @@ typedef struct {
 
 typedef struct {
     int dim;
-} SqueezeSavedData;
-
-typedef struct {
-    int dim;
 } UnsqueezeSavedData;
 
 typedef struct {
@@ -7112,7 +7108,6 @@ void backward_repeat_fn(GradFn* self, Tensor* grad_output);
 void backward_slice_fn(GradFn* self, Tensor* grad_output);
 void backward_reshape_fn(GradFn* self, Tensor* grad_output);
 void backward_transpose_fn(GradFn* self, Tensor* grad_output);
-void backward_squeeze_fn(GradFn* self, Tensor* grad_output);
 void backward_unsqueeze_fn(GradFn* self, Tensor* grad_output);
 void backward_flatten_fn(GradFn* self, Tensor* grad_output);
 
@@ -7935,28 +7930,6 @@ void backward_transpose_fn(GradFn* self, Tensor* grad_output) {
     }
 }
 
-void backward_squeeze_fn(GradFn* self, Tensor* grad_output) {
-    if (!self || !grad_output) return;
-
-    SqueezeSavedData* saved = (SqueezeSavedData*)self->saved_data;
-    if (!saved || self->num_inputs != 1) return;
-
-    Tensor* input = self->inputs[0];
-    if (!input || !input->metadata || !input->metadata->requires_grad) return;
-
-    Tensor* grad_unsqueezed = rp_unsqueeze(grad_output, saved->dim);
-    if (!grad_unsqueezed) return;
-
-    if (!input->metadata->grad) {
-        input->metadata->grad = tensor_copy(grad_unsqueezed);
-        free_tensor(grad_unsqueezed);
-    } else {
-        rp_add(input->metadata->grad->data, input->metadata->grad->data,
-               grad_unsqueezed->data, input->size, input->dtype, input->device_id);
-        free_tensor(grad_unsqueezed);
-    }
-}
-
 void backward_unsqueeze_fn(GradFn* self, Tensor* grad_output) {
     if (!self || !grad_output) return;
 
@@ -8480,13 +8453,6 @@ Tensor* op_transpose(Tensor* src, int dim0, int dim1) {
 Tensor* op_squeeze(Tensor* src, int dim) {
     if (!src) return NULL;
 
-    int actual_dim = dim;
-    if (dim >= 0 && dim < src->ndim) {
-        actual_dim = dim;
-    } else if (dim < 0 && dim >= -src->ndim) {
-        actual_dim = dim + src->ndim;
-    }
-
     Tensor* out = rp_squeeze(src, dim);
     if (!out) return NULL;
 
@@ -8509,7 +8475,7 @@ Tensor* op_squeeze(Tensor* src, int dim) {
             return NULL;
         }
 
-        grad_fn->backward = backward_squeeze_fn;
+        grad_fn->backward = backward_reshape_fn;
         grad_fn->num_inputs = 1;
         grad_fn->inputs = (Tensor**)malloc(sizeof(Tensor*));
         if (!grad_fn->inputs) {
@@ -8519,7 +8485,7 @@ Tensor* op_squeeze(Tensor* src, int dim) {
         }
         grad_fn->inputs[0] = src;
 
-        SqueezeSavedData* saved = (SqueezeSavedData*)malloc(sizeof(SqueezeSavedData));
+        ReshapeSavedData* saved = (ReshapeSavedData*)malloc(sizeof(ReshapeSavedData));
         if (!saved) {
             free(grad_fn->inputs);
             free(grad_fn);
@@ -8527,7 +8493,20 @@ Tensor* op_squeeze(Tensor* src, int dim) {
             return NULL;
         }
 
-        saved->dim = actual_dim;
+        saved->ndim = src->ndim;
+        saved->original_shape = (int*)malloc(src->ndim * sizeof(int));
+        if (!saved->original_shape) {
+            free(saved);
+            free(grad_fn->inputs);
+            free(grad_fn);
+            free_tensor(out);
+            return NULL;
+        }
+
+        for (int i = 0; i < src->ndim; i++) {
+            saved->original_shape[i] = src->shape[i];
+        }
+
         grad_fn->saved_data = saved;
         grad_fn_attach(out, grad_fn);
     }

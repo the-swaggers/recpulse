@@ -2,6 +2,7 @@
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
+#include <limits.h>
 #include "../core/tensor.h"
 #include "../core/half_precision.h"
 #include "../functional/functional.h"
@@ -1615,7 +1616,7 @@ static PyObject* PyTensor_squeeze(PyTensorObject* self, PyObject* args) {
         return NULL;
     }
 
-    int dim = -1;
+    int dim = INT_MIN;
     if (!PyArg_ParseTuple(args, "|i", &dim)) {
         return NULL;
     }
@@ -2679,7 +2680,7 @@ static PyMethodDef PyTensor_methods[] = {
     {"transpose", (PyCFunction)PyTensor_transpose, METH_VARARGS,
      "Transpose tensor by swapping two dimensions"},
     {"squeeze", (PyCFunction)PyTensor_squeeze, METH_VARARGS,
-     "Remove dimensions of size 1 (dim=-1 removes all, dim=N removes specific dimension)"},
+     "Remove dimensions of size 1 (no dim removes all, dim removes specific dimension, negative dims count from the end)"},
     {"unsqueeze", (PyCFunction)PyTensor_unsqueeze, METH_VARARGS,
      "Add a dimension of size 1 at the specified position"},
     {"flatten", (PyCFunction)PyTensor_flatten, METH_VARARGS,

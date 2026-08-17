@@ -1437,13 +1437,13 @@ Tensor* rp_transpose(Tensor* src, int dim0, int dim1) {
 Tensor* rp_squeeze(Tensor* src, int dim) {
     if (!src) return NULL;
 
-    if (dim < -1 || dim >= src->ndim) {
-        fprintf(stderr, "Error: dimension %d out of bounds for tensor with %d dimensions\n", dim, src->ndim);
-        return NULL;
-    }
-
-    if (dim >= 0 && dim < src->ndim) {
+    if (dim != INT_MIN) {
         if (dim < 0) dim += src->ndim;
+
+        if (dim < 0 || dim >= src->ndim) {
+            fprintf(stderr, "Error: dimension %d out of bounds for tensor with %d dimensions\n", dim, src->ndim);
+            return NULL;
+        }
 
         if (src->shape[dim] != 1) {
             fprintf(stderr, "Error: cannot squeeze dimension %d with size %d (only size 1 can be squeezed)\n", dim, src->shape[dim]);
