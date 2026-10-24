@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -77,7 +78,7 @@ private:
     uint64_t version_ = 0;
 };
 
-class GradFn;
+struct GradFn;
 struct AutogradMeta;
 
 class TensorImpl {
@@ -167,10 +168,18 @@ private:
     std::shared_ptr<TensorImpl> impl_;
 };
 
+struct GradFn {
+    std::vector<std::shared_ptr<GradFn>> next;
+    std::function<std::vector<Tensor>(const Tensor& grad)> backward;
+};
+
 struct AutogradMeta {
     bool requires_grad = false;
     std::shared_ptr<GradFn> grad_fn;
+    std::weak_ptr<GradFn> grad_accumulator;
     Tensor grad;
+    Tensor base;
+    uint64_t grad_fn_version = 0;
 };
 
 class GradMode {
