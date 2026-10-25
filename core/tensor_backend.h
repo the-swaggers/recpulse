@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tensor.hpp"
+#include "tensor.h"
 
 #if defined(__CUDACC__)
 #define RP_HOST_DEVICE __host__ __device__

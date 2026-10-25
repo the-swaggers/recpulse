@@ -1,4 +1,4 @@
-#include "tensor_backend.hpp"
+#include "tensor_backend.h"
 
 #include <bit>
 #include <cstdlib>

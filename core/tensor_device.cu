@@ -1,4 +1,4 @@
-#include "tensor_backend.hpp"
+#include "tensor_backend.h"
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
